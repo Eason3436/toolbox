@@ -297,18 +297,20 @@ struct ZipWriter {
     }
 
     mutating func add(_ name: String, data: Data) throws {
-        try add(name, crc: CRC32.checksum(data), size: data.count) { try handle.write(contentsOf: data) }
+        let output = handle
+        try add(name, crc: CRC32.checksum(data), size: data.count) { try output.write(contentsOf: data) }
     }
 
     mutating func add(_ name: String, file: URL) throws {
         let size = Workspace.fileSize(file)
         guard size < Int64(UInt32.max) else { throw ToolError("\(file.lastPathComponent) 超過 4 GB，無法放進 ZIP") }
         let crc = try CRC32.checksum(file: file)
+        let output = handle
         try add(name, crc: crc, size: Int(size)) {
             let reader = try FileHandle(forReadingFrom: file)
             defer { try? reader.close() }
             while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty {
-                try handle.write(contentsOf: chunk)
+                try output.write(contentsOf: chunk)
             }
         }
     }
