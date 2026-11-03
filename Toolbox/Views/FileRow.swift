@@ -5,39 +5,69 @@ import PDFKit
 
 struct FileRow: View {
     let file: InputFile
+    var onRemove: (() -> Void)?
     @State private var thumbnail: UIImage?
     @State private var detail = ""
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.quaternary)
-                if let thumbnail {
-                    Image(uiImage: thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: file.kind.systemImage)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
+            FileThumbnail(image: thumbnail, kind: file.kind)
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.name)
+                    .foregroundStyle(Color.tbInk)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(file.kind.label) · \(Workspace.formattedSize(file.size))\(detail)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("\(Workspace.formattedSize(file.size)) · \(file.url.pathExtension.uppercased())\(detail)")
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.tbInkSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.tbInkTertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("移除 \(file.name)")
             }
         }
+        .frame(minHeight: 52)
         .task(id: file.id) {
             thumbnail = await Thumbnails.make(for: file.url)
             detail = await FileInfo.detail(for: file)
         }
+    }
+}
+
+/// 44×44 的檔案縮圖，沒有縮圖時顯示類型圖示。
+struct FileThumbnail: View {
+    let image: UIImage?
+    let kind: FileKind
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.tbGround)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: kind.systemImage)
+                    .foregroundStyle(Color.tbInkSecondary)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.tbHairline, lineWidth: 0.5)
+        )
     }
 }
 

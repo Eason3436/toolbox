@@ -43,6 +43,9 @@ targets:
         NSPhotoLibraryUsageDescription: 用來讀取原況照片並把處理好的照片存回相簿。
         NSPhotoLibraryAddUsageDescription: 用來把處理好的照片和影片存到相簿。
         UIFileSharingEnabled: true
+        UIAppFonts:
+          - NotoSerifTC-Medium.ttf
+        NSSpeechRecognitionUsageDescription: 用來把音訊在裝置上轉成文字。
         UIBackgroundModes:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
