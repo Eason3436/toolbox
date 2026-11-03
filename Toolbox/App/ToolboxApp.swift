@@ -29,7 +29,8 @@ final class AppModel {
     /// 外部檔案：先複製進 App。功能包（.json）直接安裝。
     func add(urls: [URL]) {
         for url in urls {
-            if FileKind.detect(url) == .json {
+            // 看起來像功能包的 JSON 直接安裝，其他 JSON 當一般檔案處理。
+            if FileKind.detect(url) == .json, Self.looksLikePack(url) {
                 installPack(from: url)
                 continue
             }
@@ -72,6 +73,13 @@ final class AppModel {
 
     func clear() {
         files.removeAll()
+    }
+
+    nonisolated static func looksLikePack(_ url: URL) -> Bool {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return false }
+        return (try? PackStore.decode(data)) != nil
     }
 
     func installPack(from url: URL) {

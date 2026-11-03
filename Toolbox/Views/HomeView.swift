@@ -95,8 +95,8 @@ struct HomeView: View {
                             .foregroundStyle(dropTargeted ? Color.tbAccent : Color.tbInkSecondary)
                             .symbolEffect(.bounce, value: dropTargeted)
                             .frame(width: 112, height: 112)
-                            .background(Circle().fill(dropTargeted ? Color.tbAccentSoft : Color.tbSurface))
-                            .overlay(Circle().strokeBorder(Color.tbHairline, lineWidth: 0.5))
+                            .glassEffect(dropTargeted ? .regular.tint(Color.tbAccentSoft).interactive() : .regular.interactive(),
+                                         in: Circle())
                         VStack(spacing: 8) {
                             Text("還沒有檔案")
                                 .font(.tbTitle)
@@ -140,7 +140,7 @@ struct HomeView: View {
                             .padding(.leading, 16)
                             .padding(.trailing, 12)
                             .frame(minHeight: 52)
-                            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color.tbSurface))
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         Text("也可以從其他 App 用「分享 › 工具箱」把檔案丟進來。")
@@ -153,6 +153,7 @@ struct HomeView: View {
                 }
                 .frame(minHeight: proxy.size.height)
             }
+            .tbSoftEdges()
         }
     }
 

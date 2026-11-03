@@ -5,11 +5,14 @@ import UniformTypeIdentifiers
 
 enum MediaExport {
     static func export(_ asset: AVAsset, to output: URL, preset: String, fileType: AVFileType,
-                       timeRange: CMTimeRange? = nil) async throws {
+                       timeRange: CMTimeRange? = nil, pitch: AVAudioTimePitchAlgorithm? = nil,
+                       videoComposition: AVVideoComposition? = nil) async throws {
         guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw ToolError("無法建立匯出工作（\(preset)）")
         }
         if let timeRange { session.timeRange = timeRange }
+        if let pitch { session.audioTimePitchAlgorithm = pitch }
+        if let videoComposition { session.videoComposition = videoComposition }
         session.shouldOptimizeForNetworkUse = true
         var monitor: Task<Void, Never>?
         if let reporter = ProgressScope.report {

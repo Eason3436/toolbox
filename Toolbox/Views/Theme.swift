@@ -27,6 +27,12 @@ extension View {
     func tbGroundBackground() -> some View {
         scrollContentBackground(.hidden)
             .background(Color.tbGround)
+            .tbSoftEdges()
+    }
+
+    /// 捲動內容碰到導覽列、底部按鈕時用柔和的漸進模糊。
+    func tbSoftEdges() -> some View {
+        scrollEdgeEffectStyle(.soft, for: .all)
     }
 }
 
@@ -77,7 +83,7 @@ struct CapsuleSegments: View {
             }
         }
         .padding(4)
-        .background(Capsule().fill(Color.tbSurface))
+        .glassEffect(.regular, in: Capsule())
         .animation(.snappy(duration: 0.2), value: selection)
     }
 }
