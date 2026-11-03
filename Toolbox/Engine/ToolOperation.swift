@@ -9,6 +9,8 @@ struct ToolError: LocalizedError {
 enum OperationEditor: Sendable {
     case none
     case crop
+    /// PDF 頁面挑選（縮圖格），寫回 `pages` 參數。
+    case pages
 }
 
 struct RunContext: Sendable {

@@ -99,11 +99,14 @@ struct PDFSplitOp: ToolOperation {
 struct PDFToImagesOp: ToolOperation {
     let id = "pdf.toImages"
     let title = "轉成圖片"
-    let subtitle = "每頁輸出一張 JPG 或 PNG"
+    let subtitle = "選要哪幾頁，輸出成 JPG 或 PNG"
     let systemImage = "photo.on.rectangle"
     let accepts: Set<FileKind> = [.pdf]
+    let editor: OperationEditor = .pages
     var parameters: [ParameterSpec] {
         [
+            .text("pages", "頁碼", default: "", placeholder: "留空代表全部，例如 1-3, 5",
+                  footer: "「8-」代表第 8 頁到最後。"),
             .choice("format", "格式", [("jpg", "JPG"), ("png", "PNG")], default: "jpg"),
             .choice("scale", "解析度", [("1", "標準（72 dpi）"), ("2", "高（144 dpi）"), ("3", "很高（216 dpi）")], default: "2"),
         ]
@@ -114,10 +117,21 @@ struct PDFToImagesOp: ToolOperation {
         let scale = CGFloat(Double(params.string("scale", "2")) ?? 2)
         return try await eachInput(inputs, context) { input in
             guard let doc = PDFDocument(url: input) else { throw ToolError("無法開啟：\(input.lastPathComponent)") }
+            let text = params.string("pages", "").trimmingCharacters(in: .whitespaces)
+            var numbers: [Int] = []
+            if text.isEmpty {
+                numbers = Array(0..<doc.pageCount)
+            } else {
+                var seen = Set<Int>()
+                for range in PDFSplitOp.parse(text, pageCount: doc.pageCount) {
+                    for n in range where seen.insert(n - 1).inserted { numbers.append(n - 1) }
+                }
+            }
+            guard !numbers.isEmpty else { throw ToolError("沒有選到任何頁面（共 \(doc.pageCount) 頁）") }
             var outputs: [URL] = []
-            for i in 0..<doc.pageCount {
+            for (step, i) in numbers.enumerated() {
                 guard let page = doc.page(at: i) else { continue }
-                context.report("第 \(i + 1)/\(doc.pageCount) 頁")
+                context.report("第 \(i + 1) 頁（\(step + 1)/\(numbers.count)）")
                 let bounds = page.bounds(for: .mediaBox)
                 let image = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
                 guard let data = png ? image.pngData() : image.jpegData(compressionQuality: 0.9) else { continue }

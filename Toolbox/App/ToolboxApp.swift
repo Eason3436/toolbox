@@ -47,6 +47,17 @@ final class AppModel {
         files.append(contentsOf: urls.map { InputFile(url: $0, kind: FileKind.detect($0)) })
     }
 
+    /// 從相簿挑的照片，順便記下識別碼和是不是原況照片。
+    func addPhotos(_ items: [(url: URL, assetID: String?, isLive: Bool)]) {
+        files.append(contentsOf: items.map {
+            InputFile(url: $0.url, kind: FileKind.detect($0.url), assetID: $0.assetID, isLivePhoto: $0.isLive)
+        })
+    }
+
+    var livePhotoIDs: [String] {
+        files.filter(\.isLivePhoto).compactMap(\.assetID)
+    }
+
     func replace(with urls: [URL]) {
         files = urls.map { InputFile(url: $0, kind: FileKind.detect($0)) }
     }

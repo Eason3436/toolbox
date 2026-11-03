@@ -45,6 +45,9 @@ struct InputFile: Identifiable, Hashable {
     let id = UUID()
     let url: URL
     let kind: FileKind
+    /// 從相簿加入時的照片識別碼，原況照片瘦身要用。
+    var assetID: String? = nil
+    var isLivePhoto = false
 
     var name: String { url.lastPathComponent }
     var size: Int64 { Workspace.fileSize(url) }
