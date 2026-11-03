@@ -48,7 +48,12 @@ struct RecipeOperation: ToolOperation {
             let isLast = index == pack.steps.count - 1
             let dir = try isLast ? context.outputDirectory : Workspace.newDirectory("Steps")
             let stepContext = RunContext(outputDirectory: dir, report: context.report)
-            current = try await op.run(inputs: current, params: Params(values: values), context: stepContext)
+            let stepInputs = current
+            let stepParams = Params(values: values)
+            let total = Double(pack.steps.count)
+            current = try await ProgressScope.slice(start: Double(index) / total, length: 1 / total) {
+                try await op.run(inputs: stepInputs, params: stepParams, context: stepContext)
+            }
         }
         return current
     }

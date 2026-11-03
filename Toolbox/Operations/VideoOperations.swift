@@ -11,6 +11,15 @@ enum MediaExport {
         }
         if let timeRange { session.timeRange = timeRange }
         session.shouldOptimizeForNetworkUse = true
+        var monitor: Task<Void, Never>?
+        if let reporter = ProgressScope.report {
+            monitor = Task {
+                for await state in session.states(updateInterval: 0.5) {
+                    if case .exporting(let progress) = state { reporter(progress.fractionCompleted) }
+                }
+            }
+        }
+        defer { monitor?.cancel() }
         try await session.export(to: output, as: fileType)
     }
 
