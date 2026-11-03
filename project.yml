@@ -15,6 +15,12 @@ targets:
     platform: iOS
     sources:
       - path: Toolbox
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Toolbox/AppIcon.icon
+        type: file
+        buildPhase: resources
     info:
       path: Toolbox/Info.plist
       properties:
