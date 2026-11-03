@@ -1,0 +1,47 @@
+name: Screenshots
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Screenshots:
+    type: application
+    platform: iOS
+    sources:
+      - path: Screenshots
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Screenshots/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: Screenshots/Info.plist
+      properties:
+        CFBundleDisplayName: Screenshots
+        CFBundleName: Screenshots
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: 用來讀取你的截圖並在手機上用 AI 分析標題、分類與重點資訊。所有分析都在裝置上完成，不會上傳。
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.screenshots
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
