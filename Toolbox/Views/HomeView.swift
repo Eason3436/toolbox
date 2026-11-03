@@ -22,8 +22,13 @@ struct HomeView: View {
             }
             .navigationTitle("工具箱")
             .toolbar { toolbar }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { model.add(urls: urls) }
+            .sheet(isPresented: $showImporter) {
+                DocumentPicker { urls in
+                    // 先關掉挑選器再加入，避免和其他畫面的出現時機打架。
+                    showImporter = false
+                    Task { @MainActor in model.add(urls: urls) }
+                }
+                .ignoresSafeArea()
             }
             .onChange(of: photoItems) { _, items in loadPhotos(items) }
             .sheet(item: $selected) { box in

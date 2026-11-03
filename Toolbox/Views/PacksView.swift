@@ -86,10 +86,13 @@ struct PacksView: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json], allowsMultipleSelection: true) { result in
-                guard case .success(let urls) = result else { return }
-                for url in urls { model.installPack(from: url) }
-                reload()
+            .sheet(isPresented: $showImporter) {
+                DocumentPicker(types: [.json, .plainText, .data]) { urls in
+                    showImporter = false
+                    for url in urls { model.installPack(from: url) }
+                    reload()
+                }
+                .ignoresSafeArea()
             }
             .sheet(isPresented: $showPaste) {
                 NavigationStack {
