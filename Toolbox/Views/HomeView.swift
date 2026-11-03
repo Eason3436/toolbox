@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var selected: OperationBox?
     @State private var loadingPhotos = false
     @State private var dropTargeted = false
+    @State private var showLivePhoto = false
 
     var body: some View {
         NavigationStack {
@@ -36,6 +37,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showPacks) {
                 PacksView()
+            }
+            .sheet(isPresented: $showLivePhoto) {
+                LivePhotoView(identifiers: model.livePhotoIDs)
             }
             .dropDestination(for: URL.self) { urls, _ in
                 model.add(urls: urls)
@@ -66,48 +70,22 @@ struct HomeView: View {
                         .font(.system(size: 52, weight: .light))
                         .foregroundStyle(dropTargeted ? Color.accentColor : Color.secondary)
                         .symbolEffect(.bounce, value: dropTargeted)
-                    Text("加入檔案")
+                    Text("還沒有檔案")
                         .font(.title2.bold())
-                    Text("照片、影片、音訊、PDF 都可以。\n加入後會自動辨識，列出可以做的事。")
+                    Text("照片、影片、音訊、PDF 都可以，從相簿或「檔案」加入。\n加入後會自動辨識，列出可以做的事。原況照片也會出現「瘦身」選項。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    HStack(spacing: 12) {
-                        PhotosPicker(selection: $photoItems, matching: .any(of: [.images, .videos]),
-                                     photoLibrary: .shared()) {
-                            Label("照片", systemImage: "photo.on.rectangle")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        Button {
-                            showImporter = true
-                        } label: {
-                            Label("檔案", systemImage: "folder")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
+                    addMenu {
+                        Label("加入檔案", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: 260)
                     }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
-            }
-
-            Section("照片工具") {
-                NavigationLink {
-                    LivePhotoView()
-                } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("原況照片瘦身")
-                            Text("移除原況影片，保留照片、編輯與人像資料")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "livephoto.slash")
-                    }
-                }
             }
 
             Section {
@@ -138,7 +116,25 @@ struct HomeView: View {
             }
 
             Section("可以做的事") {
-                if operations.isEmpty {
+                let liveCount = model.livePhotoIDs.count
+                if liveCount > 0 {
+                    Button {
+                        showLivePhoto = true
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("原況照片瘦身")
+                                    .foregroundStyle(.primary)
+                                Text("\(liveCount) 張原況照片：移除影片部分，保留照片、編輯與人像資料")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "livephoto.slash")
+                        }
+                    }
+                }
+                if operations.isEmpty && liveCount == 0 {
                     Text("這些檔案沒有共通的動作。試著只留下同一種類型的檔案。")
                         .foregroundStyle(.secondary)
                 } else {
@@ -190,14 +186,7 @@ struct HomeView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                PhotosPicker(selection: $photoItems, matching: .any(of: [.images, .videos]), photoLibrary: .shared()) {
-                    Label("從照片加入", systemImage: "photo.on.rectangle")
-                }
-                Button {
-                    showImporter = true
-                } label: {
-                    Label("從檔案加入", systemImage: "folder")
-                }
+                addSources
                 Divider()
                 Button {
                     showPacks = true
@@ -210,27 +199,52 @@ struct HomeView: View {
         }
     }
 
+    /// 唯一的加入入口：相簿和「檔案」放在同一個選單。
+    private func addMenu<L: View>(@ViewBuilder label: () -> L) -> some View {
+        Menu {
+            addSources
+        } label: {
+            label()
+        }
+        .menuStyle(.button)
+    }
+
+    @ViewBuilder
+    private var addSources: some View {
+        PhotosPicker(selection: $photoItems, matching: .any(of: [.images, .videos, .livePhotos]),
+                     photoLibrary: .shared()) {
+            Label("照片圖庫", systemImage: "photo.on.rectangle")
+        }
+        Button {
+            showImporter = true
+        } label: {
+            Label("檔案", systemImage: "folder")
+        }
+    }
+
     // MARK: 載入照片
 
     private func loadPhotos(_ items: [PhotosPickerItem]) {
         guard !items.isEmpty else { return }
         loadingPhotos = true
         Task {
-            var urls: [URL] = []
+            var picked: [(url: URL, assetID: String?, isLive: Bool)] = []
             var failed = 0
             for item in items {
-                let isMovie = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
+                let types = item.supportedContentTypes
+                let isLive = types.contains { $0.conforms(to: .livePhoto) }
+                let isMovie = !isLive && types.contains { $0.conforms(to: .movie) }
                 if isMovie {
                     if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
-                        urls.append(movie.url)
+                        picked.append((movie.url, item.itemIdentifier, false))
                     } else { failed += 1 }
                 } else {
                     if let image = try? await item.loadTransferable(type: PickedImage.self) {
-                        urls.append(image.url)
+                        picked.append((image.url, item.itemIdentifier, isLive))
                     } else { failed += 1 }
                 }
             }
-            model.addLocal(urls)
+            model.addPhotos(picked)
             if failed > 0 { model.banner = "有 \(failed) 個項目無法載入（可能還在 iCloud 下載中）" }
             photoItems = []
             loadingPhotos = false

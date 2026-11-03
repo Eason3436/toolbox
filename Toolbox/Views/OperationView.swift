@@ -31,10 +31,15 @@ struct OperationView: View {
         operation.editor == .crop && inputs.count == 1
     }
 
+    private var usesPagePicker: Bool {
+        operation.editor == .pages && inputs.count == 1
+    }
+
     private var visibleParameters: [ParameterSpec] {
         operation.parameters.filter { spec in
             if spec.key.hasPrefix("_") { return false }
             if usesCropEditor && spec.key == "ratio" { return false }
+            if usesPagePicker && spec.key == "pages" { return false }
             return spec.isVisible(with: values)
         }
     }
@@ -48,6 +53,10 @@ struct OperationView: View {
                             .frame(height: 420)
                             .listRowInsets(EdgeInsets())
                     }
+                }
+
+                if usesPagePicker {
+                    PDFPagePicker(url: inputs[0], pages: binding(for: "pages"))
                 }
 
                 if !visibleParameters.isEmpty {

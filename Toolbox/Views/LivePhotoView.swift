@@ -2,7 +2,10 @@ import SwiftUI
 import PhotosUI
 
 struct LivePhotoView: View {
-    @State private var items: [PhotosPickerItem] = []
+    /// 從首頁帶進來的原況照片識別碼。
+    let identifiers: [String]
+    @Environment(\.dismiss) private var dismiss
+    @State private var done = false
     @State private var deleteOriginals = true
     @State private var running = false
     @State private var progress = (0, 0)
@@ -10,6 +13,7 @@ struct LivePhotoView: View {
     @State private var accessDenied = false
 
     var body: some View {
+        NavigationStack {
         Form {
             Section {
                 Label {
@@ -25,10 +29,7 @@ struct LivePhotoView: View {
             }
 
             Section {
-                PhotosPicker(selection: $items, maxSelectionCount: nil, matching: .livePhotos, photoLibrary: .shared()) {
-                    Label(items.isEmpty ? "選擇原況照片" : "已選 \(items.count) 張，重新選擇",
-                          systemImage: "photo.stack")
-                }
+                LabeledContent("要處理的原況照片", value: "\(identifiers.count) 張")
                 Toggle("完成後刪除原本的原況照片", isOn: $deleteOriginals)
             } footer: {
                 Text("刪除的照片會先移到「最近刪除」，清空之後空間才會真的釋放。")
@@ -50,7 +51,7 @@ struct LivePhotoView: View {
                         Spacer()
                     }
                 }
-                .disabled(items.isEmpty || running)
+                .disabled(identifiers.isEmpty || running || done)
             }
 
             if accessDenied {
@@ -87,6 +88,14 @@ struct LivePhotoView: View {
         }
         .navigationTitle("原況照片瘦身")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("完成") { dismiss() }
+                    .disabled(running)
+            }
+        }
+        }
+        .interactiveDismissDisabled(running)
     }
 
     private func start() async {
@@ -95,7 +104,6 @@ struct LivePhotoView: View {
             return
         }
         accessDenied = false
-        let identifiers = items.compactMap(\.itemIdentifier)
         guard !identifiers.isEmpty else { return }
         running = true
         summary = nil
@@ -108,6 +116,6 @@ struct LivePhotoView: View {
         background.finish(success: result.failures.isEmpty)
         summary = result
         running = false
-        items = []
+        done = true
     }
 }
