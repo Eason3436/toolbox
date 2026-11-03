@@ -3,7 +3,7 @@
 自用的 iOS 檔案工具 App：把檔案丟進來，App 自動辨識類型，列出可以做的事。全部在手機上離線處理。
 
 - SwiftUI，原生介面
-- 以 iOS 27 SDK 編譯，最低支援 iOS 26
+- 最低支援 iOS 26；CI 會自動選最新的 Xcode（有 Xcode 27 就用 iOS 27 SDK）
 - 用 SideStore 側載，不上架
 
 ## 功能
