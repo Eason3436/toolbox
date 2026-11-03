@@ -3,7 +3,6 @@ import SwiftUI
 /// 依照片權限與首次設定決定顯示哪個畫面。
 struct RootView: View {
     @Environment(PhotoSyncService.self) private var library
-    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("importRange") private var importRange: ImportRange = .all
     @AppStorage("didChooseImportRange") private var didChooseImportRange = false
 
@@ -19,58 +18,49 @@ struct RootView: View {
                     ImportRangeView { range in
                         importRange = range
                         didChooseImportRange = true
+                        AppServices.shared.didBecomeActive()
                     }
                 }
             }
         }
-        .task(id: reloadKey) { reloadIfReady() }
-        .onChange(of: scenePhase) { _, phase in
-            // 回到 App 時重新讀取，讓新截圖出現、刪除的消失（階段 2 會改成增量同步）。
-            guard phase == .active else { return }
-            library.refreshAccess()
-            reloadIfReady()
+        .onChange(of: library.access) { _, access in
+            if access == .full || access == .limited, didChooseImportRange {
+                AppServices.shared.didBecomeActive()
+            }
         }
-    }
-
-    private var reloadKey: String {
-        "\(library.access)-\(importRange.rawValue)-\(didChooseImportRange)"
-    }
-
-    private func reloadIfReady() {
-        guard didChooseImportRange else { return }
-        library.reload(range: importRange)
+        .onChange(of: importRange) { _, _ in
+            library.resync()
+        }
+        .alert("發生錯誤", isPresented: Binding(
+            get: { library.errorMessage != nil },
+            set: { if !$0 { library.errorMessage = nil } }
+        )) {
+            Button("好") { library.errorMessage = nil }
+        } message: {
+            Text(library.errorMessage ?? "")
+        }
     }
 }
 
 struct MainTabView: View {
+    @Environment(AppRouter.self) private var router
+
     var body: some View {
-        TabView {
-            Tab("截圖", systemImage: "photo.on.rectangle.angled") {
+        @Bindable var router = router
+        TabView(selection: $router.tab) {
+            Tab("截圖", systemImage: "photo.on.rectangle.angled", value: AppRouter.TabID.home) {
                 HomeView()
             }
-            Tab("收藏集", systemImage: "square.grid.2x2") {
-                ComingSoonView(title: "收藏集", symbol: "square.grid.2x2", message: "之後可以自訂收藏集，並依分類自動整理截圖。")
+            Tab("收藏集", systemImage: "square.grid.2x2", value: AppRouter.TabID.collections) {
+                CollectionsView()
             }
-            Tab("問答", systemImage: "sparkles") {
-                ComingSoonView(title: "問答", symbol: "sparkles", message: "之後可以用一句話問你的截圖，例如「上次截的那家拉麵店叫什麼？」")
+            Tab("問答", systemImage: "sparkles", value: AppRouter.TabID.ask) {
+                AskView()
             }
-            Tab("設定", systemImage: "gearshape") {
+            Tab("設定", systemImage: "gearshape", value: AppRouter.TabID.settings) {
                 SettingsView()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
-    }
-}
-
-struct ComingSoonView: View {
-    let title: String
-    let symbol: String
-    let message: String
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(title, systemImage: symbol, description: Text(message))
-                .navigationTitle(title)
-        }
     }
 }

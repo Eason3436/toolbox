@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// 階段 1 的簡易大圖檢視（可縮放）。階段 4 會擴充成完整詳情頁。
-struct ScreenshotViewer: View {
+/// 全螢幕大圖（可縮放、雙擊放大、拖曳移動）。
+struct ZoomableViewer: View {
     @Environment(PhotoSyncService.self) private var library
     @Environment(\.displayScale) private var displayScale
-    let record: ScreenshotRecord
+    @Environment(\.dismiss) private var dismiss
+    let assetID: String
 
     @State private var image: UIImage?
     @State private var missing = false
@@ -16,6 +17,7 @@ struct ScreenshotViewer: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
+                Color.black.ignoresSafeArea()
                 if let image {
                     Image(uiImage: image)
                         .resizable()
@@ -25,21 +27,32 @@ struct ScreenshotViewer: View {
                         .gesture(magnify.simultaneously(with: drag))
                         .onTapGesture(count: 2) { toggleZoom() }
                 } else if missing {
-                    ContentUnavailableView("找不到這張截圖", systemImage: "photo.badge.exclamationmark", description: Text("它可能已經從相簿刪除。"))
+                    ContentUnavailableView("找不到這張截圖", systemImage: "photo.badge.exclamationmark")
+                        .foregroundStyle(.white)
                 } else {
-                    ProgressView()
+                    ProgressView().tint(.white)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .task(id: record.id) { await load(size: proxy.size) }
+            .task(id: assetID) { await load(size: proxy.size) }
         }
-        .navigationTitle(record.createdAt.formatted(date: .abbreviated, time: .shortened))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .overlay(alignment: .topTrailing) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .padding(12)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .padding(16)
+        }
+        .statusBarHidden()
     }
 
     private func load(size: CGSize) async {
-        guard let asset = library.asset(for: record) else {
+        guard let asset = library.asset(for: assetID) else {
             missing = true
             return
         }
@@ -63,11 +76,21 @@ struct ScreenshotViewer: View {
     private var drag: some Gesture {
         DragGesture()
             .onChanged { value in
-                guard scale > 1 else { return }
-                offset = CGSize(width: lastOffset.width + value.translation.width,
-                                height: lastOffset.height + value.translation.height)
+                if scale > 1 {
+                    offset = CGSize(width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height)
+                } else if value.translation.height > 0 {
+                    offset = CGSize(width: 0, height: value.translation.height)
+                }
             }
-            .onEnded { _ in lastOffset = offset }
+            .onEnded { value in
+                if scale <= 1 {
+                    // 未放大時往下滑關閉
+                    if value.translation.height > 140 { dismiss() } else { withAnimation(.snappy) { offset = .zero } }
+                } else {
+                    lastOffset = offset
+                }
+            }
     }
 
     private func toggleZoom() {
