@@ -24,7 +24,8 @@ targets:
     info:
       path: Toolbox/Info.plist
       properties:
-        CFBundleDisplayName: 工具箱
+        CFBundleDisplayName: Toolbox
+        CFBundleName: Toolbox
         CFBundleDevelopmentRegion: zh-Hant
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -60,11 +61,20 @@ targets:
               - public.audio
               - com.adobe.pdf
               - public.json
+              - public.plain-text
+              - public.html
+              - public.rtf
+              - public.comma-separated-values-text
+              - net.daringfireball.markdown
+              - org.openxmlformats.wordprocessingml.document
+              - org.openxmlformats.spreadsheetml.sheet
+              - org.openxmlformats.presentationml.presentation
+              - public.content
+              - public.data
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.toolbox
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_KEY_CFBundleDisplayName: 工具箱
         ENABLE_PREVIEWS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

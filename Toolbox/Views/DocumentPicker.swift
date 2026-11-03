@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// 「檔案」App 挑選器。用複製模式（asCopy），系統會先把檔案下載並複製到 App 裡，
 /// 不需要安全範圍存取，iCloud、第三方雲端和側載安裝都比較穩。
 struct DocumentPicker: UIViewControllerRepresentable {
-    var types: [UTType] = [.image, .movie, .audio, .pdf, .json, .item]
+    var types: [UTType] = [.item]
     var onPick: ([URL]) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
