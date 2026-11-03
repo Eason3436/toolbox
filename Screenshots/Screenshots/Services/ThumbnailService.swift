@@ -6,10 +6,6 @@ import UIKit
 final class ThumbnailService {
     private let manager = PHCachingImageManager()
 
-    init() {
-        manager.allowsCachingHighQualityImages = false
-    }
-
     func thumbnail(for asset: PHAsset, targetSize: CGSize) -> AsyncStream<UIImage> {
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic

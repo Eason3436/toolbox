@@ -85,7 +85,7 @@ struct EventEditor: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
     @MainActor
-    final class Coordinator: NSObject, EKEventEditViewDelegate {
+    final class Coordinator: NSObject, @preconcurrency EKEventEditViewDelegate {
         let onFinish: () -> Void
         init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
 
