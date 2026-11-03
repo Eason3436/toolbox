@@ -1,8 +1,8 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.42000,0.36000,0.95000,1.00000",
-      "display-p3:0.16000,0.13000,0.45000,1.00000"
+      "display-p3:0.47000,0.40000,0.98000,1.00000",
+      "display-p3:0.17000,0.13000,0.52000,1.00000"
     ]
   },
   "groups" : [
@@ -15,23 +15,35 @@
         }
       ],
       "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
-      "translucency" : { "enabled" : false, "value" : 0.5 }
+      "translucency" : { "enabled" : true, "value" : 0.2 }
     },
     {
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "content.svg",
-          "name" : "content"
+          "image-name" : "lines.svg",
+          "name" : "lines"
         },
         {
           "glass" : true,
-          "image-name" : "screen.svg",
-          "name" : "screen"
+          "image-name" : "card.svg",
+          "name" : "card"
         }
       ],
-      "shadow" : { "kind" : "neutral", "opacity" : 0.4 },
-      "translucency" : { "enabled" : true, "value" : 0.3 }
+      "shadow" : { "kind" : "neutral", "opacity" : 0.45 },
+      "translucency" : { "enabled" : false, "value" : 0.5 }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "brackets.svg",
+          "name" : "brackets",
+          "opacity" : 0.7
+        }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.3 },
+      "translucency" : { "enabled" : true, "value" : 0.5 }
     }
   ],
   "supported-platforms" : {

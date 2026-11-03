@@ -1,10 +1,7 @@
 name: Build Screenshots IPA
 
+# 只在手動觸發時打包（不要每次推送都打包）
 on:
-  push:
-    paths:
-      - "Screenshots/**"
-      - ".github/workflows/screenshots.yml"
   workflow_dispatch:
 
 permissions:
@@ -54,6 +51,14 @@ jobs:
           tail -3 build.log
           exit $STATUS
 
+      - name: Embed entitlements (App Group) with ad-hoc signature
+        run: |
+          # 沒有正式簽署也要把 App Group 權限寫進執行檔，SideStore 重新簽署時才會沿用
+          APP=build/Build/Products/Release-iphoneos/Screenshots.app
+          codesign -f -s - --entitlements ShareExtension/ShareExtension.entitlements "$APP/PlugIns/ShareExtension.appex"
+          codesign -f -s - --entitlements Screenshots/Screenshots.entitlements "$APP"
+          codesign -d --entitlements - "$APP" || true
+
       - name: Package IPA
         run: |
           mkdir -p Payload
@@ -61,11 +66,29 @@ jobs:
           zip -qry Screenshots.ipa Payload
           ls -lh Screenshots.ipa
 
+      - name: Unit tests (simulator)
+        continue-on-error: true
+        run: |
+          xcrun simctl list devices available | grep -i iphone | head -20 || true
+          DEST=$(xcrun simctl list devices available | grep -E "iPhone 17 Pro Max" | head -1 | grep -oE "[0-9A-F-]{36}" || true)
+          if [ -z "$DEST" ]; then DEST=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | grep -oE "[0-9A-F-]{36}"); fi
+          set -o pipefail
+          xcodebuild test \
+            -project Screenshots.xcodeproj \
+            -scheme Screenshots \
+            -destination "id=$DEST" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
+          grep -E "(error:|✘|✔|Test run|failed|passed)" test.log | tail -80 || true
+          exit ${STATUS:-0}
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: screenshots-build-log
-          path: Screenshots/build.log
+          path: |
+            Screenshots/build.log
+            Screenshots/test.log
 
       - uses: actions/upload-artifact@v4
         with:

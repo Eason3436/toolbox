@@ -8,10 +8,9 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
-    SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
 targets:
   Screenshots:
     type: application
@@ -24,6 +23,15 @@ targets:
       - path: Screenshots/AppIcon.icon
         type: file
         buildPhase: resources
+      - path: Shared
+    dependencies:
+      - target: ShareExtension
+        embed: true
+    entitlements:
+      path: Screenshots/Screenshots.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.eason3436.screenshots
     info:
       path: Screenshots/Info.plist
       properties:
@@ -38,10 +46,66 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSPhotoLibraryUsageDescription: 用來讀取你的截圖並在手機上用 AI 分析標題、分類與重點資訊。所有分析都在裝置上完成，不會上傳。
+        NSPhotoLibraryAddUsageDescription: 用來把從分享或捷徑送進來的截圖存到相簿。
+        NSRemindersFullAccessUsageDescription: 用來把截圖中的待辦事項加入提醒事項。
+        NSCalendarsWriteOnlyAccessUsageDescription: 用來把截圖中的日期加入行事曆。
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.eason3436.screenshots.analyze
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.screenshots
-        TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+      - path: Shared
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.eason3436.screenshots
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Screenshots
+        CFBundleName: ShareExtension
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 20
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.screenshots.share
+
+  ScreenshotsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Screenshots
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Screenshots.app/Screenshots
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Screenshots:
+    build:
+      targets:
+        Screenshots: all
+    test:
+      targets:
+        - ScreenshotsTests

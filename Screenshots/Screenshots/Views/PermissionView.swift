@@ -15,7 +15,6 @@ struct PermissionView: View {
                 Text("讓 Screenshots 讀取你的截圖")
                     .font(.title2.bold())
                 Text("需要「完整取用」照片，才能自動找到所有截圖。分析全部在手機上完成，不會上傳任何圖片。")
-                    .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -62,9 +61,11 @@ struct ImportRangeView: View {
             VStack(spacing: 12) {
                 Text("要匯入哪些截圖？")
                     .font(.title2.bold())
-                Text("之後可以在「設定」更改。")
+                Text("截圖越多，第一次分析越久。之後可以在「設定」更改。")
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+            .padding(.horizontal, 32)
             VStack(spacing: 12) {
                 ForEach(ImportRange.allCases) { range in
                     Button {
