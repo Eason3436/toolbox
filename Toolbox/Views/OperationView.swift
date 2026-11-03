@@ -14,6 +14,7 @@ struct OperationView: View {
     @State private var previewURL: URL?
     @State private var notice: String?
     @State private var task: Task<Void, Never>?
+    @State private var fraction: Double = 0
 
     enum Phase: Equatable {
         case idle, running, done
@@ -72,6 +73,7 @@ struct OperationView: View {
                     }
                     .disabled(phase == .running)
                     if phase == .running {
+                        ProgressView(value: fraction)
                         if !progressText.isEmpty {
                             Text(progressText)
                                 .font(.footnote)
@@ -212,19 +214,36 @@ struct OperationView: View {
         phase = .running
         outputs = []
         progressText = ""
+        fraction = 0
         let op = operation
         let files = inputs
         let current = values
+        let background = BackgroundWork.begin(title: op.title, subtitle: "\(files.count) 個檔案・準備中")
         task = Task {
-            do {
-                let result = try await Runner.run(op, inputs: files, values: current) { text in
+            let work = Task {
+                try await Runner.run(op, inputs: files, values: current, progress: { value in
+                    background.update(fraction: value)
+                    Task { @MainActor in fraction = value }
+                }) { text in
+                    background.update(subtitle: text)
                     Task { @MainActor in progressText = text }
                 }
+            }
+            background.onExpiration { work.cancel() }
+            do {
+                let result = try await withTaskCancellationHandler {
+                    try await work.value
+                } onCancel: {
+                    work.cancel()
+                }
+                background.finish(success: true)
                 outputs = result
                 phase = .done
             } catch is CancellationError {
+                background.finish(success: false)
                 phase = .idle
             } catch {
+                background.finish(success: false)
                 phase = .failed(error.localizedDescription)
             }
         }

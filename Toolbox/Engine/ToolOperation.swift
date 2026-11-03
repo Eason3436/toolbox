@@ -60,8 +60,13 @@ extension ToolOperation {
             } else {
                 context.report("處理中：\(input.lastPathComponent)")
             }
-            outputs.append(contentsOf: try await body(input))
+            let count = Double(inputs.count)
+            let produced = try await ProgressScope.slice(start: Double(index) / count, length: 1 / count) {
+                try await body(input)
+            }
+            outputs.append(contentsOf: produced)
         }
+        ProgressScope.report?(1)
         return outputs
     }
 }
@@ -73,12 +78,20 @@ struct OperationBox: Identifiable {
 
 enum Runner {
     static func run(_ op: any ToolOperation, inputs: [URL], values: [String: ParamValue],
+                    progress: (@Sendable (Double) -> Void)? = nil,
                     report: @escaping @Sendable (String) -> Void) async throws -> [URL] {
         let dir = try Workspace.newDirectory("Outputs")
         let context = RunContext(outputDirectory: dir, report: report)
         let params = Params(values: values)
-        return try await Task.detached(priority: .userInitiated) {
-            try await op.run(inputs: inputs, params: params, context: context)
-        }.value
+        let work = Task.detached(priority: .userInitiated) {
+            try await ProgressScope.$report.withValue(progress) {
+                try await op.run(inputs: inputs, params: params, context: context)
+            }
+        }
+        return try await withTaskCancellationHandler {
+            try await work.value
+        } onCancel: {
+            work.cancel()
+        }
     }
 }
