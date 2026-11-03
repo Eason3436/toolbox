@@ -79,6 +79,7 @@ struct PacksView: View {
                     Text("請 Claude 依照 README 裡的格式寫功能包時，可以把這份清單一起給它。")
                 }
             }
+            .tbGroundBackground()
             .navigationTitle("功能包")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

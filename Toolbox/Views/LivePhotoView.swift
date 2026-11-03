@@ -58,7 +58,7 @@ struct LivePhotoView: View {
                 Section {
                     Label("需要完整的照片存取權限，請到「設定 › 工具箱 › 照片」改成「完整取用」。",
                           systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.tbWarning)
                 }
             }
 
@@ -81,11 +81,12 @@ struct LivePhotoView: View {
                     ForEach(summary.failures, id: \.self) { failure in
                         Text(failure)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.tbDanger)
                     }
                 }
             }
         }
+        .tbGroundBackground()
         .navigationTitle("原況照片瘦身")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
