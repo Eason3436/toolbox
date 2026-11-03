@@ -1,0 +1,56 @@
+name: Toolbox
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Toolbox:
+    type: application
+    platform: iOS
+    sources:
+      - path: Toolbox
+    info:
+      path: Toolbox/Info.plist
+      properties:
+        CFBundleDisplayName: 工具箱
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSPhotoLibraryUsageDescription: 用來讀取原況照片並把處理好的照片存回相簿。
+        NSPhotoLibraryAddUsageDescription: 用來把處理好的照片和影片存到相簿。
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: 媒體與文件
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.image
+              - public.movie
+              - public.audio
+              - com.adobe.pdf
+              - public.json
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.toolbox
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_CFBundleDisplayName: 工具箱
+        ENABLE_PREVIEWS: YES
+    scheme: {}
