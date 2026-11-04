@@ -195,7 +195,7 @@ final class RecordingController {
     private func setPowerSaving(_ on: Bool) {
         guard on != isPowerSaving else { return }
         isPowerSaving = on
-        appLog.info(on ? "附近沒人說話，進入省電" : "偵測到近距離說話，恢復完整品質")
+        if on { appLog.info("附近沒人說話，進入省電") } else { appLog.info("偵測到近距離說話，恢復完整品質") }
         writer?.lowBitrate = on
         writer?.flush()
         do {

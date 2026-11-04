@@ -378,7 +378,6 @@ struct LectureDetailView: View {
     }
 
     @ViewBuilder
-    @ViewBuilder
     private func richNotesCard(_ lecture: Lecture) -> some View {
         if let html = lecture.richNotes, !html.isEmpty {
             Button {
