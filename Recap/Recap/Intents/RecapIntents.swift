@@ -56,19 +56,20 @@ struct TodayRecapIntent: AppIntent {
     static let openAppWhenRun = false
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let model = AppModel.shared
         let record = model.store.day(DayKey.today)
-        if let recap = record.recap {
-            var text = "\(recap.title)。\(recap.overview)"
-            if !recap.todos.isEmpty { text += " 待辦：\(recap.todos.joined(separator: "、"))。" }
-            return .result(dialog: "\(text)")
+        if record.recap != nil {
+            let entity = DayRecapEntity(record: record)
+            var spoken = "\(entity.title)。\(entity.overview)"
+            if !entity.todos.isEmpty { spoken += " 待辦：\(entity.todos.joined(separator: "、"))。" }
+            return .result(value: entity.fullText, dialog: "\(spoken)")
         }
         if record.segments.isEmpty {
-            return .result(dialog: "今天還沒有錄音。")
+            return .result(value: "今天還沒有錄音。", dialog: "今天還沒有錄音。")
         }
         model.queue.regenerateRecap(DayKey.today)
-        return .result(dialog: "今天的 Recap 還在整理中，打開 Recap 看看。")
+        return .result(value: "今天的 Recap 還在整理中。", dialog: "今天的 Recap 還在整理中，打開 Recap 看看。")
     }
 }
 
@@ -97,6 +98,12 @@ struct RecapShortcuts: AppShortcutsProvider {
             phrases: ["\(.applicationName) 剛剛講了什麼", "\(.applicationName) 最近 15 分鐘重點"],
             shortTitle: "最近 15 分鐘",
             systemImageName: "clock.arrow.circlepath"
+        )
+        AppShortcut(
+            intent: AskRecapIntent(),
+            phrases: ["問 \(.applicationName)", "\(.applicationName) 幫我查"],
+            shortTitle: "問 Recap",
+            systemImageName: "questionmark.bubble"
         )
         AppShortcut(
             intent: TodayRecapIntent(),

@@ -73,7 +73,7 @@ struct SegmentDetailView: View {
                         Text(segment.title ?? segment.status.label).font(.title3.bold())
                         if !segment.points.isEmpty { BulletList(items: segment.points) }
                         if !segment.todos.isEmpty {
-                            BulletList(items: segment.todos, symbol: "checkmark.circle", tint: .green)
+                            TodoList(items: segment.todos, source: "Recap 錄音 \(segment.start.formatted(date: .abbreviated, time: .shortened))")
                         }
                         if let error = segment.error {
                             Label(error, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange)

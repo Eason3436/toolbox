@@ -21,6 +21,8 @@ final class AppModel {
         recorder = RecordingController(store: store, settings: settings, queue: queue)
         quickRecap = QuickRecap(store: store, settings: settings, recorder: recorder)
         LiveActivityActions.stop = { [recorder] in await recorder.stop() }
+        LiveActivityActions.pause = { [recorder] in recorder.pause() }
+        LiveActivityActions.resume = { [recorder] in await recorder.resume() }
     }
 
     /// recap://quick?minutes=15（即時動態按鈕）

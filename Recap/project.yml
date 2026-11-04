@@ -41,6 +41,8 @@ targets:
           - UIInterfaceOrientationPortrait
         NSMicrophoneUsageDescription: 用來錄下你身邊的聲音，在手機上轉成文字並整理成每日 Recap。錄音與分析都在裝置上完成，不會上傳。
         NSSpeechRecognitionUsageDescription: 用來在裝置上把錄音轉成文字。
+        NSRemindersFullAccessUsageDescription: 用來把錄音中提到的待辦事項加到提醒事項。
+        NSCalendarsWriteOnlyAccessUsageDescription: 用來把錄音中提到的行程加到行事曆。
         NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLName: com.eason3436.recap

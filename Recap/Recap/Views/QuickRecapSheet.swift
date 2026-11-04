@@ -29,7 +29,7 @@ struct QuickRecapSheet: View {
                             if !d.points.isEmpty { BulletList(items: d.points) }
                             if !d.todos.isEmpty {
                                 Text("待辦").font(.headline).padding(.top, 4)
-                                BulletList(items: d.todos, symbol: "checkmark.circle", tint: .green)
+                                TodoList(items: d.todos, source: "Recap 最近 \(quick.minutes) 分鐘")
                             }
                         }
                     }
