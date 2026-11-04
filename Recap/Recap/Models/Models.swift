@@ -51,6 +51,8 @@ struct Segment: Codable, Identifiable, Hashable, Sendable {
     var transcript: String?
     /// AI 校正過的逐字稿（有的話摘要與追問都用這份）
     var correctedTranscript: String?
+    /// 中英夾雜：中文、英文模型各辨識一次，依時間對齊（AI 合併後寫進 correctedTranscript）
+    var aligned: [AlignedWindow]?
     var title: String?
     var points: [String] = []
     var todos: [String] = []
@@ -89,6 +91,8 @@ struct LectureSummary: Codable, Hashable, Sendable {
     var terms: [String]
     var todos: [String]
     var generatedAt: Date
+    /// 老師說會考／講者特別強調的地方
+    var examPoints: [String]? = nil
 }
 
 struct AudioPart: Codable, Hashable, Sendable {
@@ -110,10 +114,17 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     var summaryError: String?
     /// 使用者自訂名稱
     var name: String?
+    var subject: SchoolSubject?
+    /// 下課後用錄音重新做中英夾雜辨識、AI 合併的逐字稿
+    var refinedTranscript: String?
 
     var displayTitle: String {
         if let name, !name.isEmpty { return name }
-        if let title = summary?.title, !title.isEmpty { return title }
+        if let title = summary?.title, !title.isEmpty {
+            if let subject, subject != .general, !title.contains(subject.title) { return "\(subject.title)｜\(title)" }
+            return title
+        }
+        if let subject, subject != .general { return "\(subject.title)課 \(start.formatted(date: .omitted, time: .shortened))" }
         return "課堂 \(start.formatted(date: .omitted, time: .shortened))"
     }
 
@@ -222,4 +233,12 @@ enum RecapError: LocalizedError {
         case .conversionFailed: "音訊格式轉換失敗。"
         }
     }
+}
+
+/// 同一段時間（約 20 秒）裡，兩種語言模型各自聽到的內容。
+struct AlignedWindow: Codable, Hashable, Sendable {
+    /// 距離音檔開頭的秒數
+    var offset: Double
+    var primary: String
+    var secondary: String
 }

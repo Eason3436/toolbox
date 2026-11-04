@@ -28,6 +28,10 @@ final class RecordingController {
     private(set) var segmentsThisSession = 0
     private(set) var lastError: String?
     private(set) var lecture: LectureSession?
+    /// 自動省電中（附近沒人說話：人聲加強關閉、位元率降低）
+    private(set) var isPowerSaving = false
+    /// 多久沒有近距離說話就進入省電
+    static let powerSaveAfter: TimeInterval = 3 * 60
 
     var isActive: Bool { state != .idle }
 
@@ -37,6 +41,7 @@ final class RecordingController {
     private let recorder = AudioEngineRecorder()
     private let liveActivity = LiveActivityManager()
     private var writer: SegmentWriter?
+    private var detector: SpeechPresenceDetector?
     private var tickTask: Task<Void, Never>?
     /// 使用者在排程時段內手動按了停止 → 這個時段不要再自動開始
     private(set) var manualStopAt: Date?
@@ -87,27 +92,31 @@ final class RecordingController {
 
             let writer: SegmentWriter
             if mode == .lecture {
-                let lecture = Lecture(start: now, sourceLocale: settings.lectureSourceLocale, targetLanguage: settings.translationTarget)
+                var lecture = Lecture(start: now, sourceLocale: settings.lectureSourceLocale, targetLanguage: settings.translationTarget)
+                lecture.subject = settings.lectureSubject
                 let session = LectureSession(lecture: lecture, store: store)
                 session.onNewTranslation = { [weak self] text in self?.updateActivity(line: text, throttle: true) }
                 try await session.start()
                 self.lecture = session
                 // 課堂錄音每 30 分鐘一個檔
                 writer = SegmentWriter(root: store.recordingsDirectory, segmentSeconds: 30 * 60, tag: "lecture")
-                recorder.setSinks([writer, session.transcriber])
+                recorder.setSinks([writer as AudioSink, session.transcriber as AudioSink] + detectorSinks())
             } else {
                 writer = SegmentWriter(root: store.recordingsDirectory, segmentSeconds: Double(settings.segmentMinutes) * 60, tag: "allday")
-                recorder.setSinks([writer])
+                recorder.setSinks([writer as AudioSink] + detectorSinks())
             }
+            isPowerSaving = false
             writer.onClosed = { [weak self] closed in
                 Task { @MainActor in self?.segmentClosed(closed) }
             }
             self.writer = writer
             recorder.voiceProcessing = settings.voiceProcessing
+            recorder.keepNaturalLevels = settings.autoPowerSave
             try recorder.start()
             startedAt = now
             segmentsThisSession = 0
             state = .recording
+            detector?.reset()
             Haptics.recordStart()
             liveActivity.start(mode: mode, state: activityState())
             startTicking()
@@ -134,6 +143,8 @@ final class RecordingController {
         recorder.setSinks([])
         writer?.flush()
         writer = nil
+        detector = nil
+        isPowerSaving = false
         if let lecture {
             let finished = await lecture.finish()
             self.lecture = nil
@@ -152,6 +163,48 @@ final class RecordingController {
         guard let manualStopAt, let active = settings.activeSchedule() else { return false }
         // 手動停止的時間落在目前這個時段內
         return active.rule.windowEnd(containing: manualStopAt) == active.end
+    }
+
+    // MARK: - 自動省電
+
+    private func detectorSinks() -> [AudioSink] {
+        guard settings.autoPowerSave else {
+            detector = nil
+            return []
+        }
+        let detector = SpeechPresenceDetector(thresholdDB: settings.nearSpeechThresholdDB)
+        detector.onNearSpeech = { [weak self] in
+            Task { @MainActor in self?.nearSpeechDetected() }
+        }
+        self.detector = detector
+        return [detector]
+    }
+
+    private func nearSpeechDetected() {
+        guard isPowerSaving, state == .recording else { return }
+        setPowerSaving(false)
+    }
+
+    private func checkPowerSave() {
+        guard let detector, settings.autoPowerSave, state == .recording, !isPowerSaving else { return }
+        detector.setThreshold(db: settings.nearSpeechThresholdDB)
+        if detector.secondsSinceNearSpeech >= Self.powerSaveAfter { setPowerSaving(true) }
+    }
+
+    /// 切換省電：換一個新檔（新的位元率）並切換人聲處理。不會中斷錄音工作階段。
+    private func setPowerSaving(_ on: Bool) {
+        guard on != isPowerSaving else { return }
+        isPowerSaving = on
+        appLog.info(on ? "附近沒人說話，進入省電" : "偵測到近距離說話，恢復完整品質")
+        writer?.lowBitrate = on
+        writer?.flush()
+        do {
+            try recorder.reconfigure(voiceProcessing: settings.voiceProcessing && !on)
+        } catch {
+            appLog.error("切換人聲處理失敗：\(error.localizedDescription)")
+            Task { await resume(after: .milliseconds(300)) }
+        }
+        if !on { detector?.reset() }
     }
 
     // MARK: - 段落
@@ -265,6 +318,7 @@ final class RecordingController {
         }
         // 中斷太久（例如通話後沒恢復）就每 15 秒再試
         if state == .interrupted { await resume() }
+        checkPowerSave()
     }
 
     // MARK: - 即時動態

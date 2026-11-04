@@ -154,6 +154,7 @@ enum MarkdownExport {
         var out = "# \(lecture.displayTitle)\n\n\(lecture.start.formatted(date: .abbreviated, time: .shortened))\n\n"
         if let s = lecture.summary, !s.title.isEmpty {
             out += "## 重點\n\n\(s.overview)\n\n" + s.keyPoints.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
+            if let exam = s.examPoints, !exam.isEmpty { out += "## \(lecture.subject?.isSeminar == true ? "講者強調" : "老師說會考")\n\n" + exam.map { "- \($0)" }.joined(separator: "\n") + "\n\n" }
             if !s.terms.isEmpty { out += "## 術語\n\n" + s.terms.map { "- \($0)" }.joined(separator: "\n") + "\n\n" }
             if !s.todos.isEmpty { out += "## 提醒\n\n" + s.todos.map { "- [ ] \($0)" }.joined(separator: "\n") + "\n\n" }
         }

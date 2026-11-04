@@ -28,6 +28,10 @@ final class AudioEngineRecorder: @unchecked Sendable {
     private(set) var isRunning = false
     /// 錄音時開啟系統的人聲處理（降噪、自動增益）
     var voiceProcessing = true
+    /// 關掉自動增益，讓音量能反映聲音的遠近（自動省電要用）
+    var keepNaturalLevels = false
+    /// 自己切換人聲處理時引擎也會發出設定變更通知，這段時間內忽略
+    private var ignoreConfigChangeUntil: CFAbsoluteTime = 0
 
     init() {
         let center = NotificationCenter.default
@@ -61,7 +65,7 @@ final class AudioEngineRecorder: @unchecked Sendable {
     private func observeEngine() {
         if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
         engineObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            guard let self, self.isRunning else { return }
+            guard let self, self.isRunning, CFAbsoluteTimeGetCurrent() > self.ignoreConfigChangeUntil else { return }
             self.isRunning = false
             self.onEvent?(.configurationChanged)
         }
@@ -79,7 +83,26 @@ final class AudioEngineRecorder: @unchecked Sendable {
         // mixWithOthers：不會把正在播的音樂停掉，也比較不容易被其他 App 打斷
         try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
         try session.setActive(true)
+        try startEngine()
+    }
 
+    /// 錄音中切換人聲處理：只重啟引擎，不關閉音訊工作階段（關掉的話在背景就開不回來了）。
+    func reconfigure(voiceProcessing: Bool) throws {
+        guard isRunning else {
+            self.voiceProcessing = voiceProcessing
+            return
+        }
+        guard engine.inputNode.isVoiceProcessingEnabled != voiceProcessing else { return }
+        self.voiceProcessing = voiceProcessing
+        ignoreConfigChangeUntil = CFAbsoluteTimeGetCurrent() + 2
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        isRunning = false
+        try startEngine()
+        ignoreConfigChangeUntil = CFAbsoluteTimeGetCurrent() + 2
+    }
+
+    private func startEngine() throws {
         let input = engine.inputNode
         if input.isVoiceProcessingEnabled != voiceProcessing {
             do {
@@ -91,6 +114,7 @@ final class AudioEngineRecorder: @unchecked Sendable {
         if voiceProcessing {
             // 不要把正在播的音樂壓得太小聲
             input.voiceProcessingOtherAudioDuckingConfiguration = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+            input.isVoiceProcessingAGCEnabled = !keepNaturalLevels
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw RecapError.noInput }

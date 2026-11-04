@@ -24,6 +24,9 @@ struct LectureOutput: Sendable {
     var keyPoints: [String]
     var terms: [String]
     var todos: [String]
+    var examPoints: [String] = []
+    /// AI 判斷的科目（使用者沒選科目時）
+    var subject: SchoolSubject?
 }
 
 // MARK: - 模型狀態
@@ -36,6 +39,7 @@ enum ModelReadiness: Equatable {
     case other(String)
 
     static var current: ModelReadiness {
+        if AIConfig.usesGemini { return .available }
         switch SystemLanguageModel.default.availability {
         case .available: return .available
         case .unavailable(.appleIntelligenceNotEnabled): return .appleIntelligenceOff
@@ -47,7 +51,7 @@ enum ModelReadiness: Equatable {
 
     var message: String {
         switch self {
-        case .available: "Apple Intelligence 已就緒"
+        case .available: AIConfig.usesGemini ? "使用 Gemini（\(AIConfig.model)）" : "Apple Intelligence 已就緒"
         case .appleIntelligenceOff: "Apple Intelligence 尚未開啟。請到「設定 → Apple Intelligence 與 Siri」開啟，摘要會先排著等。"
         case .notReady: "Apple Intelligence 模型還在下載或準備中，好了之後會自動整理。"
         case .unsupported: "這台裝置不支援 Apple Intelligence，只能轉文字、不能摘要。"
@@ -61,7 +65,8 @@ enum ModelReadiness: Equatable {
 /// 用裝置上的 Foundation Models 摘要。上下文只有約 4096 tokens，所以一律切小塊、分層合併。
 enum Summarizer {
     /// 每次送進模型的文字上限（估算 tokens）。留空間給指示和輸出。
-    static let inputTokenBudget = 2_000
+    /// Gemini 的上下文很大，整份直接送；裝置上的模型要切小塊。
+    static var inputTokenBudget: Int { AIConfig.usesGemini ? 200_000 : 2_000 }
 
     private static let baseInstructions = """
     你是貼心的個人助理，負責整理使用者錄下來的對話與聲音轉成的文字。
@@ -85,9 +90,16 @@ enum Summarizer {
         return LanguageModelSession(model: model, instructions: instructions)
     }
 
-    /// 產生純文字回應。
+    /// 產生純文字回應。選了 Gemini 就送到雲端；沒網路時若裝置模型可用就改用裝置模型。
     static func respondText(instructions: String, prompt: String) async throws -> String {
-        try await makeSession(instructions).respond(to: prompt).content
+        if AIConfig.usesGemini {
+            do {
+                return try await GeminiClient.generate(system: instructions, prompt: prompt)
+            } catch let error as URLError where SystemLanguageModel.default.isAvailable && estimateTokens(prompt) < 3_000 {
+                appLog.info("Gemini 連不上（\(error.code.rawValue)），改用裝置上的模型")
+            }
+        }
+        return try await makeSession(instructions).respond(to: prompt).content
     }
 
     /// 粗估 tokens：中日韓字約 1.2 token，其他字元約 0.3 token。
@@ -149,7 +161,7 @@ enum Summarizer {
 
     /// 把「標題：… / 重點： - … - …」格式拆成段落。
     static func parseSections(_ text: String) -> [String: [String]] {
-        let keys = ["標題", "總結", "概要", "重點", "課堂重點", "術語", "待辦", "提醒", "作業與提醒"]
+        let keys = ["科目", "標題", "總結", "概要", "重點", "課堂重點", "會考", "考試重點", "強調", "術語", "待辦", "提醒", "作業與提醒"]
         var result: [String: [String]] = [:]
         var current = "重點"
         for raw in text.components(separatedBy: .newlines) {
@@ -200,6 +212,7 @@ enum Summarizer {
 
     static func isGuardrail(_ error: Error) -> Bool {
         if let error = error as? LanguageModelSession.GenerationError, case .guardrailViolation = error { return true }
+        if let error = error as? GeminiError, case .blocked = error { return true }
         return false
     }
 
@@ -254,7 +267,7 @@ enum Summarizer {
             let sections = parseSections(output)
             var title = first(sections, ["標題"])
             if title.isEmpty { title = String(text.prefix(14)) }
-            return SegmentDigest(title: title, points: Array(all(sections, ["重點"]).prefix(8)), todos: all(sections, ["待辦", "提醒"]))
+            return SegmentDigest(title: title, points: Array(all(sections, ["重點"]).prefix(AIConfig.usesGemini ? 12 : 8)), todos: all(sections, ["待辦", "提醒"]))
         } catch {
             guard (isTooLong(error) || isGuardrail(error)), depth < 2, estimateTokens(text) > 120 else { throw error }
             let halves = chunk(text, budget: max(100, estimateTokens(text) / 2 + 1))
@@ -270,12 +283,86 @@ enum Summarizer {
     // MARK: 校正逐字稿
 
     /// 用模型修正語音辨識的同音錯字、補標點。每塊不要太大，輸出才放得下。
-    static func correctTranscript(_ text: String, vocabulary: [String]) async -> String? {
-        let pieces = chunk(text, budget: 650)
-        guard !pieces.isEmpty else { return nil }
-        let hint = vocabulary.isEmpty ? "" : "\n可能出現的專有名詞（照這個寫法）：\(vocabulary.joined(separator: "、"))"
+    /// 中英夾雜：把中文模型與英文模型的結果合併成一份正確的逐字稿。
+    static func mergeMixed(_ windows: [AlignedWindow], primaryName: String, secondaryName: String, vocabulary: [String], context: String) async -> String? {
+        guard !windows.isEmpty else { return nil }
+        let budget = AIConfig.usesGemini ? 30_000 : 650
+        var groups: [[AlignedWindow]] = [[]]
+        var used = 0
+        for w in windows {
+            let cost = estimateTokens(w.primary) + estimateTokens(w.secondary) + 10
+            if used + cost > budget, !(groups.last?.isEmpty ?? true) { groups.append([]); used = 0 }
+            groups[groups.count - 1].append(w)
+            used += cost
+        }
+        let hint = vocabulary.isEmpty ? "" : "\n可能出現的專有名詞（照這個寫法）：\(vocabulary.prefix(80).joined(separator: "、"))"
         let instructions = """
-        你是逐字稿校對員。使用者給你的是語音辨識的結果，請：
+        你是逐字稿校對員。\(context)說話的人會中英夾雜（例如中文句子裡穿插英文單字、術語或整句英文）。
+        同一段錄音分別用\(primaryName)模型和\(secondaryName)模型辨識，依時間對齊給你。
+        \(primaryName)模型遇到英文時常寫成發音相近的中文字（例如「麥特康德瑞亞」其實是 mitochondria），\(secondaryName)模型遇到中文時會寫出無意義的英文。
+        請合併成一份正確的中英夾雜逐字稿：中文部分以中文結果為主，英文單字、術語、句子以英文結果為準並保留英文拼寫。
+        修正錯字、補上標點，使用台灣繁體中文。不要摘要、不要刪減、不要加入新資訊。只輸出逐字稿全文。\(hint)
+        """
+        let brief = groups.count > 1 ? await contextBrief(windows.map(\.primary).joined(separator: "\n") + "\n" + windows.map(\.secondary).joined(separator: " "), context: context) : ""
+        var output: [String] = []
+        var changed = false
+        for group in groups where !group.isEmpty {
+            if Task.isCancelled { return nil }
+            let original = group.map(\.primary).joined(separator: "\n")
+            let prompt = group.map { "[\(Int($0.offset) / 60):\(String(format: "%02d", Int($0.offset) % 60))]\n\(primaryName)：\($0.primary)\n\(secondaryName)：\($0.secondary)" }.joined(separator: "\n\n")
+            do {
+                let merged = try await respondText(instructions: instructions, prompt: withContext(prompt, brief: brief, previous: output.last))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: #"\[\d+:\d{2}\]\s*"#, with: "", options: .regularExpression)
+                let ratio = Double(merged.count) / Double(max(1, original.count))
+                if !merged.isEmpty, ratio > 0.4, ratio < 2.5 {
+                    output.append(merged)
+                    changed = true
+                } else {
+                    output.append(original)
+                }
+            } catch {
+                output.append(original)
+            }
+        }
+        return changed ? output.joined(separator: "\n") : nil
+    }
+
+    /// 先通讀全文，抓出主題和專有名詞，之後每一小塊校正時都附上，讓模型知道整份在講什麼。
+    static func contextBrief(_ text: String, context: String) async -> String {
+        // 從頭、中、尾各取一段，裝置模型也看得完
+        let sampleBudget = AIConfig.usesGemini ? 60_000 : 1_500
+        var sample = text
+        if estimateTokens(text) > sampleBudget {
+            let parts = chunk(text, budget: sampleBudget / 3)
+            let picks = [parts.first, parts.count > 2 ? parts[parts.count / 2] : nil, parts.last].compactMap { $0 }
+            sample = picks.joined(separator: "\n…\n")
+        }
+        do {
+            let brief = try await respondText(
+                instructions: "你負責通讀語音辨識的逐字稿，抓出整份內容的脈絡。\(context)一律使用台灣繁體中文。",
+                prompt: "\(sample)\n\n請用以下格式輸出，不要其他說明：\n主題：（一句話）\n專有名詞：（逐字稿裡出現或被辨識錯的人名、術語、英文單字的正確寫法，用頓號分隔，最多 30 個）"
+            )
+            return String(brief.prefix(600))
+        } catch {
+            return ""
+        }
+    }
+
+    private static func withContext(_ text: String, brief: String, previous: String?) -> String {
+        var prompt = ""
+        if !brief.isEmpty { prompt += "【整份逐字稿的脈絡】\n\(brief)\n\n" }
+        if let previous, !previous.isEmpty { prompt += "【前一段的結尾（只供參考，不要輸出）】\n…\(previous.suffix(120))\n\n" }
+        return prompt.isEmpty ? text : prompt + "【要處理的這一段】\n" + text
+    }
+
+    static func correctTranscript(_ text: String, vocabulary: [String], context: String = "") async -> String? {
+        let pieces = chunk(text, budget: AIConfig.usesGemini ? 30_000 : 600)
+        guard !pieces.isEmpty else { return nil }
+        let brief = pieces.count > 1 ? await contextBrief(text, context: context) : ""
+        let hint = vocabulary.isEmpty ? "" : "\n可能出現的專有名詞（照這個寫法）：\(vocabulary.prefix(80).joined(separator: "、"))"
+        let instructions = """
+        你是逐字稿校對員。\(context)使用者給你的是語音辨識的結果，請：
         1. 修正同音、近音的錯字與明顯辨識錯誤（依上下文判斷）
         2. 補上適當的標點符號與分段
         3. 使用台灣繁體中文用字；英文、數字照原樣
@@ -286,7 +373,7 @@ enum Summarizer {
         for piece in pieces {
             if Task.isCancelled { return nil }
             do {
-                let fixed = try await respondText(instructions: instructions, prompt: piece)
+                let fixed = try await respondText(instructions: instructions, prompt: withContext(piece, brief: brief, previous: output.last))
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 // 長度差太多就當作模型亂改，保留原文
                 let ratio = Double(fixed.count) / Double(max(1, piece.count))
@@ -371,30 +458,64 @@ enum Summarizer {
 
     // MARK: 課堂
 
-    private static func lectureInstructions(_ languageName: String) -> String {
-        """
-        你是認真的助教，負責把一堂課的逐字稿整理成給台灣學生看的課堂筆記。
-        逐字稿是\(languageName)的語音辨識結果，可能有錯字或聽錯的句子，請推敲原意。
+    private static func lectureInstructions(_ languageName: String, subject: SchoolSubject?) -> String {
+        let subjectLine: String
+        if let subject, subject.isSeminar {
+            return """
+            你是認真的筆記助理，負責把一場講座或演講的逐字稿整理成重點筆記。
+            \(subject.noteFocus)
+            逐字稿是\(languageName)的語音辨識結果，講者可能中英夾雜，可能有錯字或把英文術語聽成中文諧音，請推敲原意並寫回正確用詞。
+            特別標出講者說「最重要」「一定要記得」「我的結論是」的地方。
+            這是使用者自己的私人筆記，照實中立地整理即可。
+            輸出一律使用台灣繁體中文，英文術語保留原文並附中文解釋。只寫逐字稿裡真的有的內容，不要編造。
+            """
+        } else if let subject, subject != .general {
+            let terms = subject.terms.prefix(40).joined(separator: "、")
+            subjectLine = "這是台灣高中的「\(subject.title)」課（108 課綱）。\(subject.noteFocus)\n這科常見的名詞（辨識錯字時參考）：\(terms)"
+        } else {
+            subjectLine = "這是台灣高中的課。"
+        }
+        return """
+        你是認真的高中助教，負責把一堂課的逐字稿整理成給台灣高中生複習用的課堂筆記。
+        \(subjectLine)
+        逐字稿是\(languageName)的語音辨識結果，老師常中英夾雜，可能有錯字或把英文術語聽成中文諧音，請依科目推敲原意並寫回正確術語。
+        特別標出老師說「會考」「很重要」「要背」「學測常考」的地方，保留課本頁碼、題號、考試範圍與日期。
         這是學生自己的私人筆記，照實中立地整理即可。
-        輸出一律使用台灣繁體中文，術語保留原文並附中文解釋。只寫逐字稿裡真的有的內容，不要編造。
+        輸出一律使用台灣繁體中文，英文術語保留原文並附中文解釋。只寫逐字稿裡真的有的內容，不要編造。
         """
     }
 
-    private static let lectureFormat = """
+    private static func lectureFormatText(_ subject: SchoolSubject?) -> String {
+        guard subject?.isSeminar == true else { return lectureFormatClass }
+        return lectureFormatClass
+            .replacingOccurrences(of: "這堂課的主題", with: "這場講座的主題")
+            .replacingOccurrences(of: "這堂課的主題、要解決的問題、核心觀念之間的關係、結論", with: "講者、主題、核心論點與結論")
+            .replacingOccurrences(of: "會考：\n- （老師明確說會考、要背、常考、考試範圍的內容，寫出要考什麼；沒有就寫「無」）", with: "強調：\n- （講者特別強調、要聽眾記住的話或行動建議；沒有就寫「無」）")
+            .replacingOccurrences(of: "老師強調會考的加上「★」", with: "講者強調的加上「★」")
+            .replacingOccurrences(of: "（作業、小考、段考、報告、考試範圍與日期；沒有就寫「無」）", with: "（講者提到的資源、活動、要做的事與日期；沒有就寫「無」）")
+    }
+
+    private static let lectureFormatClass = """
     請嚴格照這個格式輸出，不要加其他說明：
+    科目：（從 國文、英文、數學、物理、化學、生物、地球科學、歷史、地理、公民與社會、講座 選一個最符合的；都不像就寫「其他」）
     標題：（這堂課的主題，15 字以內）
     總結：（4～6 句的高層次總結：這堂課的主題、要解決的問題、核心觀念之間的關係、結論）
     重點：
-    - （6～12 點，依課程段落或觀念分組，每點寫成「觀念：解釋與例子」，保留老師舉的例子、公式、數字）
+    - （6～12 點，依課程段落或觀念分組，每點寫成「觀念：解釋與例子」，保留老師舉的例子、公式、數字；老師強調會考的加上「★」）
+    會考：
+    - （老師明確說會考、要背、常考、考試範圍的內容，寫出要考什麼；沒有就寫「無」）
     術語：
     - （原文術語：中文解釋；沒有就寫「無」）
     提醒：
-    - （作業、考試、報告、截止日期；沒有就寫「無」）
+    - （作業、小考、段考、報告、考試範圍與日期；沒有就寫「無」）
     """
 
     /// 課後重點：原文逐字稿可能是英文，輸出一律繁體中文。部分內容被擋時用其他部分繼續。
-    static func summarizeLecture(sourceText: String, languageName: String) async throws -> LectureOutput {
-        let instructions = lectureInstructions(languageName)
+    static func summarizeLecture(sourceText: String, languageName: String, subject: SchoolSubject? = nil, memory: String = "") async throws -> LectureOutput {
+        var instructions = lectureInstructions(languageName, subject: subject)
+        if !memory.isEmpty { instructions += "\n" + memory }
+        let lectureFormat = lectureFormatText(subject)
+        let starHint = subject?.isSeminar == true ? "講者特別強調的地方在該點開頭加上「★」。" : "老師說會考、要背、很重要的地方在該點開頭加上「★會考」。"
         let chunks = chunk(sourceText)
         if chunks.count <= 1 {
             let text = chunks.first ?? sourceText
@@ -411,7 +532,7 @@ enum Summarizer {
         for (index, text) in pieces.enumerated() {
             try Task.checkCancellation()
             do {
-                parts.append(try await digest(text: text, header: "以下是課堂逐字稿（\(languageName)）的第 \(index + 1)/\(pieces.count) 部分，請用繁體中文整理："))
+                parts.append(try await digest(text: text, header: "以下是課堂逐字稿（\(languageName)）的第 \(index + 1)/\(pieces.count) 部分，請用繁體中文整理。\(starHint)"))
             } catch {
                 lastError = error
             }
@@ -432,12 +553,14 @@ enum Summarizer {
             return try await lectureNotes(instructions: instructions, prompt: "以下是同一堂課依序各部分的筆記：\n\(notes.joined(separator: "\n"))\n\n請合併成整堂課的課堂筆記。\n\(lectureFormat)")
         } catch {
             if error is CancellationError { throw error }
+            let points = parts.flatMap(\.points)
             return LectureOutput(
                 title: parts[0].title,
                 overview: "這堂課分成 \(parts.count) 個部分整理。",
-                keyPoints: Array(parts.flatMap(\.points).prefix(10)),
+                keyPoints: Array(points.prefix(10)),
                 terms: [],
-                todos: parts.flatMap(\.todos)
+                todos: parts.flatMap(\.todos),
+                examPoints: points.filter { $0.contains("★") }
             )
         }
     }
@@ -450,7 +573,9 @@ enum Summarizer {
             overview: first(s, ["總結", "概要"]),
             keyPoints: all(s, ["重點", "課堂重點"]),
             terms: all(s, ["術語"]),
-            todos: all(s, ["提醒", "待辦", "作業與提醒"])
+            todos: all(s, ["提醒", "待辦", "作業與提醒"]),
+            examPoints: all(s, ["會考", "考試重點", "強調"]),
+            subject: SchoolSubject.match(first(s, ["科目"]))
         )
     }
 

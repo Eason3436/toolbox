@@ -37,6 +37,23 @@ final class AppSettings {
     var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
     /// 轉完文字後用 AI 校正錯字
     var aiCorrection: Bool { didSet { defaults.set(aiCorrection, forKey: "aiCorrection") } }
+    /// 長時間沒有近距離說話時自動省電（關人聲加強、降位元率）
+    var autoPowerSave: Bool { didSet { defaults.set(autoPowerSave, forKey: "autoPowerSave") } }
+    /// 近距離說話的判定門檻：0 = 要很近才算、1 = 一般、2 = 稍遠也算
+    var powerSaveSensitivity: Int { didSet { defaults.set(powerSaveSensitivity, forKey: "powerSaveSensitivity") } }
+    /// 摘要、追問用哪個 AI
+    var aiProvider: AIConfig.Provider { didSet { defaults.set(aiProvider.rawValue, forKey: "aiProvider"); syncAI() } }
+    var geminiModel: String { didSet { defaults.set(geminiModel, forKey: "geminiModel"); syncAI() } }
+    /// 存在鑰匙圈
+    var geminiAPIKey: String { didSet { Keychain.write(geminiAPIKey, for: "geminiAPIKey"); syncAI() } }
+    /// 中英夾雜：用中、英兩個模型各辨識一次再由 AI 合併
+    var mixedLanguage: Bool { didSet { defaults.set(mixedLanguage, forKey: "mixedLanguage") } }
+    /// 加入高中上課常用語、各科專有名詞
+    var highSchoolMode: Bool { didSet { defaults.set(highSchoolMode, forKey: "highSchoolMode") } }
+    /// 學習記憶：記住出現過的術語、參考之前上過的課
+    var learningMemory: Bool { didSet { defaults.set(learningMemory, forKey: "learningMemory") } }
+    /// 課堂模式目前的科目
+    var lectureSubject: SchoolSubject { didSet { defaults.set(lectureSubject.rawValue, forKey: "lectureSubject") } }
     /// 課堂畫面只顯示翻譯
     var lectureShowSource: Bool { didSet { defaults.set(lectureShowSource, forKey: "lectureShowSource") } }
 
@@ -54,6 +71,13 @@ final class AppSettings {
             "lectureShowSource": true,
             "voiceProcessing": true,
             "aiCorrection": true,
+            "autoPowerSave": true,
+            "mixedLanguage": true,
+            "highSchoolMode": true,
+            "learningMemory": true,
+            "powerSaveSensitivity": 1,
+            "aiProvider": "apple",
+            "geminiModel": GeminiClient.defaultModel,
         ])
         segmentMinutes = defaults.integer(forKey: "segmentMinutes")
         transcriptionLocale = defaults.string(forKey: "transcriptionLocale") ?? "zh-TW"
@@ -68,13 +92,47 @@ final class AppSettings {
         vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []
         voiceProcessing = defaults.bool(forKey: "voiceProcessing")
         aiCorrection = defaults.bool(forKey: "aiCorrection")
+        autoPowerSave = defaults.bool(forKey: "autoPowerSave")
+        mixedLanguage = defaults.bool(forKey: "mixedLanguage")
+        highSchoolMode = defaults.bool(forKey: "highSchoolMode")
+        learningMemory = defaults.bool(forKey: "learningMemory")
+        lectureSubject = SchoolSubject(rawValue: defaults.string(forKey: "lectureSubject") ?? "") ?? .general
+        powerSaveSensitivity = defaults.integer(forKey: "powerSaveSensitivity")
+        aiProvider = AIConfig.Provider(rawValue: defaults.string(forKey: "aiProvider") ?? "") ?? .apple
+        geminiModel = defaults.string(forKey: "geminiModel") ?? GeminiClient.defaultModel
+        geminiAPIKey = Keychain.read("geminiAPIKey") ?? ""
         if let data = defaults.data(forKey: "schedules"),
            let rules = try? JSONDecoder().decode([ScheduleRule].self, from: data) {
             schedules = rules
         } else {
             schedules = []
         }
+        syncAI()
     }
+
+    private func syncAI() {
+        AIConfig.update(provider: aiProvider, model: geminiModel, apiKey: geminiAPIKey)
+    }
+
+    /// 辨識提示詞：自訂詞彙優先，再加上科目術語與上課常用語（太多反而沒效果，限制數量）
+    func recognitionVocabulary(subject: SchoolSubject? = nil) -> [String] {
+        var words = vocabulary
+        // 學過的詞放前面：那是這個使用者真的會聽到的
+        words += LearningMemory.shared.vocabulary(for: subject, limit: 60)
+        if let subject { words += subject.terms }
+        if highSchoolMode, subject?.isSeminar != true { words += SchoolSubject.classroomPhrases }
+        var seen = Set<String>()
+        return Array(words.filter { seen.insert($0).inserted }.prefix(160))
+    }
+
+    /// 中英夾雜時，第二個辨識語言
+    func secondaryLocale(for primary: String) -> String? {
+        guard mixedLanguage else { return nil }
+        return primary.hasPrefix("zh") || primary.hasPrefix("yue") ? "en-US" : (primary.hasPrefix("en") ? "zh-TW" : nil)
+    }
+
+    /// 近距離說話的音量門檻（dBFS）
+    var nearSpeechThresholdDB: Float { [-30, -37, -44][max(0, min(2, powerSaveSensitivity))] }
 
     /// 現在落在哪一條排程裡（回傳排程與結束時間）。
     func activeSchedule(at date: Date = .now) -> (rule: ScheduleRule, end: Date)? {

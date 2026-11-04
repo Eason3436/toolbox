@@ -29,7 +29,8 @@ struct Passage: Identifiable, Hashable, Sendable {
 }
 
 enum AskService {
-    static let passageBudget = 1_700
+    static var passageBudget: Int { AIConfig.usesGemini ? 150_000 : 1_700 }
+    static var maxPassages: Int { AIConfig.usesGemini ? 400 : 8 }
 
     // MARK: 準備片段
 
@@ -107,7 +108,7 @@ enum AskService {
             if used + cost > passageBudget { continue }
             picked.append(passage)
             used += cost
-            if picked.count >= 8 { break }
+            if picked.count >= maxPassages { break }
         }
         return picked.sorted { $0.time < $1.time }
     }
@@ -150,13 +151,17 @@ enum AskService {
     }
 
     static func ask(_ question: String, passages all: [Passage], previous: (q: String, a: String)?) async throws -> Result {
-        guard SystemLanguageModel.default.isAvailable else {
+        guard ModelReadiness.current == .available else {
             throw RecapError.modelUnavailable(ModelReadiness.current.message)
         }
 
+        // Gemini 上下文夠大：全部塞得下就整份給它，不用先找片段
+        let total = all.reduce(0) { $0 + Summarizer.estimateTokens($1.text) }
+        let sendAll = AIConfig.usesGemini && total <= passageBudget
+
         // 1. 讓模型把問題變成中英關鍵詞
         var keywords: [String] = []
-        do {
+        if !sendAll { do {
             let text = try await Summarizer.respondText(
                 instructions: "你負責把使用者的問題轉成搜尋關鍵詞。只輸出關鍵詞，用逗號分隔。",
                 prompt: "問題：\(question)\n請列出 3～8 個關鍵詞，包含繁體中文與對應的英文（逐字稿可能是英文）。"
@@ -166,10 +171,10 @@ enum AskService {
                 .filter { $0.count >= 2 && $0.count <= 20 }
         } catch {
             appLog.info("關鍵詞產生失敗，改用原句比對")
-        }
+        } }
 
         // 2. 找片段；完全沒命中時，拿最近的幾段
-        var picked = rank(all, question: question, keywords: keywords)
+        var picked = sendAll ? all : rank(all, question: question, keywords: keywords)
         if picked.isEmpty {
             var used = 0
             for passage in all.reversed() {
@@ -199,7 +204,7 @@ enum AskService {
             )
         } catch {
             if Summarizer.isGuardrail(error) {
-                return Result(answer: "這題被 Apple Intelligence 的安全機制擋下，沒辦法回答。下面是找到的相關片段，可以點進去看原文。", sources: picked)
+                return Result(answer: "這題被 \(AIConfig.engineName) 的安全機制擋下，沒辦法回答。下面是找到的相關片段，可以點進去看原文。", sources: picked)
             }
             throw error
         }
