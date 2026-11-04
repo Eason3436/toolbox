@@ -96,22 +96,37 @@ final class RecapStore {
         try? FileManager.default.removeItem(at: recordingsDirectory.appending(path: key))
     }
 
-    /// 刪除 N 天前全天錄音的音檔（文字與摘要保留）。
-    func deleteAllDayAudio(olderThan days: Int) -> Int {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: .now) ?? .now
+    /// 刪除超過 N 天的錄音檔（全天錄音與課堂都算），只留文字稿與摘要。
+    /// 還沒轉成文字的段落、還在上課的課堂不會刪。回傳刪掉的檔案數。
+    @discardableResult
+    func purgeAudio(olderThan days: Int) -> Int {
+        guard days > 0 else { return 0 }
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
         var count = 0
         for key in dayKeys {
-            guard let date = DayKey.date(from: key), date < cutoff else { continue }
+            let record = day(key)
+            let hasOldSegment = record.segments.contains { $0.audioFile != nil && $0.end < cutoff && $0.status != .recorded }
+            let hasOldLecture = record.lectures.contains { ($0.end ?? .distantFuture) < cutoff && !$0.audioParts.isEmpty }
+            guard hasOldSegment || hasOldLecture else { continue }
             update(key) { record in
                 for index in record.segments.indices {
-                    if let file = record.segments[index].audioFile {
-                        removeAudio(file)
-                        record.segments[index].audioFile = nil
+                    let segment = record.segments[index]
+                    guard let file = segment.audioFile, segment.end < cutoff, segment.status != .recorded else { continue }
+                    removeAudio(file)
+                    record.segments[index].audioFile = nil
+                    count += 1
+                }
+                for index in record.lectures.indices {
+                    guard let end = record.lectures[index].end, end < cutoff else { continue }
+                    for part in record.lectures[index].audioParts {
+                        removeAudio(part.file)
                         count += 1
                     }
+                    record.lectures[index].audioParts = []
                 }
             }
         }
+        if count > 0 { appLog.info("已刪除 \(count) 個過期錄音檔") }
         return count
     }
 

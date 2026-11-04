@@ -191,6 +191,10 @@ struct DayContentView: View {
                 Label("Recap", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
                 Spacer()
                 if !record.segments.isEmpty || !record.lectures.isEmpty {
+                    NavigationLink(value: AskRoute(scope: .day(dayKey))) {
+                        Label("追問", systemImage: "questionmark.bubble").font(.footnote)
+                    }
+                    .buttonStyle(.glass)
                     Button {
                         queue.regenerateRecap(dayKey)
                     } label: {
@@ -297,6 +301,7 @@ enum TimelineItem: Identifiable {
 struct SegmentRoute: Hashable { let dayKey: String; let id: UUID }
 struct LectureRoute: Hashable { let id: UUID }
 struct DayRoute: Hashable { let dayKey: String }
+struct AskRoute: Hashable { let scope: AskScope }
 
 extension View {
     func navigationDestinations() -> some View {
@@ -304,6 +309,7 @@ extension View {
             .navigationDestination(for: SegmentRoute.self) { SegmentDetailView(route: $0) }
             .navigationDestination(for: LectureRoute.self) { LectureDetailView(id: $0.id) }
             .navigationDestination(for: DayRoute.self) { DayDetailView(dayKey: $0.dayKey) }
+            .navigationDestination(for: AskRoute.self) { AskView(initialScope: $0.scope) }
     }
 }
 

@@ -304,6 +304,7 @@ struct LectureDetailView: View {
             .navigationTitle(lecture.displayTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) { Image(systemName: "questionmark.bubble") }
                 ShareLink(item: MarkdownExport.lecture(lecture)) { Image(systemName: "square.and.arrow.up") }
                 Menu {
                     Button("重新命名", systemImage: "pencil") { newName = lecture.name ?? ""; renaming = true }
@@ -344,6 +345,11 @@ struct LectureDetailView: View {
                     Text("作業與提醒").font(.headline).padding(.top, 4)
                     BulletList(items: s.todos, symbol: "checkmark.circle", tint: .green)
                 }
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) {
+                    Label("對這堂課追問", systemImage: "questionmark.bubble")
+                }
+                .buttonStyle(.glass)
+                .padding(.top, 4)
             } else if let error = lecture.summaryError {
                 Label("整理重點失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 Button("再試一次") { queue.resummarizeLecture(lecture.id) }.buttonStyle(.glass)

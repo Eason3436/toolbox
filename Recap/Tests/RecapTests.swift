@@ -39,3 +39,20 @@ struct ChunkTests {
         #expect(Summarizer.estimateTokens("hello world this is a lecture") < Summarizer.estimateTokens("你好世界這是一堂課你好世界"))
     }
 }
+
+struct AskTests {
+    @Test func tokensMixChineseAndEnglish() {
+        let t = AskService.tokens("報告的 deadline 是星期五")
+        #expect(t.contains("deadline"))
+        #expect(t.contains("報告"))
+        #expect(t.contains("星期"))
+    }
+
+    @Test func rankPrefersMatchingPassage() {
+        let now = Date()
+        let a = Passage(time: now, label: "09:00", text: "我們討論午餐要吃什麼")
+        let b = Passage(time: now.addingTimeInterval(60), label: "09:05", text: "報告的截止日期是下週五，記得交給主管")
+        let ranked = AskService.rank([a, b], question: "報告什麼時候要交", keywords: ["報告", "截止日期"])
+        #expect(ranked.first?.label == "09:05")
+    }
+}

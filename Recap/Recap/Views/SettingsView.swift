@@ -78,13 +78,26 @@ struct SettingsView: View {
                         .disabled(queue.isRunning)
                 }
 
-                Section("儲存空間") {
-                    LabeledContent("錄音檔", value: ByteCountFormatter.string(fromByteCount: store.storageBytes, countStyle: .file))
-                    Button("刪除 7 天前的全天錄音音檔") {
-                        let n = store.deleteAllDayAudio(olderThan: 7)
-                        cleanupMessage = "刪除了 \(n) 個音檔（文字和摘要都還在）"
+                Section {
+                    LabeledContent("錄音檔佔用", value: ByteCountFormatter.string(fromByteCount: store.storageBytes, countStyle: .file))
+                    Picker("錄音檔保留", selection: $settings.audioRetentionDays) {
+                        Text("1 天").tag(1)
+                        Text("3 天").tag(3)
+                        Text("7 天").tag(7)
+                        Text("14 天").tag(14)
+                        Text("30 天").tag(30)
+                        Text("永久保留").tag(0)
                     }
+                    Button("現在清理過期錄音檔") {
+                        let n = store.purgeAudio(olderThan: settings.audioRetentionDays)
+                        cleanupMessage = n == 0 ? "沒有過期的錄音檔" : "刪除了 \(n) 個錄音檔（文字稿和摘要都還在）"
+                    }
+                    .disabled(settings.audioRetentionDays == 0)
                     if let cleanupMessage { Text(cleanupMessage).font(.footnote).foregroundStyle(.secondary) }
+                } header: {
+                    Text("儲存空間")
+                } footer: {
+                    Text("超過保留天數的錄音檔（全天錄音和課堂）會自動刪除，只留下文字稿、翻譯和摘要，追問也照樣能用。還沒轉成文字的錄音不會被刪。")
                 }
 
                 Section {

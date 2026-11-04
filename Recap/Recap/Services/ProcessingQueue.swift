@@ -102,10 +102,12 @@ final class ProcessingQueue {
                 await buildRecaps()
             }
         } while rerunRequested && !Task.isCancelled
+        store.purgeAudio(olderThan: settings.audioRetentionDays)
     }
 
     private func transcribeAll() async {
-        while !Task.isCancelled, let (key, segment) = nextSegment(status: .recorded) {
+        while !Task.isCancelled, let next = nextSegment(status: .recorded) {
+            let (key, segment) = next
             guard let file = segment.audioFile else {
                 store.updateSegment(segment.id, in: key) { $0.status = .failed; $0.error = "音檔不存在" }
                 continue
@@ -132,7 +134,8 @@ final class ProcessingQueue {
     }
 
     private func summarizeSegments() async {
-        while !Task.isCancelled, allowSummaries, let (key, segment) = nextSegment(status: .transcribed) {
+        while !Task.isCancelled, allowSummaries, let next = nextSegment(status: .transcribed) {
+            let (key, segment) = next
             statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
             let label = segment.start.formatted(date: .omitted, time: .shortened)
             do {
