@@ -97,6 +97,11 @@ struct SettingsView: View {
                     } label: {
                         LabeledContent("AI 模型", value: settings.aiProvider == .gemini ? (settings.geminiAPIKey.isEmpty ? "Gemini（未設定 Key）" : settings.geminiModel) : "Apple Intelligence")
                     }
+                    NavigationLink {
+                        WhisperSettingsView()
+                    } label: {
+                        LabeledContent("Whisper 補強辨識", value: settings.canUseWhisper ? "每天 \(settings.whisperDailyMinutes) 分鐘" : "關閉")
+                    }
                     Label(ModelReadiness.current.message, systemImage: ModelReadiness.current == .available ? "checkmark.circle.fill" : "exclamationmark.triangle")
                         .foregroundStyle(ModelReadiness.current == .available ? .green : .orange)
                     Text(settings.aiProvider == .gemini ? "用 Gemini 時，逐字稿會傳到 Google 伺服器處理，上下文很大，整天的內容可以一次整理、追問也能看完整份紀錄。沒網路時會改用裝置上的模型。" : "摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
@@ -499,5 +504,79 @@ struct LearningMemoryView: View {
         memory.add(term, subject: filter)
         newTerm = ""
         Haptics.success()
+    }
+}
+
+/// Groq Whisper：AI 判斷轉得不好、內容又複雜的段落，才送去重新辨識。
+struct WhisperSettingsView: View {
+    @Environment(AppSettings.self) private var settings
+    @State private var keyDraft = ""
+    @State private var loading = false
+    @State private var message: String?
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section {
+                Toggle("用 Whisper 補強辨識", isOn: $settings.whisperEnabled)
+            } footer: {
+                Text("每段錄音轉完文字後，AI（Gemini 或 Apple Intelligence）會檢查逐字稿：句子不通順、英文被寫成諧音、內容又很專業的段落，才把那一段錄音送到 Groq 的 Whisper 重新辨識。課堂錄音會切成每 2 分鐘一塊，只送最需要的幾塊。送出的錄音會上傳到 Groq 的伺服器。")
+            }
+            Section("Groq API Key") {
+                SecureField(settings.groqAPIKey.isEmpty ? "貼上 gsk_ 開頭的 Key" : "已設定（重新貼上可更換）", text: $keyDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(loading ? "測試中…" : "儲存並測試") { Task { await saveAndTest() } }
+                    .disabled(loading || keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            } footer: {
+                Text("到 console.groq.com 登入後在「API Keys」免費建立。Key 只存在這支手機的鑰匙圈。")
+            }
+            Section {
+                Stepper("每天最多 \(settings.whisperDailyMinutes) 分鐘", value: $settings.whisperDailyMinutes, in: 10...480, step: 10)
+                LabeledContent("今天已用", value: "\(Int(WhisperBudget.usedToday / 60)) 分鐘")
+            } header: {
+                Text("每日額度")
+            } footer: {
+                Text("額度用完就不再送，明天自動重算。Groq 每次最少算 10 秒；分數最高（最需要）的段落先送。")
+            }
+            Section("模型") {
+                Picker("Whisper 模型", selection: $settings.whisperModel) {
+                    ForEach(GroqWhisper.models, id: \.id) { model in
+                        VStack(alignment: .leading) {
+                            Text(model.title)
+                            Text(model.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .tag(model.id)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+        }
+        .navigationTitle("Whisper 補強")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func saveAndTest() async {
+        let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        loading = true
+        defer { loading = false }
+        do {
+            try await GroqWhisper.testKey(key, model: settings.whisperModel)
+            WhisperBudget.spend(1)
+            settings.groqAPIKey = key
+            settings.whisperEnabled = true
+            keyDraft = ""
+            message = "連線成功，已開啟 Whisper 補強。"
+            Haptics.success()
+        } catch WhisperError.quota {
+            settings.groqAPIKey = key
+            keyDraft = ""
+            message = "Key 已儲存，但今天的 Groq 額度已經用完，明天會自動開始補強。"
+        } catch {
+            message = "測試失敗：\(error.localizedDescription)"
+            Haptics.error()
+        }
     }
 }

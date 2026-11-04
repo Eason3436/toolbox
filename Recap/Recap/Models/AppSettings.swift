@@ -60,6 +60,13 @@ final class AppSettings {
     var lectureForeign: Bool { didSet { defaults.set(lectureForeign, forKey: "lectureForeign") } }
     /// 課堂模式目前的科目
     var lectureSubject: SchoolSubject { didSet { defaults.set(lectureSubject.rawValue, forKey: "lectureSubject") } }
+    /// 用 Groq Whisper 重新辨識 AI 覺得轉得不好的段落
+    var whisperEnabled: Bool { didSet { defaults.set(whisperEnabled, forKey: "whisperEnabled") } }
+    var groqAPIKey: String { didSet { Keychain.write(groqAPIKey, for: "groqAPIKey") } }
+    var whisperModel: String { didSet { defaults.set(whisperModel, forKey: "whisperModel") } }
+    /// 每天最多送幾分鐘的錄音
+    var whisperDailyMinutes: Int { didSet { defaults.set(whisperDailyMinutes, forKey: "whisperDailyMinutes") } }
+    var canUseWhisper: Bool { whisperEnabled && !groqAPIKey.isEmpty }
     /// 課堂畫面只顯示翻譯
     var lectureShowSource: Bool { didSet { defaults.set(lectureShowSource, forKey: "lectureShowSource") } }
 
@@ -85,6 +92,9 @@ final class AppSettings {
             "powerSaveSensitivity": 1,
             "aiProvider": "apple",
             "geminiModel": GeminiClient.defaultModel,
+            "whisperEnabled": false,
+            "whisperModel": GroqWhisper.defaultModel,
+            "whisperDailyMinutes": 120,
         ])
         segmentMinutes = defaults.integer(forKey: "segmentMinutes")
         transcriptionLocale = defaults.string(forKey: "transcriptionLocale") ?? "zh-TW"
@@ -114,6 +124,10 @@ final class AppSettings {
         aiProvider = AIConfig.Provider(rawValue: defaults.string(forKey: "aiProvider") ?? "") ?? .apple
         geminiModel = defaults.string(forKey: "geminiModel") ?? GeminiClient.defaultModel
         geminiAPIKey = Keychain.read("geminiAPIKey") ?? ""
+        whisperEnabled = defaults.bool(forKey: "whisperEnabled")
+        groqAPIKey = Keychain.read("groqAPIKey") ?? ""
+        whisperModel = defaults.string(forKey: "whisperModel") ?? GroqWhisper.defaultModel
+        whisperDailyMinutes = defaults.integer(forKey: "whisperDailyMinutes")
         if let data = defaults.data(forKey: "schedules"),
            let rules = try? JSONDecoder().decode([ScheduleRule].self, from: data) {
             schedules = rules
