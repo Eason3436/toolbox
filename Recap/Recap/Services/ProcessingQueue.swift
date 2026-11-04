@@ -80,6 +80,8 @@ final class ProcessingQueue {
         guard var lecture = store.lecture(id) else { return }
         lecture.summary = nil
         lecture.summaryError = nil
+        lecture.richNotes = nil
+        lecture.richNotesError = nil
         store.upsertLecture(lecture)
         kick(summaries: true)
     }
@@ -103,6 +105,7 @@ final class ProcessingQueue {
             if allowSummaries, readiness == .available, !Task.isCancelled {
                 await summarizeSegments()
                 await summarizeLectures()
+                await buildRichNotes()
                 await buildRecaps()
             }
         } while rerunRequested && !Task.isCancelled
@@ -244,6 +247,41 @@ final class ProcessingQueue {
                 store.upsertLecture(latest)
             }
         }
+    }
+
+    /// 選了 Gemini：每堂整理好的課再做一份詳細筆記。
+    private func buildRichNotes() async {
+        guard AIConfig.usesGemini else { return }
+        let pending = store.allLectures.filter { $0.end != nil && $0.summary != nil && $0.richNotes == nil && $0.richNotesError == nil && !$0.lines.isEmpty }
+        for lecture in pending {
+            guard !Task.isCancelled, allowSummaries else { return }
+            statusText = "Gemini 製作課程筆記：\(lecture.displayTitle)"
+            let transcript = lecture.refinedTranscript ?? lecture.lines.map { "[\($0.offset.clockText)] \($0.source)" }.joined(separator: "\n")
+            var notes: String?
+            var failure: String?
+            do {
+                notes = try await RichNotes.generate(lecture: lecture, transcript: transcript, memory: LearningMemory.previousLectureContext(for: lecture, in: store))
+            } catch is CancellationError {
+                return
+            } catch {
+                failure = error.localizedDescription
+                appLog.error("課程筆記失敗：\(error.localizedDescription)")
+            }
+            if var latest = store.lecture(lecture.id) {
+                latest.richNotes = notes
+                latest.richNotesError = failure
+                store.upsertLecture(latest)
+            }
+        }
+    }
+
+    /// 重新產生某堂課的詳細筆記。
+    func regenerateRichNotes(_ id: UUID) {
+        guard var lecture = store.lecture(id) else { return }
+        lecture.richNotes = nil
+        lecture.richNotesError = nil
+        store.upsertLecture(lecture)
+        kick(summaries: true)
     }
 
     private func refineLecture(_ lecture: Lecture, secondary: String) async -> String? {

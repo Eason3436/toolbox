@@ -295,11 +295,13 @@ struct LectureDetailView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var showSource = true
+    @State private var showingNotes = false
 
     var body: some View {
         if let lecture = store.lecture(id) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    richNotesCard(lecture)
                     summaryCard(lecture)
                     if !lecture.audioParts.isEmpty {
                         Card {
@@ -356,6 +358,9 @@ struct LectureDetailView: View {
                     }
                     .pickerStyle(.menu)
                     Button("重新整理重點", systemImage: "sparkles") { queue.resummarizeLecture(lecture.id) }
+                    if AIConfig.usesGemini {
+                        Button("重新製作詳細筆記", systemImage: "doc.richtext") { queue.regenerateRichNotes(lecture.id) }
+                    }
                 } label: { Image(systemName: "ellipsis") }
             }
             .alert("課堂名稱", isPresented: $renaming) {
@@ -373,6 +378,44 @@ struct LectureDetailView: View {
     }
 
     @ViewBuilder
+    @ViewBuilder
+    private func richNotesCard(_ lecture: Lecture) -> some View {
+        if let html = lecture.richNotes, !html.isEmpty {
+            Button {
+                Haptics.tap()
+                showingNotes = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.richtext").font(.title2).foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("詳細課程筆記").font(.headline).foregroundStyle(.primary)
+                        Text("流程、重點、補充、事實查核、單字表、自我測驗").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingNotes) { RichNotesSheet(lecture: lecture, html: html) }
+        } else if AIConfig.usesGemini, lecture.summary != nil {
+            Card {
+                if let error = lecture.richNotesError {
+                    Label("課程筆記失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.footnote)
+                    Button("再試一次") { queue.regenerateRichNotes(lecture.id) }.buttonStyle(.glass)
+                } else {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Gemini 正在製作詳細課程筆記…").foregroundStyle(.secondary)
+                    }
+                    Button("現在製作") { queue.kick(summaries: true) }.buttonStyle(.glass)
+                }
+            }
+        }
+    }
+
     private func summaryCard(_ lecture: Lecture) -> some View {
         Card {
             HStack(spacing: 6) {

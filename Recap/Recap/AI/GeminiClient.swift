@@ -86,27 +86,29 @@ enum GeminiClient {
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
         config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }()
 
     /// 產生純文字回應。429／5xx 會稍等重試。
-    static func generate(system: String, prompt: String, model: String = AIConfig.model, apiKey: String = AIConfig.apiKey, temperature: Double = 0.3) async throws -> String {
+    static func generate(system: String, prompt: String, model: String = AIConfig.model, apiKey: String = AIConfig.apiKey, temperature: Double = 0.3, googleSearch: Bool = false) async throws -> String {
         let name = model.hasPrefix("models/") ? String(model.dropFirst(7)) : model
         var request = URLRequest(url: base.appending(path: "models/\(name):generateContent"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         let categories = ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "systemInstruction": ["parts": [["text": system]]],
             "contents": [["role": "user", "parts": [["text": prompt]]]],
             "generationConfig": ["temperature": temperature],
             // 這是使用者自己的私人錄音，日常對話很容易被誤判，所以放寬
             "safetySettings": categories.map { ["category": $0, "threshold": "BLOCK_NONE"] },
         ]
+        // 讓模型可以上網查證（事實查核用）
+        if googleSearch { body["tools"] = [["google_search": [String: Any]()]] }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         var attempt = 0

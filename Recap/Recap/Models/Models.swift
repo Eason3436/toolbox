@@ -117,6 +117,9 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     var subject: SchoolSubject?
     /// 下課後用錄音重新做中英夾雜辨識、AI 合併的逐字稿
     var refinedTranscript: String?
+    /// Gemini 整理的詳細課程筆記（HTML 片段）
+    var richNotes: String?
+    var richNotesError: String?
 
     var displayTitle: String {
         if let name, !name.isEmpty { return name }
