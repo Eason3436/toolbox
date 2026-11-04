@@ -52,6 +52,12 @@ final class AppSettings {
     var highSchoolMode: Bool { didSet { defaults.set(highSchoolMode, forKey: "highSchoolMode") } }
     /// 學習記憶：記住出現過的術語、參考之前上過的課
     var learningMemory: Bool { didSet { defaults.set(learningMemory, forKey: "learningMemory") } }
+    /// 課表（依時間自動選科目）
+    var timetable: [TimetableEntry] {
+        didSet { if let data = try? JSONEncoder().encode(timetable) { defaults.set(data, forKey: "timetable") } }
+    }
+    /// 非中文授課（例如英文課）：即時字幕與翻譯
+    var lectureForeign: Bool { didSet { defaults.set(lectureForeign, forKey: "lectureForeign") } }
     /// 課堂模式目前的科目
     var lectureSubject: SchoolSubject { didSet { defaults.set(lectureSubject.rawValue, forKey: "lectureSubject") } }
     /// 課堂畫面只顯示翻譯
@@ -75,6 +81,7 @@ final class AppSettings {
             "mixedLanguage": true,
             "highSchoolMode": true,
             "learningMemory": true,
+            "lectureForeign": false,
             "powerSaveSensitivity": 1,
             "aiProvider": "apple",
             "geminiModel": GeminiClient.defaultModel,
@@ -96,6 +103,12 @@ final class AppSettings {
         mixedLanguage = defaults.bool(forKey: "mixedLanguage")
         highSchoolMode = defaults.bool(forKey: "highSchoolMode")
         learningMemory = defaults.bool(forKey: "learningMemory")
+        lectureForeign = defaults.bool(forKey: "lectureForeign")
+        if let data = defaults.data(forKey: "timetable"), let saved = try? JSONDecoder().decode([TimetableEntry].self, from: data) {
+            timetable = saved
+        } else {
+            timetable = []
+        }
         lectureSubject = SchoolSubject(rawValue: defaults.string(forKey: "lectureSubject") ?? "") ?? .general
         powerSaveSensitivity = defaults.integer(forKey: "powerSaveSensitivity")
         aiProvider = AIConfig.Provider(rawValue: defaults.string(forKey: "aiProvider") ?? "") ?? .apple

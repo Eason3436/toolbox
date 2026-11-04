@@ -21,13 +21,22 @@ final class LectureSession {
     private let store: RecapStore
     var onNewTranslation: ((String) -> Void)?
 
-    init(lecture: Lecture, store: RecapStore) {
+    /// 即時字幕與翻譯（非中文授課）；false 時只錄音
+    let isLive: Bool
+
+    init(lecture: Lecture, store: RecapStore, live: Bool = true) {
         self.lecture = lecture
         self.store = store
+        isLive = live
         translator = LiveTranslator(sourceLocale: lecture.sourceLocale, target: lecture.targetLanguage)
     }
 
     func start() async throws {
+        guard isLive else {
+            translatorName = "只錄音"
+            store.upsertLecture(lecture)
+            return
+        }
         await translator.prepare()
         translatorName = translator.engineName
         transcriber.onResult = { [weak self] text, isFinal in
@@ -44,6 +53,11 @@ final class LectureSession {
 
     /// 結束這堂課，回傳最後的資料。
     func finish() async -> Lecture {
+        if !isLive {
+            lecture.end = .now
+            store.upsertLecture(lecture)
+            return lecture
+        }
         await transcriber.finish()
         if !volatileText.trimmingCharacters(in: .whitespaces).isEmpty {
             handle(text: volatileText, isFinal: true)

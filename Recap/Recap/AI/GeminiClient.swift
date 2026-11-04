@@ -47,6 +47,7 @@ enum GeminiError: LocalizedError {
     case quota
     case blocked(String)
     case server(Int, String)
+    case busy
     case empty
 
     var errorDescription: String? {
@@ -55,6 +56,7 @@ enum GeminiError: LocalizedError {
         case .quota: "Gemini 用量達到上限（免費額度每分鐘／每天有限制），稍後再試。"
         case .blocked(let reason): "Gemini 拒絕回答（\(reason)）。"
         case .server(let code, let message): "Gemini 錯誤 \(code)：\(message)"
+        case .busy: "Gemini 伺服器現在太忙（503），備用模型也忙，稍後會自動再試。"
         case .empty: "Gemini 沒有回傳內容。"
         }
     }
@@ -92,8 +94,24 @@ enum GeminiClient {
         return URLSession(configuration: config)
     }()
 
-    /// 產生純文字回應。429／5xx 會稍等重試。
+    /// 產生純文字回應。429／5xx 會稍等重試；選的模型太忙或額度用完時，自動改用其他推薦模型。
     static func generate(system: String, prompt: String, model: String = AIConfig.model, apiKey: String = AIConfig.apiKey, temperature: Double = 0.3, googleSearch: Bool = false) async throws -> String {
+        let chosen = model.hasPrefix("models/") ? String(model.dropFirst(7)) : model
+        let backups = recommended.map(\.id).filter { $0 != chosen }
+        var lastError: Error = GeminiError.busy
+        for (index, name) in ([chosen] + backups).enumerated() {
+            do {
+                return try await generateOnce(system: system, prompt: prompt, model: name, apiKey: apiKey, temperature: temperature, googleSearch: googleSearch, retries: index == 0 ? 2 : 1)
+            } catch GeminiError.server(let code, _) where code >= 500 {
+                lastError = GeminiError.busy
+            } catch GeminiError.quota {
+                lastError = GeminiError.quota
+            }
+        }
+        throw lastError
+    }
+
+    private static func generateOnce(system: String, prompt: String, model: String, apiKey: String, temperature: Double, googleSearch: Bool, retries: Int) async throws -> String {
         let name = model.hasPrefix("models/") ? String(model.dropFirst(7)) : model
         var request = URLRequest(url: base.appending(path: "models/\(name):generateContent"))
         request.httpMethod = "POST"
@@ -118,7 +136,7 @@ enum GeminiClient {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if status == 200 { return try parse(data) }
             let message = errorMessage(data)
-            if (status == 429 || status >= 500), attempt < 2 {
+            if (status == 429 || status >= 500), attempt < retries {
                 attempt += 1
                 try await Task.sleep(for: .seconds(attempt == 1 ? 4 : 15))
                 continue
