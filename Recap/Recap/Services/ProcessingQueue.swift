@@ -42,7 +42,8 @@ final class ProcessingQueue {
         if isRunning { rerunRequested = true; return }
         isRunning = true
         task = Task { [weak self] in
-            await self?.runLoop()
+            guard let self else { return }
+            await self.runLoop()
         }
     }
 
@@ -56,7 +57,10 @@ final class ProcessingQueue {
         allowSummaries = true
         if isRunning, let task { await task.value }
         isRunning = true
-        let t = Task { [weak self] in await self?.runLoop() }
+        let t = Task { [weak self] in
+            guard let self else { return }
+            await self.runLoop()
+        }
         task = t
         await t.value
     }
