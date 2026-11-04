@@ -1,0 +1,96 @@
+name: Recap
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Recap:
+    type: application
+    platform: iOS
+    sources:
+      - path: Recap
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Recap/AppIcon.icon
+        type: file
+        buildPhase: resources
+      - path: Shared
+    dependencies:
+      - target: RecapWidget
+        embed: true
+    info:
+      path: Recap/Info.plist
+      properties:
+        CFBundleDisplayName: Recap
+        CFBundleName: Recap
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSMicrophoneUsageDescription: 用來錄下你身邊的聲音，在手機上轉成文字並整理成每日 Recap。錄音與分析都在裝置上完成，不會上傳。
+        NSSpeechRecognitionUsageDescription: 用來在裝置上把錄音轉成文字。
+        NSSupportsLiveActivities: true
+        UIBackgroundModes:
+          - audio
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.eason3436.recap.process
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.recap
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  RecapWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget
+      - path: Shared
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Recap
+        CFBundleName: RecapWidget
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.recap.widget
+
+  RecapTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Recap
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Recap.app/Recap
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Recap:
+    build:
+      targets:
+        Recap: all
+    test:
+      targets:
+        - RecapTests
