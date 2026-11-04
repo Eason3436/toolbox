@@ -119,10 +119,11 @@ final class ProcessingQueue {
             }
             statusText = "轉文字中（\(segment.start.formatted(date: .omitted, time: .shortened))）・還有 \(pendingTranscriptions) 段"
             do {
-                let text = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale)
+                let text = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale, vocabulary: settings.vocabulary)
                 let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 store.updateSegment(segment.id, in: key) {
                     $0.transcript = text
+                    $0.correctedTranscript = nil
                     $0.status = empty ? .silent : .transcribed
                     $0.error = nil
                 }
@@ -143,8 +144,17 @@ final class ProcessingQueue {
             let (key, segment) = next
             statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
             let label = segment.start.formatted(date: .omitted, time: .shortened)
+            var text = segment.bestTranscript ?? ""
+            if settings.aiCorrection, segment.correctedTranscript == nil, let raw = segment.transcript {
+                statusText = "AI 校正逐字稿・還有 \(pendingSummaries) 項"
+                if let fixed = await Summarizer.correctTranscript(raw, vocabulary: settings.vocabulary) {
+                    text = fixed
+                    store.updateSegment(segment.id, in: key) { $0.correctedTranscript = fixed }
+                }
+                statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
+            }
             do {
-                let digest = try await Summarizer.summarizeSegment(segment.transcript ?? "", timeLabel: label)
+                let digest = try await Summarizer.summarizeSegment(text, timeLabel: label)
                 store.updateSegment(segment.id, in: key) {
                     $0.title = digest.title
                     $0.points = digest.points

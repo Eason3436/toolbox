@@ -49,6 +49,8 @@ struct Segment: Codable, Identifiable, Hashable, Sendable {
     var voicedSeconds: Double
     var status: SegmentStatus
     var transcript: String?
+    /// AI 校正過的逐字稿（有的話摘要與追問都用這份）
+    var correctedTranscript: String?
     var title: String?
     var points: [String] = []
     var todos: [String] = []
@@ -56,6 +58,8 @@ struct Segment: Codable, Identifiable, Hashable, Sendable {
 
     var duration: TimeInterval { end.timeIntervalSince(start) }
     var hasText: Bool { !(transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// 最好的那份文字
+    var bestTranscript: String? { correctedTranscript ?? transcript }
 }
 
 /// 一天的總整理。

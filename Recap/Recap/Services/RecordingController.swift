@@ -103,6 +103,7 @@ final class RecordingController {
                 Task { @MainActor in self?.segmentClosed(closed) }
             }
             self.writer = writer
+            recorder.voiceProcessing = settings.voiceProcessing
             try recorder.start()
             startedAt = now
             segmentsThisSession = 0

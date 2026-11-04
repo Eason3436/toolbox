@@ -26,6 +26,8 @@ final class AudioEngineRecorder: @unchecked Sendable {
     var onLevel: (@Sendable (Float) -> Void)?
 
     private(set) var isRunning = false
+    /// 錄音時開啟系統的人聲處理（降噪、自動增益）
+    var voiceProcessing = true
 
     init() {
         let center = NotificationCenter.default
@@ -79,6 +81,17 @@ final class AudioEngineRecorder: @unchecked Sendable {
         try session.setActive(true)
 
         let input = engine.inputNode
+        if input.isVoiceProcessingEnabled != voiceProcessing {
+            do {
+                try input.setVoiceProcessingEnabled(voiceProcessing)
+            } catch {
+                appLog.info("人聲處理設定失敗：\(error.localizedDescription)")
+            }
+        }
+        if voiceProcessing {
+            // 不要把正在播的音樂壓得太小聲
+            input.voiceProcessingOtherAudioDuckingConfiguration = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw RecapError.noInput }
         input.removeTap(onBus: 0)

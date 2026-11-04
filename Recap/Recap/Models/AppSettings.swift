@@ -31,6 +31,12 @@ final class AppSettings {
             if let data = try? JSONEncoder().encode(schedules) { defaults.set(data, forKey: "schedules") }
         }
     }
+    /// 自訂詞彙（人名、術語），提高辨識準確度
+    var vocabulary: [String] { didSet { defaults.set(vocabulary, forKey: "vocabulary") } }
+    /// 錄音時加強人聲、降低背景雜音
+    var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
+    /// 轉完文字後用 AI 校正錯字
+    var aiCorrection: Bool { didSet { defaults.set(aiCorrection, forKey: "aiCorrection") } }
     /// 課堂畫面只顯示翻譯
     var lectureShowSource: Bool { didSet { defaults.set(lectureShowSource, forKey: "lectureShowSource") } }
 
@@ -46,6 +52,8 @@ final class AppSettings {
             "audioRetentionDays": 7,
             "scheduleNotifications": true,
             "lectureShowSource": true,
+            "voiceProcessing": true,
+            "aiCorrection": true,
         ])
         segmentMinutes = defaults.integer(forKey: "segmentMinutes")
         transcriptionLocale = defaults.string(forKey: "transcriptionLocale") ?? "zh-TW"
@@ -57,6 +65,9 @@ final class AppSettings {
         audioRetentionDays = defaults.integer(forKey: "audioRetentionDays")
         scheduleNotifications = defaults.bool(forKey: "scheduleNotifications")
         lectureShowSource = defaults.bool(forKey: "lectureShowSource")
+        vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []
+        voiceProcessing = defaults.bool(forKey: "voiceProcessing")
+        aiCorrection = defaults.bool(forKey: "aiCorrection")
         if let data = defaults.data(forKey: "schedules"),
            let rules = try? JSONDecoder().decode([ScheduleRule].self, from: data) {
             schedules = rules
