@@ -158,9 +158,9 @@ struct QuickRecapIntent: AppIntent {
             return first
         }
         guard finished else {
-            throw needsToContinueInForegroundError("還在整理，要打開 Recap 看結果嗎？") {
-                model.router.showQuickRecap = true
-            }
+            // 打開 App 時直接顯示整理結果
+            model.router.showQuickRecap = true
+            throw needsToContinueInForegroundError("還在整理，要打開 Recap 看結果嗎？")
         }
         switch quick.state {
         case .done:

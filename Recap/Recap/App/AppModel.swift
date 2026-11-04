@@ -1,3 +1,4 @@
+import SwiftUI
 import BackgroundTasks
 import Foundation
 import Observation
