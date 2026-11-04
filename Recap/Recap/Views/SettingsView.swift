@@ -522,13 +522,15 @@ struct WhisperSettingsView: View {
             } footer: {
                 Text("每段錄音轉完文字後，AI（Gemini 或 Apple Intelligence）會檢查逐字稿：句子不通順、英文被寫成諧音、內容又很專業的段落，才把那一段錄音送到 Groq 的 Whisper 重新辨識。課堂錄音會切成每 2 分鐘一塊，只送最需要的幾塊。送出的錄音會上傳到 Groq 的伺服器。")
             }
-            Section("Groq API Key") {
+            Section {
                 SecureField(settings.groqAPIKey.isEmpty ? "貼上 gsk_ 開頭的 Key" : "已設定（重新貼上可更換）", text: $keyDraft)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Button(loading ? "測試中…" : "儲存並測試") { Task { await saveAndTest() } }
                     .disabled(loading || keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            } header: {
+                Text("Groq API Key")
             } footer: {
                 Text("到 console.groq.com 登入後在「API Keys」免費建立。Key 只存在這支手機的鑰匙圈。")
             }
