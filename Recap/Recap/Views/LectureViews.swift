@@ -161,6 +161,8 @@ struct LectureStartView: View {
 struct LectureLiveView: View {
     let session: LectureSession
     @Environment(RecordingController.self) private var recorder
+    @Environment(Router.self) private var router
+    @Environment(QuickRecap.self) private var quick
     @Environment(AppSettings.self) private var settings
     @State private var follow = true
 
@@ -231,6 +233,12 @@ struct LectureLiveView: View {
         .navigationTitle("上課中")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            Button {
+                router.showQuickRecap = true
+                Task { await quick.run(minutes: 15) }
+            } label: {
+                Label("最近 15 分鐘重點", systemImage: "sparkles")
+            }
             Menu {
                 Toggle("顯示原文", isOn: $settings.lectureShowSource)
                 Toggle("自動捲到最新", isOn: $follow)

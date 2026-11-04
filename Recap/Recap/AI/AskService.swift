@@ -28,20 +28,6 @@ struct Passage: Identifiable, Hashable, Sendable {
     var lectureID: UUID?
 }
 
-@Generable
-struct SearchTerms {
-    @Guide(description: "從問題抽出 3～8 個搜尋關鍵詞，包含繁體中文，以及對應的英文翻譯（逐字稿可能是英文）")
-    var keywords: [String]
-}
-
-@Generable
-struct AskAnswer {
-    @Guide(description: "用台灣繁體中文回答問題；只根據提供的逐字稿，找不到就老實說找不到")
-    var answer: String
-    @Guide(description: "回答時用到的片段編號（例如 1、3）")
-    var sources: [Int]
-}
-
 enum AskService {
     static let passageBudget = 1_700
 
@@ -70,7 +56,7 @@ enum AskService {
                     }
                 }
             }
-            for lecture in record.lectures where onlyLecture == nil || lecture.id == onlyLecture {
+            for lecture in record.lectures where onlyLecture == lecture.id {
                 // 每 8 句一組，附上翻譯，讓中文問題也找得到英文內容
                 let lines = lecture.lines
                 var index = 0
@@ -164,13 +150,17 @@ enum AskService {
         guard SystemLanguageModel.default.isAvailable else {
             throw RecapError.modelUnavailable(ModelReadiness.current.message)
         }
-        let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
 
         // 1. 讓模型把問題變成中英關鍵詞
         var keywords: [String] = []
         do {
-            let session = LanguageModelSession(model: model, instructions: "你負責把使用者的問題轉成搜尋關鍵詞。")
-            keywords = try await session.respond(to: "問題：\(question)", generating: SearchTerms.self).content.keywords
+            let text = try await Summarizer.respondText(
+                instructions: "你負責把使用者的問題轉成搜尋關鍵詞。只輸出關鍵詞，用逗號分隔。",
+                prompt: "問題：\(question)\n請列出 3～8 個關鍵詞，包含繁體中文與對應的英文（逐字稿可能是英文）。"
+            )
+            keywords = text.components(separatedBy: CharacterSet(charactersIn: ",，、\n"))
+                .map { $0.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "-•「」\"'"))) }
+                .filter { $0.count >= 2 && $0.count <= 20 }
         } catch {
             appLog.info("關鍵詞產生失敗，改用原句比對")
         }
@@ -197,13 +187,32 @@ enum AskService {
             prompt += "（上一題：\(previous.q.prefix(60))；上一題的回答：\(previous.a.prefix(120))）\n"
         }
         prompt += "以下是從使用者錄音逐字稿中找到的相關片段（語音辨識，可能有錯字）：\n\(context)\n\n問題：\(question)"
-        let session = LanguageModelSession(
-            model: model,
-            instructions: "你是使用者的記憶助理，根據他錄音轉成的逐字稿回答問題。一律用台灣繁體中文，回答具體並提到是幾點講的。只能根據提供的片段，找不到就說找不到，不要編造。"
-        )
-        let answer = try await session.respond(to: prompt, generating: AskAnswer.self).content
-        let cited = answer.sources.compactMap { index in picked.indices.contains(index - 1) ? picked[index - 1] : nil }
-        return Result(answer: answer.answer, sources: cited.isEmpty ? picked : cited)
+        prompt += "\n\n先回答問題，最後一行寫「出處：」加上用到的片段編號（例如 出處：1,3）。"
+        let output: String
+        do {
+            output = try await Summarizer.respondText(
+                instructions: "你是使用者的記憶助理，根據他錄音轉成的逐字稿回答問題。這是使用者自己的私人紀錄。一律用台灣繁體中文，回答具體並提到是幾點講的。只能根據提供的片段，找不到就說找不到，不要編造。",
+                prompt: prompt
+            )
+        } catch {
+            if Summarizer.isGuardrail(error) {
+                return Result(answer: "這題被 Apple Intelligence 的安全機制擋下，沒辦法回答。下面是找到的相關片段，可以點進去看原文。", sources: picked)
+            }
+            throw error
+        }
+        var answerLines: [String] = []
+        var cited: [Passage] = []
+        for line in output.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("出處") {
+                let numbers = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
+                cited = numbers.compactMap { picked.indices.contains($0 - 1) ? picked[$0 - 1] : nil }
+            } else {
+                answerLines.append(line)
+            }
+        }
+        let answer = answerLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return Result(answer: answer, sources: cited.isEmpty ? picked : cited)
     }
 }
 

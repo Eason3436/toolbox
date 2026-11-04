@@ -19,5 +19,8 @@ struct RootView: View {
                 SettingsView()
             }
         }
+        .sheet(isPresented: $router.showQuickRecap) {
+            QuickRecapSheet()
+        }
     }
 }

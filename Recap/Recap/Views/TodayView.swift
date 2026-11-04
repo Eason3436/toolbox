@@ -106,6 +106,26 @@ struct RecorderCard: View {
             .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
+                Button {
+                    quickRecap(15)
+                } label: {
+                    Label("最近 15 分鐘重點", systemImage: "sparkles")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.glassProminent)
+                Menu {
+                    Button("最近 5 分鐘") { quickRecap(5) }
+                    Button("最近 30 分鐘") { quickRecap(30) }
+                    Button("最近 1 小時") { quickRecap(60) }
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath").font(.headline).padding(.vertical, 6)
+                }
+                .buttonStyle(.glass)
+            }
+
+            HStack(spacing: 10) {
                 if recorder.mode == .lecture {
                     Button {
                         router.tab = .lecture
@@ -130,6 +150,13 @@ struct RecorderCard: View {
                 .buttonStyle(.glass)
             }
         }
+    }
+
+    @Environment(QuickRecap.self) private var quick
+
+    private func quickRecap(_ minutes: Int) {
+        router.showQuickRecap = true
+        Task { await quick.run(minutes: minutes) }
     }
 
     private var statusTitle: String {
@@ -190,7 +217,7 @@ struct DayContentView: View {
             HStack {
                 Label("Recap", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
                 Spacer()
-                if !record.segments.isEmpty || !record.lectures.isEmpty {
+                if !record.segments.isEmpty {
                     NavigationLink(value: AskRoute(scope: .day(dayKey))) {
                         Label("追問", systemImage: "questionmark.bubble").font(.footnote)
                     }
@@ -218,7 +245,7 @@ struct DayContentView: View {
                 }
                 Text("整理於 \(recap.generatedAt.hm)・\(recap.sourceCount) 段內容\(record.recapDirty ? "・有新內容" : "")")
                     .font(.caption).foregroundStyle(.secondary)
-            } else if record.segments.isEmpty && record.lectures.isEmpty {
+            } else if record.segments.isEmpty {
                 Text(isToday ? "今天還沒有錄音。開始錄音後，App 會每 5 分鐘切一段、在背景轉成文字，打開 App 或充電時再用 Apple Intelligence 摘要成今日 Recap。" : "這天沒有內容。")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
@@ -273,9 +300,8 @@ struct DayContentView: View {
     }
 
     private func timelineItems(_ record: DayRecord) -> [TimelineItem] {
-        let segments = record.spokenSegments.map(TimelineItem.segment)
-        let lectures = record.lectures.map(TimelineItem.lecture)
-        return (segments + lectures).sorted { $0.date > $1.date }
+        // 課堂只放在課堂頁
+        record.spokenSegments.map(TimelineItem.segment).sorted { $0.date > $1.date }
     }
 }
 

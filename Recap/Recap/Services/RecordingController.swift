@@ -53,6 +53,12 @@ final class RecordingController {
 
     var currentSegmentStart: Date? { writer?.currentSegmentStart }
 
+    /// 把目前錄到一半的段落先存起來（下一個音訊會自動開新段，不會漏錄）。
+    func flushCurrentSegment() {
+        guard mode == .allDay else { return }
+        writer?.flush()
+    }
+
     // MARK: - 開始／停止
 
     /// - Parameters:
