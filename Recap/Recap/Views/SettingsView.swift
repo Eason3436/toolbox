@@ -61,6 +61,13 @@ struct SettingsView: View {
                         Text("5 分鐘").tag(5)
                         Text("10 分鐘").tag(10)
                     }
+                    Toggle("人聲加強（降低背景雜音）", isOn: $settings.voiceProcessing)
+                    Toggle("AI 校正逐字稿錯字", isOn: $settings.aiCorrection)
+                    NavigationLink {
+                        VocabularyView()
+                    } label: {
+                        LabeledContent("自訂詞彙", value: settings.vocabulary.isEmpty ? "未設定" : "\(settings.vocabulary.count) 個")
+                    }
                     Toggle("安靜的段落不轉文字", isOn: $settings.skipSilence)
                     Toggle("轉好文字後刪除音檔", isOn: $settings.deleteAudioAfterTranscribe)
                 } header: {
@@ -220,5 +227,41 @@ struct ShortcutsGuideView: View {
             Text("\(n)").font(.headline).foregroundStyle(.tint).frame(width: 20)
             Text(text)
         }
+    }
+}
+
+/// 自訂詞彙：人名、公司、課程術語，辨識時會優先認這些詞。
+struct VocabularyView: View {
+    @Environment(AppSettings.self) private var settings
+    @State private var newWord = ""
+
+    var body: some View {
+        @Bindable var settings = settings
+        List {
+            Section {
+                HStack {
+                    TextField("例如：王小明、opportunity cost", text: $newWord)
+                        .onSubmit(add)
+                    Button("加入", action: add).disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } footer: {
+                Text("把常出現的人名、公司、產品、課程術語加進來，語音辨識會優先認這些詞，AI 校正時也會照這個寫法。可以一次貼上多個，用逗號或換行分開。")
+            }
+            Section {
+                ForEach(settings.vocabulary, id: \.self) { Text($0) }
+                    .onDelete { settings.vocabulary.remove(atOffsets: $0) }
+            }
+        }
+        .navigationTitle("自訂詞彙")
+    }
+
+    private func add() {
+        let words = newWord.components(separatedBy: CharacterSet(charactersIn: ",，、\n"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !settings.vocabulary.contains($0) }
+        guard !words.isEmpty else { return }
+        Haptics.success()
+        settings.vocabulary.append(contentsOf: words)
+        newWord = ""
     }
 }

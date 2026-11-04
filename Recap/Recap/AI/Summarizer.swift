@@ -67,14 +67,15 @@ enum Summarizer {
     你是貼心的個人助理，負責整理使用者錄下來的對話與聲音轉成的文字。
     文字是語音辨識的結果，可能有錯字、沒有標點、或混雜旁人的聲音，請推敲原意。
     這是使用者自己的私人筆記，內容可能包含日常閒聊、玩笑或新聞，照實中立地整理即可。
+    摘要要「詳細但有高度」：先抓出主題與脈絡，再補上具體細節（人、事、時間、數字、結論），不要只寫空泛的一句話。
     一律使用台灣繁體中文。只寫內容裡真的出現的資訊，不要編造。
     """
 
     private static let digestFormat = """
     請嚴格照這個格式輸出，不要加其他說明：
-    標題：（15 字以內）
+    標題：（15 字以內，點出這段的主題）
     重點：
-    - （1～4 點，每點一句）
+    - （3～6 點。依主題整理，每點寫成「主題：具體內容」，要包含誰、做了什麼、原因或結論、數字與時間等細節，一到兩句）
     待辦：
     - （提到要做的事、約定、期限；沒有就寫「無」）
     """
@@ -237,7 +238,7 @@ enum Summarizer {
             return try await digest(text: text, header: header)
         } catch {
             if error is CancellationError { throw error }
-            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(5)), todos: parts.flatMap(\.todos))
+            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(8)), todos: parts.flatMap(\.todos))
         }
     }
 
@@ -253,7 +254,7 @@ enum Summarizer {
             let sections = parseSections(output)
             var title = first(sections, ["標題"])
             if title.isEmpty { title = String(text.prefix(14)) }
-            return SegmentDigest(title: title, points: Array(all(sections, ["重點"]).prefix(5)), todos: all(sections, ["待辦", "提醒"]))
+            return SegmentDigest(title: title, points: Array(all(sections, ["重點"]).prefix(8)), todos: all(sections, ["待辦", "提醒"]))
         } catch {
             guard (isTooLong(error) || isGuardrail(error)), depth < 2, estimateTokens(text) > 120 else { throw error }
             let halves = chunk(text, budget: max(100, estimateTokens(text) / 2 + 1))
@@ -262,8 +263,44 @@ enum Summarizer {
                 if let d = try? await digest(text: piece, header: header, depth: depth + 1) { parts.append(d) }
             }
             guard !parts.isEmpty else { throw error }
-            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(5)), todos: parts.flatMap(\.todos))
+            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(8)), todos: parts.flatMap(\.todos))
         }
+    }
+
+    // MARK: 校正逐字稿
+
+    /// 用模型修正語音辨識的同音錯字、補標點。每塊不要太大，輸出才放得下。
+    static func correctTranscript(_ text: String, vocabulary: [String]) async -> String? {
+        let pieces = chunk(text, budget: 650)
+        guard !pieces.isEmpty else { return nil }
+        let hint = vocabulary.isEmpty ? "" : "\n可能出現的專有名詞（照這個寫法）：\(vocabulary.joined(separator: "、"))"
+        let instructions = """
+        你是逐字稿校對員。使用者給你的是語音辨識的結果，請：
+        1. 修正同音、近音的錯字與明顯辨識錯誤（依上下文判斷）
+        2. 補上適當的標點符號與分段
+        3. 使用台灣繁體中文用字；英文、數字照原樣
+        不要摘要、不要刪減、不要改寫語氣、不要加入新資訊。只輸出校對後的全文。\(hint)
+        """
+        var output: [String] = []
+        var changed = false
+        for piece in pieces {
+            if Task.isCancelled { return nil }
+            do {
+                let fixed = try await respondText(instructions: instructions, prompt: piece)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                // 長度差太多就當作模型亂改，保留原文
+                let ratio = Double(fixed.count) / Double(max(1, piece.count))
+                if ratio > 0.7, ratio < 1.6 {
+                    output.append(fixed)
+                    changed = true
+                } else {
+                    output.append(piece)
+                }
+            } catch {
+                output.append(piece)
+            }
+        }
+        return changed ? output.joined(separator: "\n") : nil
     }
 
     // MARK: 今日 Recap
@@ -302,9 +339,9 @@ enum Summarizer {
 
         請整理成「今日 Recap」，嚴格照這個格式輸出：
         標題：（今天的標題，12 字以內）
-        總結：（2～3 句，今天發生了什麼）
+        總結：（4～6 句的高層次總結：今天主要在忙什麼、有哪些重要的討論或決定、整體的脈絡）
         重點：
-        - （3～6 點今天最重要的事）
+        - （6～10 點，依主題分組，每點寫成「主題：具體內容」，包含時間、人、決定、數字等細節）
         待辦：
         - （所有提到要做的事；沒有就寫「無」）
         """
@@ -346,9 +383,9 @@ enum Summarizer {
     private static let lectureFormat = """
     請嚴格照這個格式輸出，不要加其他說明：
     標題：（這堂課的主題，15 字以內）
-    總結：（2～3 句，這堂課教了什麼）
+    總結：（4～6 句的高層次總結：這堂課的主題、要解決的問題、核心觀念之間的關係、結論）
     重點：
-    - （4～8 點）
+    - （6～12 點，依課程段落或觀念分組，每點寫成「觀念：解釋與例子」，保留老師舉的例子、公式、數字）
     術語：
     - （原文術語：中文解釋；沒有就寫「無」）
     提醒：

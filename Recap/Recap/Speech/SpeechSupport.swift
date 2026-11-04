@@ -25,6 +25,19 @@ enum SpeechSupport {
         }
     }
 
+    /// 自訂詞彙（人名、術語）告訴辨識器，提高這些詞的辨識率。
+    static func applyVocabulary(_ words: [String], to analyzer: SpeechAnalyzer) async {
+        let cleaned = words.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return }
+        let context = AnalysisContext()
+        context.contextualStrings[.general] = cleaned
+        do {
+            try await analyzer.setContext(context)
+        } catch {
+            appLog.info("設定自訂詞彙失敗：\(error.localizedDescription)")
+        }
+    }
+
     static func displayName(_ locale: Locale) -> String {
         let name = Locale(identifier: "zh-Hant-TW").localizedString(forIdentifier: locale.identifier) ?? locale.identifier
         return "\(name)（\(locale.identifier)）"
@@ -41,12 +54,13 @@ enum SpeechSupport {
 
 /// 把一個錄好的音檔轉成文字（全天模式用；不需連網，沒有時間長度限制）。
 enum FileTranscriber {
-    static func transcribe(url: URL, localeID: String) async throws -> String {
+    static func transcribe(url: URL, localeID: String, vocabulary: [String] = []) async throws -> String {
         guard let locale = await SpeechSupport.resolve(localeID) else { throw RecapError.localeUnsupported(localeID) }
         let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
         try await SpeechSupport.ensureAssets(for: [transcriber])
         let file = try AVAudioFile(forReading: url)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        await SpeechSupport.applyVocabulary(vocabulary, to: analyzer)
         let collector = Task { () throws -> [String] in
             var parts: [String] = []
             for try await result in transcriber.results {

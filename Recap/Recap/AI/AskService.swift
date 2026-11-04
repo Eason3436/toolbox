@@ -53,7 +53,7 @@ enum AskService {
             if onlyLecture == nil {
                 for segment in record.segments where segment.hasText {
                     let route = SegmentRoute(dayKey: record.dayKey, id: segment.id)
-                    let pieces = Summarizer.chunk(segment.transcript ?? "", budget: 260)
+                    let pieces = Summarizer.chunk(segment.bestTranscript ?? "", budget: 260)
                     for piece in pieces {
                         result.append(Passage(time: segment.start, label: label(segment.start, multiDay: records.count > 1), text: piece, segmentRoute: route))
                     }

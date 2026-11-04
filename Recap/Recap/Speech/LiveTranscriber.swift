@@ -13,13 +13,14 @@ final class LiveTranscriber: AudioSink, @unchecked Sendable {
     /// (文字, 是否為確定結果)；主執行緒呼叫
     var onResult: (@MainActor (String, Bool) -> Void)?
 
-    func start(localeID: String) async throws {
+    func start(localeID: String, vocabulary: [String] = []) async throws {
         guard let locale = await SpeechSupport.resolve(localeID) else { throw RecapError.localeUnsupported(localeID) }
         let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
         try await SpeechSupport.ensureAssets(for: [transcriber])
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        await SpeechSupport.applyVocabulary(vocabulary, to: analyzer)
         let handler = onResult
         resultsTask = Task {
             do {

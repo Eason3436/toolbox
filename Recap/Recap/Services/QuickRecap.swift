@@ -88,10 +88,10 @@ final class QuickRecap {
         var parts: [String] = []
         for (index, item) in segments.enumerated() {
             let (key, segment) = item
-            var text = segment.transcript
+            var text = segment.bestTranscript
             if text == nil, segment.status == .recorded, let file = segment.audioFile {
                 state = .working("轉文字中（\(index + 1)/\(segments.count)）…")
-                let result = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale)
+                let result = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale, vocabulary: settings.vocabulary)
                 text = result
                 let empty = result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 store.updateSegment(segment.id, in: key) {

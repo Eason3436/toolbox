@@ -59,6 +59,7 @@ struct DayDetailView: View {
 
 struct SegmentDetailView: View {
     let route: SegmentRoute
+    @State private var showRaw = false
     @Environment(RecapStore.self) private var store
     @Environment(ProcessingQueue.self) private var queue
     @Environment(\.dismiss) private var dismiss
@@ -83,9 +84,18 @@ struct SegmentDetailView: View {
                         Card { AudioPlayerView(url: store.audioURL(file)) }
                     }
                     Card {
-                        Text("逐字稿").font(.headline)
-                        if let transcript = segment.transcript, !transcript.isEmpty {
+                        HStack {
+                            Text("逐字稿").font(.headline)
+                            Spacer()
+                            if segment.correctedTranscript != nil {
+                                Toggle("原始辨識", isOn: $showRaw).fixedSize().font(.footnote)
+                            }
+                        }
+                        if let transcript = showRaw ? segment.transcript : segment.bestTranscript, !transcript.isEmpty {
                             Text(transcript).textSelection(.enabled)
+                            if segment.correctedTranscript != nil, !showRaw {
+                                Label("已用 AI 校正錯字", systemImage: "wand.and.sparkles").font(.caption).foregroundStyle(.secondary)
+                            }
                         } else {
                             Text(segment.status.label).foregroundStyle(.secondary)
                         }
@@ -106,7 +116,7 @@ struct SegmentDetailView: View {
                     }
                     if segment.hasText {
                         Button("重新摘要", systemImage: "sparkles") {
-                            store.updateSegment(segment.id, in: route.dayKey) { $0.status = .transcribed }
+                            store.updateSegment(segment.id, in: route.dayKey) { $0.status = .transcribed; $0.correctedTranscript = nil }
                             queue.kick(summaries: true)
                         }
                     }
