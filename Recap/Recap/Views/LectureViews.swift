@@ -99,6 +99,8 @@ struct LectureStartView: View {
             }
         }
         .navigationTitle("課堂模式")
+        .sensoryFeedback(.selection, trigger: settings.lectureSourceLocale)
+        .sensoryFeedback(.selection, trigger: settings.translationTarget)
         .task {
             locales = await SpeechSupport.supportedLocales().sorted { $0.identifier < $1.identifier }
             await refreshStatus()

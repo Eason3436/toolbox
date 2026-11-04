@@ -107,9 +107,11 @@ final class RecordingController {
             startedAt = now
             segmentsThisSession = 0
             state = .recording
+            Haptics.recordStart()
             liveActivity.start(mode: mode, state: activityState())
             startTicking()
         } catch {
+            Haptics.error()
             lastError = error.localizedDescription
             recorder.stop()
             recorder.setSinks([])
@@ -126,6 +128,7 @@ final class RecordingController {
         guard isActive else { return }
         if manual, settings.activeSchedule() != nil { manualStopAt = .now }
         tickTask?.cancel()
+        Haptics.recordStop()
         recorder.stop()
         recorder.setSinks([])
         writer?.flush()
@@ -187,7 +190,8 @@ final class RecordingController {
             guard state != .paused else { return }
             writer?.flush()
             state = .interrupted
-            updateActivity()
+            Haptics.warning()
+            updateActivity(alert: true)
         case .interruptionEnded:
             // 不管系統建議與否都試著恢復（錄音 App 的預期行為）；別的 App 可能還沒放開麥克風，多試幾次
             guard state != .paused else { return }
@@ -211,6 +215,7 @@ final class RecordingController {
         do {
             try recorder.start()
             state = .recording
+            Haptics.toggle()
             updateActivity()
             Notifications.clearResumeReminder()
         } catch {
@@ -230,6 +235,7 @@ final class RecordingController {
         writer?.flush()
         state = .paused
         level = 0
+        Haptics.toggle()
         updateActivity()
     }
 
@@ -273,8 +279,8 @@ final class RecordingController {
         )
     }
 
-    private func updateActivity(line: String? = nil, throttle: Bool = false) {
-        liveActivity.update(activityState(line: line), throttle: throttle)
+    private func updateActivity(line: String? = nil, throttle: Bool = false, alert: Bool = false) {
+        liveActivity.update(activityState(line: line), throttle: throttle, alert: alert)
     }
 
     func cleanUpStaleActivities() {
