@@ -1,15 +1,22 @@
+import AppIntents
 import SwiftUI
 import Translation
 
 /// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面與過去的課。
 struct LectureHomeView: View {
     @Environment(RecordingController.self) private var recorder
+    @Environment(Router.self) private var router
 
     var body: some View {
-        NavigationStack {
+        @Bindable var router = router
+        NavigationStack(path: $router.lecturePath) {
             Group {
                 if recorder.mode == .lecture, recorder.isActive, let session = recorder.lecture {
                     LectureLiveView(session: session)
+                        .userActivity(SiriScreen.lectureActivity) { activity in
+                            activity.title = session.lecture.displayTitle
+                            activity.appEntityIdentifier = EntityIdentifier(for: LectureEntity.self, identifier: session.lecture.id)
+                        }
                 } else {
                     LectureStartView()
                 }
@@ -100,6 +107,7 @@ struct LectureStartView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
                 }
                 .onDelete { offsets in
                     for index in offsets { store.deleteLecture(lectures[index]) }
@@ -341,6 +349,11 @@ struct LectureDetailView: View {
             }
             .navigationTitle(lecture.displayTitle)
             .navigationBarTitleDisplayMode(.inline)
+            // 螢幕感知：Siri 知道「這堂課」是哪一堂
+            .userActivity(SiriScreen.lectureActivity) { activity in
+                activity.title = lecture.displayTitle
+                activity.appEntityIdentifier = EntityIdentifier(for: LectureEntity.self, identifier: lecture.id)
+            }
             .toolbar {
                 NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) { Image(systemName: "questionmark.bubble") }
                 ShareLink(item: MarkdownExport.lecture(lecture)) { Image(systemName: "square.and.arrow.up") }

@@ -75,6 +75,8 @@ final class Router {
     var tab: Tab = .today
     /// 顯示「最近 N 分鐘重點」
     var showQuickRecap = false
+    /// 課堂分頁的導覽（Siri「打開課堂筆記」用）
+    var lecturePath = NavigationPath()
 }
 
 /// 背景整理：BGProcessingTask，接電源時才跑（轉文字＋摘要＋Recap）。

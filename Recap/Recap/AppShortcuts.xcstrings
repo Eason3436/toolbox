@@ -1,0 +1,166 @@
+{
+  "sourceLanguage": "zh-Hant",
+  "strings": {
+    "用 ${applicationName} 錄這堂課": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record this class with ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 開始上課": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start class in ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 開始上 ${subject} 課": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start ${subject} class in ${applicationName}"
+          }
+        }
+      }
+    },
+    "用 ${applicationName} 開始錄音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start recording with ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 開始錄音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} start recording"
+          }
+        }
+      }
+    },
+    "${applicationName} 暫停錄音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 繼續錄音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 停止錄音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop recording in ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 剛剛講了什麼": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What did I just miss in ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 最近 15 分鐘重點": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} last 15 minutes"
+          }
+        }
+      }
+    },
+    "${applicationName} 今天的重點": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today's highlights in ${applicationName}"
+          }
+        }
+      }
+    },
+    "看 ${applicationName} 今日 Recap": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show today's ${applicationName}"
+          }
+        }
+      }
+    },
+    "問 ${applicationName}": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 幫我查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search with ${applicationName}"
+          }
+        }
+      }
+    },
+    "打開 ${applicationName} 的 ${target}": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open ${target} in ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} 打開課堂筆記": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open class notes in ${applicationName}"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

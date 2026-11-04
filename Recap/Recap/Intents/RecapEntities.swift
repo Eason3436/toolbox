@@ -69,9 +69,34 @@ struct DayRecapQuery: EntityStringQuery {
 
     @MainActor
     func entities(matching string: String) async throws -> [DayRecapEntity] {
-        RecapStore.shared.dayKeys.map { RecapStore.shared.day($0) }
+        if let key = Self.relativeDayKey(string) { return [DayRecapEntity(record: RecapStore.shared.day(key))] }
+        return RecapStore.shared.dayKeys.map { RecapStore.shared.day($0) }
             .map(DayRecapEntity.init(record:))
             .filter { $0.fullText.localizedCaseInsensitiveContains(string) }
+    }
+}
+
+extension DayRecapQuery {
+    /// 「今天」「昨天」「前天」「星期一」「today」「yesterday」
+    static func relativeDayKey(_ text: String) -> String? {
+        let t = text.lowercased()
+        let calendar = Calendar.current
+        let today = Date()
+        if t.contains("今天") || t.contains("today") { return DayKey.key(for: today) }
+        if t.contains("前天") { return calendar.date(byAdding: .day, value: -2, to: today).map(DayKey.key(for:)) }
+        if t.contains("昨天") || t.contains("yesterday") { return calendar.date(byAdding: .day, value: -1, to: today).map(DayKey.key(for:)) }
+        let names = [("日", 1), ("天", 1), ("一", 2), ("二", 3), ("三", 4), ("四", 5), ("五", 6), ("六", 7)]
+        for prefix in ["星期", "禮拜", "週", "周"] {
+            for (name, weekday) in names where t.contains(prefix + name) {
+                // 最近的那一天（今天以前，含今天）
+                for back in 0..<7 {
+                    if let day = calendar.date(byAdding: .day, value: -back, to: today), calendar.component(.weekday, from: day) == weekday {
+                        return DayKey.key(for: day)
+                    }
+                }
+            }
+        }
+        return nil
     }
 }
 
@@ -85,10 +110,14 @@ struct LectureEntity: AppEntity, IndexedEntity {
     var start: Date
     @Property(title: "主題")
     var title: String
+    @Property(title: "科目")
+    var subject: String
     @Property(title: "總結")
     var overview: String
     @Property(title: "重點")
     var keyPoints: [String]
+    @Property(title: "老師說會考")
+    var examPoints: [String]
     @Property(title: "術語")
     var terms: [String]
     @Property(title: "作業與提醒")
@@ -98,8 +127,10 @@ struct LectureEntity: AppEntity, IndexedEntity {
         id = lecture.id
         start = lecture.start
         title = lecture.displayTitle
+        subject = lecture.subject.map { $0 == .general ? "" : $0.title } ?? ""
         overview = lecture.summary?.overview ?? ""
         keyPoints = lecture.summary?.keyPoints ?? []
+        examPoints = lecture.summary?.examPoints ?? []
         terms = lecture.summary?.terms ?? []
         todos = lecture.summary?.todos ?? []
     }
@@ -107,7 +138,7 @@ struct LectureEntity: AppEntity, IndexedEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(title)",
-            subtitle: "\(start.formatted(date: .abbreviated, time: .shortened))",
+            subtitle: "\(subject.isEmpty ? "" : subject + "・")\(start.formatted(date: .abbreviated, time: .shortened))",
             image: .init(systemName: "graduationcap")
         )
     }
@@ -115,6 +146,7 @@ struct LectureEntity: AppEntity, IndexedEntity {
     var fullText: String {
         var text = "課堂「\(title)」（\(start.formatted(date: .abbreviated, time: .shortened))）。\(overview)"
         if !keyPoints.isEmpty { text += "\n重點：\n" + keyPoints.map { "・\($0)" }.joined(separator: "\n") }
+        if !examPoints.isEmpty { text += "\n老師說會考：\n" + examPoints.map { "・\($0)" }.joined(separator: "\n") }
         if !terms.isEmpty { text += "\n術語：\n" + terms.map { "・\($0)" }.joined(separator: "\n") }
         if !todos.isEmpty { text += "\n作業與提醒：\n" + todos.map { "・\($0)" }.joined(separator: "\n") }
         return text
@@ -134,8 +166,13 @@ struct LectureQuery: EntityStringQuery {
 
     @MainActor
     func entities(matching string: String) async throws -> [LectureEntity] {
-        RecapStore.shared.allLectures.map(LectureEntity.init(lecture:))
-            .filter { $0.fullText.localizedCaseInsensitiveContains(string) }
+        let query = string.replacingOccurrences(of: "課", with: "").trimmingCharacters(in: .whitespaces)
+        let all = RecapStore.shared.allLectures.map(LectureEntity.init(lecture:))
+        guard !query.isEmpty else { return all }
+        // 先比課名和科目（「化學課」「上一堂英文」），再比內容
+        let byName = all.filter { $0.title.localizedCaseInsensitiveContains(query) || (!$0.subject.isEmpty && query.contains($0.subject)) || $0.subject.localizedCaseInsensitiveContains(query) }
+        if !byName.isEmpty { return byName }
+        return all.filter { $0.fullText.localizedCaseInsensitiveContains(query) }
     }
 }
 
@@ -146,13 +183,26 @@ enum SiriIndex {
         let store = RecapStore.shared
         let days = store.dayKeys.prefix(60).map { store.day($0) }.filter { $0.recap != nil }.map(DayRecapEntity.init(record:))
         let lectures = store.allLectures.prefix(100).filter { $0.summary != nil }.map(LectureEntity.init(lecture:))
+        let segments = Array(RecordingSegmentQuery.all(days: 14).filter { !$0.points.isEmpty }.prefix(300))
+        let todos = TodoQuery.all()
         Task.detached {
             do {
                 try await CSSearchableIndex.default().indexAppEntities(days)
                 try await CSSearchableIndex.default().indexAppEntities(lectures)
+                try await CSSearchableIndex.default().indexAppEntities(segments)
+                try await CSSearchableIndex.default().indexAppEntities(todos)
             } catch {
                 appLog.error("Spotlight 索引失敗：\(error.localizedDescription)")
             }
+        }
+        // 讓「打開 Recap 的〇〇課」這類帶參數的語句認得最新的課
+        RecapShortcuts.updateAppShortcutParameters()
+    }
+
+    /// 刪掉課堂時一起從 Siri／Spotlight 移除
+    static func remove(lecture id: UUID) {
+        Task.detached {
+            try? await CSSearchableIndex.default().deleteAppEntities(identifiedBy: [id], ofType: LectureEntity.self)
         }
     }
 }

@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 struct TodayView: View {
@@ -211,6 +212,16 @@ struct DayContentView: View {
     @Environment(ProcessingQueue.self) private var queue
 
     var body: some View {
+        content
+            // 螢幕感知：Siri 知道「今天／這天的 Recap」是哪一天
+            .userActivity(SiriScreen.dayActivity) { activity in
+                activity.title = store.day(dayKey).recap?.title ?? dayKey
+                activity.appEntityIdentifier = EntityIdentifier(for: DayRecapEntity.self, identifier: dayKey)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let record = store.day(dayKey)
         VStack(spacing: 16) {
             recapCard(record)
@@ -303,11 +314,13 @@ struct DayContentView: View {
                             SegmentRow(segment: segment)
                         }
                         .buttonStyle(.plain)
+                        .appEntityIdentifier(EntityIdentifier(for: RecordingSegmentEntity.self, identifier: RecordingSegmentEntity.makeID(dayKey: dayKey, segmentID: segment.id)))
                     case .lecture(let lecture):
                         NavigationLink(value: LectureRoute(id: lecture.id)) {
                             LectureRow(lecture: lecture)
                         }
                         .buttonStyle(.plain)
+                        .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
                     }
                     Divider().padding(.leading, 64)
                 }
