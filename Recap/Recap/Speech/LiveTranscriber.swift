@@ -33,11 +33,23 @@ final class LiveTranscriber: AudioSink, @unchecked Sendable {
             }
         }
         try await analyzer.start(inputSequence: stream)
+        install(format: format, continuation: continuation, analyzer: analyzer)
+    }
+
+    private func install(format: AVAudioFormat?, continuation: AsyncStream<AnalyzerInput>.Continuation, analyzer: SpeechAnalyzer) {
         lock.lock()
         self.format = format
         self.continuation = continuation
         self.analyzer = analyzer
         lock.unlock()
+    }
+
+    private func takeContinuation() -> (AsyncStream<AnalyzerInput>.Continuation?, SpeechAnalyzer?) {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = (continuation, analyzer)
+        continuation = nil
+        return result
     }
 
     func receive(_ buffer: AVAudioPCMBuffer, rms: Float) {
@@ -56,11 +68,7 @@ final class LiveTranscriber: AudioSink, @unchecked Sendable {
 
     /// 停止並等最後的結果出來。
     func finish() async {
-        lock.lock()
-        let continuation = self.continuation
-        let analyzer = self.analyzer
-        self.continuation = nil
-        lock.unlock()
+        let (continuation, analyzer) = takeContinuation()
         continuation?.finish()
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
         await resultsTask?.value
