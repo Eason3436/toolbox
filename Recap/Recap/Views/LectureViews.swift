@@ -389,7 +389,7 @@ struct LectureDetailView: View {
                     Image(systemName: "doc.richtext").font(.title2).foregroundStyle(.tint)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("詳細課程筆記").font(.headline).foregroundStyle(.primary)
-                        Text("摘要、各主題重點、會考").font(.footnote).foregroundStyle(.secondary)
+                        Text("流程、重點、會考、補充、事實查核、單字表").font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(.tertiary)

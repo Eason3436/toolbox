@@ -3,7 +3,7 @@ import SwiftUI
 import WebKit
 
 /// 用 Gemini 把整堂課整理成排版完整的課程筆記（HTML）：課堂流程、各主題重點、數字卡、
-/// 只放摘要與重點。App 用自己的樣式顯示，不執行任何程式碼。
+/// 課堂流程、各主題重點、會考、補充、事實查核、單字表。App 用自己的樣式顯示，不執行任何程式碼。
 enum RichNotes {
     static func generate(lecture: Lecture, transcript: String, memory: String) async throws -> String {
         let subject = lecture.subject ?? .general
@@ -21,14 +21,18 @@ enum RichNotes {
         以下是完整逐字稿：
         \(transcript)
 
-        請輸出一份 HTML 片段（不要 <html>、<head>、<style>、<script>，不要 Markdown code block），只要「摘要」和「重點」，只能使用下列結構與 class：
+        請輸出一份 HTML 片段（不要 <html>、<head>、<style>、<script>，不要 Markdown code block），只能使用下列結構與 class：
 
         <header>
           <p class="eyebrow">科目或課名・上課紀錄整理</p>
           <h1>這堂課的標題（點出主題）</h1>
           <p class="lead">摘要：4～6 句，這堂課在講什麼、依什麼順序、整體脈絡與結論</p>
         </header>
-        <nav class="chips"><a href="#s1">主題一</a><a href="#s2">主題二</a>…</nav>
+        <nav class="chips"><a href="#s0">課堂流程</a><a href="#s1">主題一</a>…<a href="#vocab">單字表</a></nav>
+
+        <section class="card" id="s0"><h2><span class="num">00</span>課堂流程</h2>
+          <ol class="steps"><li>依時間順序的每個環節（暖身、講解、看影片、討論、活動、交代作業…）</li></ol>
+        </section>
 
         每個主題一個 section（依上課順序，id 用 s1、s2…，num 用 01、02…）：
         <section class="card" id="s1"><h2><span class="num">01</span>主題名稱</h2>
@@ -36,17 +40,32 @@ enum RichNotes {
           <div class="stats"><div class="stat"><b>關鍵數字或名詞</b><span>說明</span></div>…</div>（有重要數字、年份、比例時才用，2～6 個）
           <ul><li><strong>概念</strong>（<code>English term</code>）：具體解釋、老師舉的例子、因果關係</li></ul>
           <table>…</table>（有對照、分類時才用）
-          <aside class="exam"><h3>★ 會考</h3>老師說會考、要背、常考的內容</aside>（有才放）
+          <aside class="example"><h3>課堂範例</h3>老師舉的例子，推導過程寫清楚</aside>
+          <aside class="tip"><h3>老師的提示</h3>老師提醒要注意的地方</aside>
+          <aside class="exam"><h3>★ 會考</h3>老師說會考、要背、常考的內容</aside>
+          <aside class="note"><h3>補充</h3>幫助理解的背景知識（標明是補充）</aside>
+          <aside class="check"><h3>事實查核</h3><ul><li>逐字稿或老師說法和目前事實不一致的地方，寫出正確說法與理由</li></ul></aside>
         </section>
 
+        最後一個 section：
+        <section class="card" id="vocab"><h2><span class="num">字</span>單字表</h2><table><tr><th>英文</th><th>詞性</th><th>中文</th><th>課堂用法</th></tr>…</table></section>
+
         規則：
-        - 只寫摘要和重點，不要課堂流程、單字表、補充、事實查核、練習題、自我測驗或參考答案。
+        - aside 只在真的有內容時才放。
+        - 不要出練習題、自我測驗或參考答案。
         - 重點要詳細具體，保留老師的例子、數字、公式、原話重點；不要空泛。
         - 講座不用會考，改成 <aside class="exam"><h3>★ 講者強調</h3>…</aside>。
         - 英文術語一律用 <code> 包起來；重點詞用 <strong>。
-        - 只根據逐字稿，不要編造課堂上沒有的內容。
+        - 只根據逐字稿與可靠常識，不要編造課堂上沒發生的事；補充與事實查核要標清楚。
         """
-        let html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4)
+        let html: String
+        do {
+            // 可以上網查證，事實查核比較準
+            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4, googleSearch: true)
+        } catch GeminiError.server(let code, _) where code == 400 {
+            // 這個模型或方案不支援搜尋：不查證也照樣整理
+            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4)
+        }
         return sanitize(html)
     }
 
