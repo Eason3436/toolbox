@@ -20,6 +20,8 @@ final class AppSettings {
     var skipSilence: Bool { didSet { defaults.set(skipSilence, forKey: "skipSilence") } }
     /// 轉好文字後刪掉全天錄音的音檔（省空間）
     var deleteAudioAfterTranscribe: Bool { didSet { defaults.set(deleteAudioAfterTranscribe, forKey: "deleteAudioAfterTranscribe") } }
+    /// 錄音檔保留幾天（0 = 永久保留）；過期只刪音檔，文字稿與摘要保留
+    var audioRetentionDays: Int { didSet { defaults.set(audioRetentionDays, forKey: "audioRetentionDays") } }
     /// 在排程時段內打開 App 時自動開始錄音
     var autoStartInSchedule: Bool { didSet { defaults.set(autoStartInSchedule, forKey: "autoStartInSchedule") } }
     /// 排程開始時發通知
@@ -41,6 +43,7 @@ final class AppSettings {
             "skipSilence": true,
             "deleteAudioAfterTranscribe": false,
             "autoStartInSchedule": true,
+            "audioRetentionDays": 7,
             "scheduleNotifications": true,
             "lectureShowSource": true,
         ])
@@ -51,6 +54,7 @@ final class AppSettings {
         skipSilence = defaults.bool(forKey: "skipSilence")
         deleteAudioAfterTranscribe = defaults.bool(forKey: "deleteAudioAfterTranscribe")
         autoStartInSchedule = defaults.bool(forKey: "autoStartInSchedule")
+        audioRetentionDays = defaults.integer(forKey: "audioRetentionDays")
         scheduleNotifications = defaults.bool(forKey: "scheduleNotifications")
         lectureShowSource = defaults.bool(forKey: "lectureShowSource")
         if let data = defaults.data(forKey: "schedules"),

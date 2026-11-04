@@ -24,6 +24,7 @@ final class AppModel {
         recorder.appDidBecomeActive()
         recorder.cleanUpStaleActivities()
         queue.kick(summaries: true)
+        store.purgeAudio(olderThan: settings.audioRetentionDays)
         autoStartIfScheduled()
     }
 
