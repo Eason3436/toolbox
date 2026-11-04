@@ -1,41 +1,28 @@
 import Foundation
 import FoundationModels
 
-// MARK: - 模型輸出格式
+// MARK: - 輸出格式
+// 注意：permissiveContentTransformations 只對「產生純文字」有效，guided generation（@Generable）
+// 一律用預設安全機制，日常對話很容易被誤擋。所以這裡都請模型輸出固定格式的文字，再自己解析。
 
-@Generable
-struct SegmentDigest {
-    @Guide(description: "15 字以內的繁體中文標題，說明這段在講什麼")
+struct SegmentDigest: Sendable {
     var title: String
-    @Guide(description: "1～4 個繁體中文重點，每點一句，只寫內容裡真的有的")
     var points: [String]
-    @Guide(description: "提到要做的事、約定、期限（繁體中文）；沒有就留空陣列")
     var todos: [String]
 }
 
-@Generable
-struct RecapOutput {
-    @Guide(description: "今天的標題，12 字以內，繁體中文")
+struct RecapOutput: Sendable {
     var title: String
-    @Guide(description: "2～3 句繁體中文，總結今天發生了什麼")
     var overview: String
-    @Guide(description: "3～6 個今天最重要的重點，每點一句，繁體中文")
     var highlights: [String]
-    @Guide(description: "所有提到要做的事、約定、期限；沒有就留空陣列")
     var todos: [String]
 }
 
-@Generable
-struct LectureOutput {
-    @Guide(description: "這堂課的主題，15 字以內，繁體中文")
+struct LectureOutput: Sendable {
     var title: String
-    @Guide(description: "2～3 句繁體中文，說明這堂課教了什麼")
     var overview: String
-    @Guide(description: "4～8 個課堂重點，繁體中文，每點一句")
     var keyPoints: [String]
-    @Guide(description: "重要的原文術語，每個寫成「原文術語：繁體中文解釋」")
     var terms: [String]
-    @Guide(description: "作業、考試、報告、截止日期等提醒，繁體中文；沒有就留空陣列")
     var todos: [String]
 }
 
@@ -77,14 +64,29 @@ enum Summarizer {
     static let inputTokenBudget = 2_000
 
     private static let baseInstructions = """
-    你是貼心的個人助理，負責整理使用者一天中錄下來的對話與聲音轉成的文字。
+    你是貼心的個人助理，負責整理使用者錄下來的對話與聲音轉成的文字。
     文字是語音辨識的結果，可能有錯字、沒有標點、或混雜旁人的聲音，請推敲原意。
+    這是使用者自己的私人筆記，內容可能包含日常閒聊、玩笑或新聞，照實中立地整理即可。
     一律使用台灣繁體中文。只寫內容裡真的出現的資訊，不要編造。
     """
 
-    private static func makeSession(_ instructions: String) -> LanguageModelSession {
+    private static let digestFormat = """
+    請嚴格照這個格式輸出，不要加其他說明：
+    標題：（15 字以內）
+    重點：
+    - （1～4 點，每點一句）
+    待辦：
+    - （提到要做的事、約定、期限；沒有就寫「無」）
+    """
+
+    static func makeSession(_ instructions: String) -> LanguageModelSession {
         let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
         return LanguageModelSession(model: model, instructions: instructions)
+    }
+
+    /// 產生純文字回應。
+    static func respondText(instructions: String, prompt: String) async throws -> String {
+        try await makeSession(instructions).respond(to: prompt).content
     }
 
     /// 粗估 tokens：中日韓字約 1.2 token，其他字元約 0.3 token。
@@ -142,38 +144,125 @@ enum Summarizer {
         return result
     }
 
+    // MARK: 解析
+
+    /// 把「標題：… / 重點： - … - …」格式拆成段落。
+    static func parseSections(_ text: String) -> [String: [String]] {
+        let keys = ["標題", "總結", "概要", "重點", "課堂重點", "術語", "待辦", "提醒", "作業與提醒"]
+        var result: [String: [String]] = [:]
+        var current = "重點"
+        for raw in text.components(separatedBy: .newlines) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            line = line.replacingOccurrences(of: "**", with: "")
+            guard !line.isEmpty else { continue }
+            var matched = false
+            for key in keys {
+                for sep in ["：", ":"] where line.hasPrefix(key + sep) || line.hasPrefix("#" + key) || line.hasPrefix("## " + key) {
+                    current = key
+                    let rest = line.components(separatedBy: sep).dropFirst().joined(separator: sep).trimmingCharacters(in: .whitespaces)
+                    if !rest.isEmpty { result[current, default: []].append(rest) }
+                    matched = true
+                    break
+                }
+                if matched { break }
+            }
+            if matched { continue }
+            let item = stripBullet(line)
+            if !item.isEmpty { result[current, default: []].append(item) }
+        }
+        // 「無」等於沒有
+        for (key, items) in result {
+            result[key] = items.filter { !["無", "无", "沒有", "none", "無。"].contains($0.lowercased()) && !$0.hasPrefix("（") }
+        }
+        return result
+    }
+
+    private static func stripBullet(_ line: String) -> String {
+        var s = Substring(line)
+        while let first = s.first, "-•・*·●▪︎◦ ".contains(first) { s = s.dropFirst() }
+        // 「1.」「1、」「(1)」
+        if let dot = s.firstIndex(where: { ".、)）".contains($0) }), s.distance(from: s.startIndex, to: dot) <= 3,
+           s[s.startIndex..<dot].allSatisfy({ $0.isNumber || $0 == "(" || $0 == "（" }) {
+            s = s[s.index(after: dot)...]
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func first(_ sections: [String: [String]], _ keys: [String]) -> String {
+        for key in keys { if let v = sections[key]?.first, !v.isEmpty { return v } }
+        return ""
+    }
+
+    private static func all(_ sections: [String: [String]], _ keys: [String]) -> [String] {
+        keys.flatMap { sections[$0] ?? [] }
+    }
+
+    static func isGuardrail(_ error: Error) -> Bool {
+        if let error = error as? LanguageModelSession.GenerationError, case .guardrailViolation = error { return true }
+        return false
+    }
+
+    static func isTooLong(_ error: Error) -> Bool {
+        if let error = error as? LanguageModelSession.GenerationError, case .exceededContextWindowSize = error { return true }
+        return false
+    }
+
     // MARK: 一段錄音
 
-    /// 摘要一段逐字稿（太長會自動切塊再合併）。
+    /// 摘要一段逐字稿（太長會自動切塊再合併）。被安全機制擋下的小段會略過，不會讓整段失敗。
     static func summarizeSegment(_ transcript: String, timeLabel: String) async throws -> SegmentDigest {
         let chunks = chunk(transcript)
         if chunks.count <= 1 {
             return try await digest(text: chunks.first ?? transcript, header: "以下是 \(timeLabel) 錄到的逐字稿：")
         }
         var partial: [SegmentDigest] = []
+        var lastError: Error?
         for (index, text) in chunks.enumerated() {
             try Task.checkCancellation()
-            partial.append(try await digest(text: text, header: "以下是 \(timeLabel) 逐字稿的第 \(index + 1) 部分："))
+            do {
+                partial.append(try await digest(text: text, header: "以下是 \(timeLabel) 逐字稿的第 \(index + 1) 部分："))
+            } catch {
+                lastError = error
+            }
         }
-        let merged = partial.map { "・\($0.title)：\($0.points.joined(separator: "；"))\($0.todos.isEmpty ? "" : "（待辦：\($0.todos.joined(separator: "、"))）")" }
-            .joined(separator: "\n")
-        return try await digest(text: merged, header: "以下是同一段時間（\(timeLabel)）幾個部分的摘要，請合併成一份：")
+        guard !partial.isEmpty else { throw lastError ?? RecapError.modelUnavailable("無法摘要") }
+        return try await merge(partial, header: "以下是同一段時間（\(timeLabel)）幾個部分的摘要，請合併成一份：")
     }
 
-    private static func digest(text: String, header: String, depth: Int = 0) async throws -> SegmentDigest {
-        let session = makeSession(baseInstructions)
-        let prompt = "\(header)\n\(text)\n\n請產生標題、重點與待辦。"
+    /// 合併幾份摘要；合併被擋就直接拼起來。
+    static func merge(_ parts: [SegmentDigest], header: String) async throws -> SegmentDigest {
+        if parts.count == 1 { return parts[0] }
+        let text = parts.map(line(for:)).joined(separator: "\n")
         do {
-            return try await session.respond(to: prompt, generating: SegmentDigest.self).content
-        } catch let error as LanguageModelSession.GenerationError {
-            if case .exceededContextWindowSize = error, depth < 3 {
-                // 太長：對半切再合併
-                let half = chunk(text, budget: max(200, estimateTokens(text) / 2))
-                var parts: [SegmentDigest] = []
-                for piece in half { parts.append(try await digest(text: piece, header: header, depth: depth + 1)) }
-                return SegmentDigest(title: parts.first?.title ?? "", points: Array(parts.flatMap(\.points).prefix(4)), todos: parts.flatMap(\.todos))
+            return try await digest(text: text, header: header)
+        } catch {
+            if error is CancellationError { throw error }
+            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(5)), todos: parts.flatMap(\.todos))
+        }
+    }
+
+    static func line(for d: SegmentDigest) -> String {
+        "・\(d.title)：\(d.points.joined(separator: "；"))\(d.todos.isEmpty ? "" : "（待辦：\(d.todos.joined(separator: "、"))）")"
+    }
+
+    /// 一次摘要。太長或被擋時對半切再試（最多兩層）。
+    static func digest(text: String, header: String, depth: Int = 0) async throws -> SegmentDigest {
+        let prompt = "\(header)\n\(text)\n\n\(digestFormat)"
+        do {
+            let output = try await respondText(instructions: baseInstructions, prompt: prompt)
+            let sections = parseSections(output)
+            var title = first(sections, ["標題"])
+            if title.isEmpty { title = String(text.prefix(14)) }
+            return SegmentDigest(title: title, points: Array(all(sections, ["重點"]).prefix(5)), todos: all(sections, ["待辦", "提醒"]))
+        } catch {
+            guard (isTooLong(error) || isGuardrail(error)), depth < 2, estimateTokens(text) > 120 else { throw error }
+            let halves = chunk(text, budget: max(100, estimateTokens(text) / 2 + 1))
+            var parts: [SegmentDigest] = []
+            for piece in halves {
+                if let d = try? await digest(text: piece, header: header, depth: depth + 1) { parts.append(d) }
             }
-            throw error
+            guard !parts.isEmpty else { throw error }
+            return SegmentDigest(title: parts[0].title, points: Array(parts.flatMap(\.points).prefix(5)), todos: parts.flatMap(\.todos))
         }
     }
 
@@ -193,19 +282,47 @@ enum Summarizer {
         var round = 0
         while estimateTokens(lines.joined(separator: "\n")) > inputTokenBudget, round < 4 {
             round += 1
-            let groups = chunk(lines.joined(separator: "\n"))
             var merged: [String] = []
-            for group in groups {
+            for group in chunk(lines.joined(separator: "\n")) {
                 try Task.checkCancellation()
-                let d = try await digest(text: group, header: "以下是 \(dayLabel) 某個時段裡各段錄音的摘要，請合併成這個時段的摘要：")
-                let firstTime = group.prefix(5)
-                merged.append("\(firstTime) 起｜\(d.title)：\(d.points.joined(separator: "；"))\(d.todos.isEmpty ? "" : "（待辦：\(d.todos.joined(separator: "、"))）")")
+                let start = String(group.prefix(5))
+                if let d = try? await digest(text: group, header: "以下是 \(dayLabel) 某個時段裡各段錄音的摘要，請合併成這個時段的摘要：") {
+                    merged.append("\(start) 起｜\(d.title)：\(d.points.joined(separator: "；"))\(d.todos.isEmpty ? "" : "（待辦：\(d.todos.joined(separator: "、"))）")")
+                } else {
+                    // 被擋就只留每行的標題部分
+                    merged.append(contentsOf: group.components(separatedBy: "\n").map { String($0.prefix(40)) })
+                }
             }
+            if merged.count >= lines.count { break }
             lines = merged
         }
-        let session = makeSession(baseInstructions + "\n你要把一天裡各時段的摘要，整理成「今日 Recap」。")
-        let prompt = "以下是 \(dayLabel) 依時間排列的各段摘要：\n\(lines.joined(separator: "\n"))\n\n請產生今天的標題、總結、最重要的重點與所有待辦。"
-        return try await session.respond(to: prompt, generating: RecapOutput.self).content
+        let prompt = """
+        以下是 \(dayLabel) 依時間排列的各段摘要：
+        \(lines.joined(separator: "\n"))
+
+        請整理成「今日 Recap」，嚴格照這個格式輸出：
+        標題：（今天的標題，12 字以內）
+        總結：（2～3 句，今天發生了什麼）
+        重點：
+        - （3～6 點今天最重要的事）
+        待辦：
+        - （所有提到要做的事；沒有就寫「無」）
+        """
+        do {
+            let output = try await respondText(instructions: baseInstructions, prompt: prompt)
+            let s = parseSections(output)
+            return RecapOutput(title: first(s, ["標題"]), overview: first(s, ["總結", "概要"]), highlights: all(s, ["重點"]), todos: all(s, ["待辦", "提醒"]))
+        } catch {
+            if error is CancellationError { throw error }
+            // 最後一步被擋：直接用各段標題組一份
+            let sorted = entries.sorted { $0.time < $1.time }
+            return RecapOutput(
+                title: "\(dayLabel)的紀錄",
+                overview: "今天共整理了 \(entries.count) 段內容。",
+                highlights: Array(sorted.map { "\($0.time.formatted(date: .omitted, time: .shortened)) \($0.title)" }.prefix(6)),
+                todos: sorted.flatMap(\.todos)
+            )
+        }
     }
 
     private static func line(for entry: Entry) -> String {
@@ -217,40 +334,87 @@ enum Summarizer {
 
     // MARK: 課堂
 
-    /// 課後重點：原文逐字稿可能是英文，輸出一律繁體中文。
-    static func summarizeLecture(sourceText: String, languageName: String) async throws -> LectureOutput {
-        let instructions = """
-        你是認真的助教，負責把一堂課的逐字稿整理成給台灣學生看的課堂筆記。
-        逐字稿是\(languageName)的語音辨識結果，可能有錯字。輸出一律使用台灣繁體中文，術語保留原文並附中文解釋。
-        只寫逐字稿裡真的有的內容，不要編造。
+    private static func lectureInstructions(_ languageName: String) -> String {
         """
+        你是認真的助教，負責把一堂課的逐字稿整理成給台灣學生看的課堂筆記。
+        逐字稿是\(languageName)的語音辨識結果，可能有錯字或聽錯的句子，請推敲原意。
+        這是學生自己的私人筆記，照實中立地整理即可。
+        輸出一律使用台灣繁體中文，術語保留原文並附中文解釋。只寫逐字稿裡真的有的內容，不要編造。
+        """
+    }
+
+    private static let lectureFormat = """
+    請嚴格照這個格式輸出，不要加其他說明：
+    標題：（這堂課的主題，15 字以內）
+    總結：（2～3 句，這堂課教了什麼）
+    重點：
+    - （4～8 點）
+    術語：
+    - （原文術語：中文解釋；沒有就寫「無」）
+    提醒：
+    - （作業、考試、報告、截止日期；沒有就寫「無」）
+    """
+
+    /// 課後重點：原文逐字稿可能是英文，輸出一律繁體中文。部分內容被擋時用其他部分繼續。
+    static func summarizeLecture(sourceText: String, languageName: String) async throws -> LectureOutput {
+        let instructions = lectureInstructions(languageName)
         let chunks = chunk(sourceText)
         if chunks.count <= 1 {
-            let session = makeSession(instructions)
-            let prompt = "以下是整堂課的逐字稿：\n\(chunks.first ?? sourceText)\n\n請產生課堂筆記。"
-            return try await session.respond(to: prompt, generating: LectureOutput.self).content
+            let text = chunks.first ?? sourceText
+            do {
+                return try await lectureNotes(instructions: instructions, prompt: "以下是整堂課的逐字稿：\n\(text)\n\n\(lectureFormat)")
+            } catch {
+                guard isGuardrail(error) || isTooLong(error) else { throw error }
+                // 被擋：切小段各自整理再合併
+            }
         }
-        var notes: [String] = []
-        for (index, text) in chunks.enumerated() {
+        var parts: [SegmentDigest] = []
+        var lastError: Error?
+        let pieces = chunks.count <= 1 ? chunk(sourceText, budget: max(150, estimateTokens(sourceText) / 3 + 1)) : chunks
+        for (index, text) in pieces.enumerated() {
             try Task.checkCancellation()
-            let session = makeSession(instructions)
-            let prompt = "以下是課堂逐字稿的第 \(index + 1)/\(chunks.count) 部分：\n\(text)\n\n請產生這部分的標題、重點與提醒。"
-            let d = try await session.respond(to: prompt, generating: SegmentDigest.self).content
-            notes.append("第\(index + 1)部分｜\(d.title)：\(d.points.joined(separator: "；"))\(d.todos.isEmpty ? "" : "（提醒：\(d.todos.joined(separator: "、"))）")")
+            do {
+                parts.append(try await digest(text: text, header: "以下是課堂逐字稿（\(languageName)）的第 \(index + 1)/\(pieces.count) 部分，請用繁體中文整理："))
+            } catch {
+                lastError = error
+            }
         }
-        // 部分摘要還是太多就再合併一輪
+        guard !parts.isEmpty else { throw lastError ?? RecapError.modelUnavailable("無法整理") }
+        var notes = parts.map(line(for:))
         while estimateTokens(notes.joined(separator: "\n")) > inputTokenBudget, notes.count > 1 {
             var merged: [String] = []
             for group in chunk(notes.joined(separator: "\n")) {
-                let d = try await digest(text: group, header: "以下是一堂課連續幾個部分的筆記，請合併：")
-                merged.append("\(d.title)：\(d.points.joined(separator: "；"))\(d.todos.isEmpty ? "" : "（提醒：\(d.todos.joined(separator: "、"))）")")
+                if let d = try? await digest(text: group, header: "以下是一堂課連續幾個部分的筆記，請合併：") {
+                    merged.append(line(for: d))
+                }
             }
-            if merged.count >= notes.count { break }
+            if merged.isEmpty || merged.count >= notes.count { break }
             notes = merged
         }
-        let session = makeSession(instructions)
-        let prompt = "以下是同一堂課依序各部分的筆記：\n\(notes.joined(separator: "\n"))\n\n請合併成整堂課的課堂筆記。"
-        return try await session.respond(to: prompt, generating: LectureOutput.self).content
+        do {
+            return try await lectureNotes(instructions: instructions, prompt: "以下是同一堂課依序各部分的筆記：\n\(notes.joined(separator: "\n"))\n\n請合併成整堂課的課堂筆記。\n\(lectureFormat)")
+        } catch {
+            if error is CancellationError { throw error }
+            return LectureOutput(
+                title: parts[0].title,
+                overview: "這堂課分成 \(parts.count) 個部分整理。",
+                keyPoints: Array(parts.flatMap(\.points).prefix(10)),
+                terms: [],
+                todos: parts.flatMap(\.todos)
+            )
+        }
+    }
+
+    private static func lectureNotes(instructions: String, prompt: String) async throws -> LectureOutput {
+        let output = try await respondText(instructions: instructions, prompt: prompt)
+        let s = parseSections(output)
+        return LectureOutput(
+            title: first(s, ["標題"]),
+            overview: first(s, ["總結", "概要"]),
+            keyPoints: all(s, ["重點", "課堂重點"]),
+            terms: all(s, ["術語"]),
+            todos: all(s, ["提醒", "待辦", "作業與提醒"])
+        )
     }
 
     /// 給失敗訊息用。

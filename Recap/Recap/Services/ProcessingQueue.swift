@@ -192,7 +192,6 @@ final class ProcessingQueue {
                 latest.summaryError = updated.summaryError
                 store.upsertLecture(latest)
             }
-            store.update(DayKey.key(for: lecture.start)) { $0.recapDirty = true }
         }
     }
 
@@ -205,13 +204,10 @@ final class ProcessingQueue {
             if record.segments.contains(where: { $0.status == .recorded || $0.status == .transcribed }) { continue }
             // 今天：最多 10 分鐘重算一次
             if let last = lastRecapRun[key], Date().timeIntervalSince(last) < 600 { continue }
-            var entries: [Summarizer.Entry] = record.segments
+            let entries: [Summarizer.Entry] = record.segments
                 .filter { $0.status == .summarized && !($0.title ?? "").isEmpty }
                 .map { Summarizer.Entry(time: $0.start, title: $0.title ?? "", points: $0.points, todos: $0.todos, isLecture: false) }
-            entries += record.lectures.compactMap { lecture in
-                guard let s = lecture.summary, !s.title.isEmpty else { return nil }
-                return Summarizer.Entry(time: lecture.start, title: s.title, points: Array(s.keyPoints.prefix(4)), todos: s.todos, isLecture: true)
-            }
+            // 課堂內容只放在課堂頁，不進今日 Recap
             guard !entries.isEmpty else {
                 store.update(key) { $0.recapDirty = false; $0.recap = nil }
                 continue

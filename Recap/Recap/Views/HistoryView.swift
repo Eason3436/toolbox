@@ -137,9 +137,6 @@ enum MarkdownExport {
         for segment in record.spokenSegments {
             out += "- **\(segment.start.hm)** \(segment.title ?? "")：\(segment.points.joined(separator: "；"))\n"
         }
-        for lecture in record.lectures {
-            out += "- **\(lecture.start.hm)** 課堂：\(lecture.displayTitle)\n"
-        }
         return out
     }
 

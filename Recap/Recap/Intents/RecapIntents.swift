@@ -64,7 +64,7 @@ struct TodayRecapIntent: AppIntent {
             if !recap.todos.isEmpty { text += " 待辦：\(recap.todos.joined(separator: "、"))。" }
             return .result(dialog: "\(text)")
         }
-        if record.segments.isEmpty && record.lectures.isEmpty {
+        if record.segments.isEmpty {
             return .result(dialog: "今天還沒有錄音。")
         }
         model.queue.regenerateRecap(DayKey.today)
@@ -93,10 +93,34 @@ struct RecapShortcuts: AppShortcutsProvider {
             systemImageName: "stop.circle"
         )
         AppShortcut(
+            intent: QuickRecapIntent(),
+            phrases: ["\(.applicationName) 剛剛講了什麼", "\(.applicationName) 最近 15 分鐘重點"],
+            shortTitle: "最近 15 分鐘",
+            systemImageName: "clock.arrow.circlepath"
+        )
+        AppShortcut(
             intent: TodayRecapIntent(),
             phrases: ["\(.applicationName) 今天的重點", "看 \(.applicationName) 今日 Recap"],
             shortTitle: "今日 Recap",
             systemImageName: "sparkles"
         )
+    }
+}
+
+/// 「最近 15 分鐘重點」：給動作按鈕或 Siri 用。會打開 App 顯示結果。
+struct QuickRecapIntent: AppIntent {
+    static let title: LocalizedStringResource = "最近 15 分鐘重點"
+    static let description = IntentDescription("把最近 15 分鐘錄到的內容馬上整理成重點。")
+    static let openAppWhenRun = true
+
+    @Parameter(title: "分鐘數", default: 15)
+    var minutes: Int
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let model = AppModel.shared
+        model.router.showQuickRecap = true
+        Task { await model.quickRecap.run(minutes: max(1, minutes)) }
+        return .result()
     }
 }

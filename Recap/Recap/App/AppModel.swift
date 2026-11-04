@@ -14,10 +14,26 @@ final class AppModel {
     let queue: ProcessingQueue
     let recorder: RecordingController
     let router = Router()
+    let quickRecap: QuickRecap
 
     private init() {
         queue = ProcessingQueue(store: store, settings: settings)
         recorder = RecordingController(store: store, settings: settings, queue: queue)
+        quickRecap = QuickRecap(store: store, settings: settings, recorder: recorder)
+        LiveActivityActions.stop = { [recorder] in await recorder.stop() }
+    }
+
+    /// recap://quick?minutes=15（即時動態按鈕）
+    func handle(_ url: URL) {
+        guard url.scheme == "recap" else { return }
+        if url.host == "quick" {
+            let minutes = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "minutes" })?.value.flatMap(Int.init) ?? 15
+            router.showQuickRecap = true
+            Task { await quickRecap.run(minutes: minutes) }
+        } else if recorder.mode == .lecture, recorder.isActive {
+            router.tab = .lecture
+        }
     }
 
     func didBecomeActive() {
@@ -55,6 +71,8 @@ final class AppModel {
 final class Router {
     enum Tab: Hashable { case today, lecture, history, settings }
     var tab: Tab = .today
+    /// 顯示「最近 N 分鐘重點」
+    var showQuickRecap = false
 }
 
 /// 背景整理：BGProcessingTask，接電源時才跑（轉文字＋摘要＋Recap）。
@@ -100,6 +118,7 @@ enum BackgroundProcessing {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         BackgroundProcessing.register()
+        MainActor.assumeIsolated { _ = AppModel.shared }
         Notifications.registerCategories()
         UNUserNotificationCenter.current().delegate = self
         return true

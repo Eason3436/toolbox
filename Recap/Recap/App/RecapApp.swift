@@ -14,6 +14,8 @@ struct RecapApp: App {
                 .environment(model.queue)
                 .environment(model.recorder)
                 .environment(model.router)
+                .environment(model.quickRecap)
+                .onOpenURL { model.handle($0) }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {

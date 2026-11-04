@@ -75,7 +75,6 @@ final class RecapStore {
         for part in lecture.audioParts { removeAudio(part.file) }
         update(DayKey.key(for: lecture.start)) { record in
             record.lectures.removeAll { $0.id == lecture.id }
-            record.recapDirty = true
         }
     }
 
