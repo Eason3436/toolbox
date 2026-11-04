@@ -22,11 +22,23 @@ final class LiveActivityManager {
     }
 
     /// `throttle` 為 true 時最多每 2 秒更新一次（課堂翻譯用）。
-    func update(_ state: RecordingActivityAttributes.ContentState, throttle: Bool = false) {
+    /// `alert` 為 true 時會亮起動態島並震動提醒（例如錄音被打斷）。
+    func update(_ state: RecordingActivityAttributes.ContentState, throttle: Bool = false, alert: Bool = false) {
         guard let activity else { return }
-        if throttle, Date().timeIntervalSince(lastUpdate) < 2 { return }
+        if throttle, !alert, Date().timeIntervalSince(lastUpdate) < 2 { return }
         lastUpdate = .now
-        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+        let content = ActivityContent(state: state, staleDate: nil)
+        Task {
+            if alert {
+                await activity.update(content, alertConfiguration: AlertConfiguration(
+                    title: "錄音被中斷",
+                    body: "按「繼續錄音」接著錄",
+                    sound: .default
+                ))
+            } else {
+                await activity.update(content)
+            }
+        }
     }
 
     func end() {

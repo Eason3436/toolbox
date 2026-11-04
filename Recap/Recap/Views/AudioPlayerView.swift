@@ -24,6 +24,7 @@ final class AudioPlayerModel: NSObject, AVAudioPlayerDelegate {
 
     func toggle() {
         guard let player else { return }
+        Haptics.toggle()
         if player.isPlaying {
             player.pause()
             isPlaying = false
@@ -48,6 +49,7 @@ final class AudioPlayerModel: NSObject, AVAudioPlayerDelegate {
     }
 
     func skip(_ delta: TimeInterval) {
+        Haptics.soft()
         seek(max(0, min(duration, currentTime + delta)))
     }
 

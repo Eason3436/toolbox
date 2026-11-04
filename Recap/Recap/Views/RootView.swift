@@ -19,6 +19,7 @@ struct RootView: View {
                 SettingsView()
             }
         }
+        .sensoryFeedback(.selection, trigger: router.tab)
         .sheet(isPresented: $router.showQuickRecap) {
             QuickRecapSheet()
         }

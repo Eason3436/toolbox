@@ -106,6 +106,13 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("設定")
+            .sensoryFeedback(.selection, trigger: settings.segmentMinutes)
+            .sensoryFeedback(.selection, trigger: settings.audioRetentionDays)
+            .sensoryFeedback(.selection, trigger: settings.transcriptionLocale)
+            .sensoryFeedback(.selection, trigger: settings.skipSilence)
+            .sensoryFeedback(.selection, trigger: settings.autoStartInSchedule)
+            .sensoryFeedback(.selection, trigger: settings.scheduleNotifications)
+            .sensoryFeedback(.selection, trigger: settings.deleteAudioAfterTranscribe)
             .sheet(item: $editing) { rule in
                 ScheduleEditorView(rule: rule) { saved in
                     if let index = settings.schedules.firstIndex(where: { $0.id == saved.id }) {
@@ -144,6 +151,7 @@ struct ScheduleEditorView: View {
                         ForEach(1...7, id: \.self) { day in
                             let on = rule.weekdays.contains(day)
                             Button(weekdayNames[day - 1]) {
+                                Haptics.selection()
                                 if on { rule.weekdays.remove(day) } else { rule.weekdays.insert(day) }
                             }
                             .buttonStyle(.plain)
@@ -165,7 +173,7 @@ struct ScheduleEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { onSave(rule); dismiss() }.disabled(rule.weekdays.isEmpty)
+                    Button("儲存") { Haptics.success(); onSave(rule); dismiss() }.disabled(rule.weekdays.isEmpty)
                 }
             }
         }

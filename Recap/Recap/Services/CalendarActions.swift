@@ -120,6 +120,7 @@ struct TodoList: View {
                     Menu {
                         Button("加到提醒事項", systemImage: "checklist") { addReminder(item) }
                         Button("加到行事曆", systemImage: "calendar.badge.plus") {
+                            Haptics.tap()
                             draft = EventDraft(event: CalendarActions.draftEvent(item, notes: source))
                         }
                     } label: {
@@ -154,8 +155,10 @@ struct TodoList: View {
             try await CalendarActions.addReminder(item, notes: source)
             added.insert(item)
             message = "已加到提醒事項"
+            Haptics.success()
         } catch {
             message = error.localizedDescription
+            Haptics.error()
         }
     }
 }

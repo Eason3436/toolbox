@@ -83,6 +83,7 @@ struct AskView: View {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !asking else { return }
         question = ""
+        Haptics.tap()
         let previous = turns.last.flatMap { t in t.answer.map { (q: t.question, a: $0) } }
         turns.append(Turn(question: q))
         let index = turns.count - 1
@@ -94,8 +95,10 @@ struct AskView: View {
                 let result = try await AskService.ask(q, passages: passages, previous: previous)
                 turns[index].answer = result.answer
                 turns[index].sources = result.sources
+                Haptics.success()
             } catch {
                 turns[index].error = Summarizer.describe(error)
+                Haptics.error()
             }
         }
     }

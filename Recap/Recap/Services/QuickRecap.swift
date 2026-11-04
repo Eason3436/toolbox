@@ -69,8 +69,10 @@ final class QuickRecap {
             guard !parts.isEmpty else { throw lastError ?? RecapError.modelUnavailable("無法摘要") }
             digest = try await Summarizer.merge(parts, header: "以下是最近 \(minutes) 分鐘幾個部分的摘要，請合併：")
             state = .done
+            Haptics.success()
         } catch {
             state = .failed(Summarizer.describe(error))
+            Haptics.error()
         }
     }
 

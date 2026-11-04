@@ -162,6 +162,7 @@ struct RecorderCard: View {
     @Environment(QuickRecap.self) private var quick
 
     private func quickRecap(_ minutes: Int) {
+        Haptics.tap()
         router.showQuickRecap = true
         Task { await quick.run(minutes: minutes) }
     }
@@ -231,6 +232,7 @@ struct DayContentView: View {
                     }
                     .buttonStyle(.glass)
                     Button {
+                        Haptics.tap()
                         queue.regenerateRecap(dayKey)
                     } label: {
                         Label(record.recap == nil ? "整理" : "重新整理", systemImage: "arrow.clockwise")
