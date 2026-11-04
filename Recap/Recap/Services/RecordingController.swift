@@ -13,6 +13,8 @@ final class RecordingController {
         case recording
         /// 被來電等打斷，等待恢復
         case interrupted
+        /// 使用者按了暫停
+        case paused
     }
 
     enum StartSource { case manual, schedule, shortcut, resume }
@@ -182,21 +184,29 @@ final class RecordingController {
         guard isActive else { return }
         switch event {
         case .interruptionBegan:
+            guard state != .paused else { return }
             writer?.flush()
             state = .interrupted
             updateActivity()
         case .interruptionEnded:
-            // 不管系統建議與否都試著恢復（錄音 App 的預期行為）
-            Task { await resume(after: .milliseconds(600)) }
+            // 不管系統建議與否都試著恢復（錄音 App 的預期行為）；別的 App 可能還沒放開麥克風，多試幾次
+            guard state != .paused else { return }
+            Task {
+                for delay in [600, 2_000, 5_000] {
+                    await resume(after: .milliseconds(delay), notifyOnFailure: delay == 5_000)
+                    if state == .recording { return }
+                }
+            }
         case .configurationChanged, .mediaServicesReset:
+            guard state != .paused else { return }
             writer?.flush()
             Task { await resume(after: .milliseconds(300)) }
         }
     }
 
     /// 嘗試恢復錄音；在背景失敗時發通知請使用者點一下。
-    func resume(after delay: Duration = .zero) async {
-        guard isActive else { return }
+    func resume(after delay: Duration = .zero, notifyOnFailure: Bool = true) async {
+        guard isActive, state != .recording else { return }
         if delay > .zero { try? await Task.sleep(for: delay) }
         do {
             try recorder.start()
@@ -207,10 +217,20 @@ final class RecordingController {
             appLog.error("恢復錄音失敗：\(error.localizedDescription)")
             state = .interrupted
             updateActivity()
-            if UIApplication.shared.applicationState != .active {
+            if notifyOnFailure, UIApplication.shared.applicationState != .active {
                 Notifications.postResumeReminder()
             }
         }
+    }
+
+    /// 暫停（保留這次錄音與即時動態，之後可繼續）。
+    func pause() {
+        guard state == .recording || state == .interrupted else { return }
+        recorder.stop()
+        writer?.flush()
+        state = .paused
+        level = 0
+        updateActivity()
     }
 
     /// App 回到前景：如果還在中斷狀態就再試一次。
@@ -245,7 +265,8 @@ final class RecordingController {
     private func activityState(line: String? = nil) -> RecordingActivityAttributes.ContentState {
         RecordingActivityAttributes.ContentState(
             startedAt: startedAt ?? .now,
-            isPaused: state == .interrupted,
+            isPaused: state == .interrupted || state == .paused,
+            manualPause: state == .paused,
             line: line ?? lecture?.lastTranslation,
             segmentCount: mode == .lecture ? (lecture?.lecture.lines.count ?? 0) : segmentsThisSession,
             stopAt: stopAt

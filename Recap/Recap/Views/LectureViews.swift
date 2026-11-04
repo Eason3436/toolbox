@@ -214,8 +214,11 @@ struct LectureLiveView: View {
                 }
                 LevelMeter(level: recorder.level).frame(width: 60)
                 Spacer()
-                if recorder.state == .interrupted {
+                if recorder.state == .interrupted || recorder.state == .paused {
                     Button("繼續") { Task { await recorder.resume() } }.buttonStyle(.glassProminent)
+                } else {
+                    Button { recorder.pause() } label: { Image(systemName: "pause.fill").padding(.vertical, 4) }
+                        .buttonStyle(.glass)
                 }
                 Button(role: .destructive) {
                     Task { await recorder.stop() }
@@ -351,7 +354,7 @@ struct LectureDetailView: View {
                 }
                 if !s.todos.isEmpty {
                     Text("作業與提醒").font(.headline).padding(.top, 4)
-                    BulletList(items: s.todos, symbol: "checkmark.circle", tint: .green)
+                    TodoList(items: s.todos, source: "Recap 課堂：\(lecture.displayTitle)")
                 }
                 NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) {
                     Label("對這堂課追問", systemImage: "questionmark.bubble")

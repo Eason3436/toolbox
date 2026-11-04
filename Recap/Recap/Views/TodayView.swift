@@ -81,8 +81,8 @@ struct RecorderCard: View {
     private var activeContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Image(systemName: recorder.state == .interrupted ? "pause.circle.fill" : "record.circle")
-                    .foregroundStyle(recorder.state == .interrupted ? .orange : .red)
+                Image(systemName: recorder.state == .interrupted || recorder.state == .paused ? "pause.circle.fill" : "record.circle")
+                    .foregroundStyle(recorder.state == .interrupted || recorder.state == .paused ? .orange : .red)
                     .symbolEffect(.pulse, isActive: recorder.state == .recording)
                 Text(statusTitle).font(.headline)
                 Spacer()
@@ -134,13 +134,20 @@ struct RecorderCard: View {
                     }
                     .buttonStyle(.glass)
                 }
-                if recorder.state == .interrupted {
+                if recorder.state == .interrupted || recorder.state == .paused {
                     Button {
                         Task { await recorder.resume() }
                     } label: {
-                        Label("繼續錄音", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 6)
+                        Label("繼續", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 6)
                     }
                     .buttonStyle(.glassProminent)
+                } else {
+                    Button {
+                        recorder.pause()
+                    } label: {
+                        Label("暫停", systemImage: "pause.fill").frame(maxWidth: .infinity).padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
                 }
                 Button(role: .destructive) {
                     Task { await recorder.stop() }
@@ -163,6 +170,7 @@ struct RecorderCard: View {
         switch recorder.state {
         case .starting: "準備中…"
         case .interrupted: "錄音被中斷"
+        case .paused: "已暫停"
         default: recorder.mode == .lecture ? "課堂模式錄音中" : "錄音中"
         }
     }
@@ -241,7 +249,7 @@ struct DayContentView: View {
                 if !recap.todos.isEmpty {
                     Divider()
                     Text("待辦").font(.subheadline.weight(.semibold))
-                    BulletList(items: recap.todos, symbol: "checkmark.circle", tint: .green)
+                    TodoList(items: recap.todos, source: "Recap \(record.date.formatted(.dateTime.month().day())) 錄音")
                 }
                 Text("整理於 \(recap.generatedAt.hm)・\(recap.sourceCount) 段內容\(record.recapDirty ? "・有新內容" : "")")
                     .font(.caption).foregroundStyle(.secondary)

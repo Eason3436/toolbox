@@ -37,12 +37,15 @@ enum AskService {
     static func passages(for scope: AskScope, store: RecapStore) -> [Passage] {
         var records: [DayRecord] = []
         var onlyLecture: UUID?
+        var includeLectures = false
         switch scope {
         case .day(let key): records = [store.day(key)]
         case .lecture(let id):
             onlyLecture = id
             if let lecture = store.lecture(id) { records = [store.day(DayKey.key(for: lecture.start))] }
         case .recent(let days):
+            // 最近幾天：連課堂一起查
+            includeLectures = true
             records = store.dayKeys.prefix(days).map { store.day($0) }
         }
         var result: [Passage] = []
@@ -56,7 +59,7 @@ enum AskService {
                     }
                 }
             }
-            for lecture in record.lectures where onlyLecture == lecture.id {
+            for lecture in record.lectures where onlyLecture == lecture.id || includeLectures {
                 // 每 8 句一組，附上翻譯，讓中文問題也找得到英文內容
                 let lines = lecture.lines
                 var index = 0

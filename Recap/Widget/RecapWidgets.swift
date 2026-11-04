@@ -50,7 +50,7 @@ struct RecordingLiveActivity: Widget {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentTransition(.opacity)
                         }
-                        ActionRow()
+                        ActionRow(state: context.state)
                     }
                     .padding(.horizontal, 4)
                     .padding(.top, 4)
@@ -87,7 +87,8 @@ private func modeTitle(_ context: ActivityViewContext<RecordingActivityAttribute
 
 private func statusText(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
     let s = context.state
-    if s.isPaused { return "已暫停・點一下繼續" }
+    if s.manualPause { return "已暫停" }
+    if s.isPaused { return "被打斷・按繼續錄音" }
     if let stopAt = s.stopAt { return "錄到 \(stopAt.formatted(date: .omitted, time: .shortened))" }
     if context.attributes.isLecture { return s.segmentCount > 0 ? "\(s.segmentCount) 句・即時翻譯中" : "正在聽…" }
     return s.segmentCount > 0 ? "已存 \(s.segmentCount) 段" : "收音中"
@@ -122,25 +123,55 @@ private struct StatusBadge: View {
     }
 }
 
-/// 「最近 15 分鐘重點」＋「停止」。
+/// 按鈕列：暫停時「繼續錄音」；錄音中「最近 15 分鐘重點」＋暫停；最後都是停止。
 private struct ActionRow: View {
+    let state: RecordingActivityAttributes.ContentState
+    /// 鎖定畫面跟著系統深淺色；動態島永遠是深色
+    var onLockScreen = false
+
+    private var secondaryFill: AnyShapeStyle {
+        onLockScreen ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(Color.white.opacity(0.15))
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Link(destination: RecapURL.quick(minutes: 15)) {
-                Label("最近 15 分鐘重點", systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 40)
-                    .background(.white.opacity(0.15), in: .capsule)
+            if state.isPaused {
+                Button(intent: ResumeFromActivityIntent()) {
+                    Label("繼續錄音", systemImage: "play.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(recordRed, in: .capsule)
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Link(destination: RecapURL.quick(minutes: 15)) {
+                    Label("最近 15 分鐘重點", systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(secondaryFill, in: .capsule)
+                }
+                .foregroundStyle(onLockScreen ? Color.primary : Color.white)
+                Button(intent: PauseFromActivityIntent()) {
+                    Image(systemName: "pause.fill")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 40, height: 40)
+                        .background(secondaryFill, in: .circle)
+                        .foregroundStyle(onLockScreen ? Color.primary : Color.white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("暫停")
             }
             Button(intent: StopFromActivityIntent()) {
-                Label("停止", systemImage: "stop.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minWidth: 84, minHeight: 40)
-                    .background(recordRed.opacity(0.9), in: .capsule)
+                Image(systemName: "stop.fill")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 40, height: 40)
+                    .background(state.isPaused ? secondaryFill : AnyShapeStyle(recordRed), in: .circle)
+                    .foregroundStyle(state.isPaused && onLockScreen ? Color.primary : Color.white)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("停止")
         }
-        .foregroundStyle(.white)
     }
 }
 
@@ -171,31 +202,8 @@ private struct LockScreenView: View {
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            LockActionRow()
+            ActionRow(state: context.state, onLockScreen: true)
         }
         .padding(16)
-    }
-}
-
-/// 鎖定畫面用的按鈕（跟著系統深淺色）。
-private struct LockActionRow: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Link(destination: RecapURL.quick(minutes: 15)) {
-                Label("最近 15 分鐘重點", systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 38)
-                    .background(.fill.tertiary, in: .capsule)
-            }
-            .foregroundStyle(.primary)
-            Button(intent: StopFromActivityIntent()) {
-                Label("停止", systemImage: "stop.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minWidth: 84, minHeight: 38)
-                    .background(recordRed, in: .capsule)
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-        }
     }
 }

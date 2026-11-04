@@ -7,6 +7,8 @@ struct RecordingActivityAttributes: ActivityAttributes {
         /// 這次錄音開始的時間（用來顯示計時）
         var startedAt: Date
         var isPaused: Bool
+        /// 使用者自己按了暫停（不是被打斷）
+        var manualPause: Bool = false
         /// 課堂模式：最新一句中文翻譯；全天模式：目前狀態文字
         var line: String?
         /// 已存下的段數
