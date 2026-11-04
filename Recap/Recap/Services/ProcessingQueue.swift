@@ -104,6 +104,7 @@ final class ProcessingQueue {
             await transcribeRecordedLectures()
             readiness = .current
             if allowSummaries, readiness == .available, !Task.isCancelled {
+                await improveWithWhisper()
                 await summarizeSegments()
                 await summarizeLectures()
                 await buildRichNotes()
@@ -403,6 +404,133 @@ final class ProcessingQueue {
                 statusText = "Recap 失敗：\(Summarizer.describe(error))"
             }
         }
+    }
+
+    // MARK: - Groq Whisper 補強
+
+    private struct WhisperCandidate {
+        var dayKey: String?
+        var segmentID: UUID?
+        var lectureID: UUID?
+        var file: String
+        /// 音檔內的起點與長度（秒）
+        var clipStart: TimeInterval
+        var clipLength: TimeInterval
+        /// 課堂：這段在課堂裡的起點（秒）
+        var lectureOffset: TimeInterval
+        var excerpt: String
+        var locale: String
+        var subject: SchoolSubject?
+        var score = 0
+    }
+
+    /// AI 先評估哪些段落轉得不好、內容又複雜，只把這些送到 Groq Whisper 重新辨識，每天不超過設定的分鐘數。
+    private func improveWithWhisper() async {
+        guard settings.canUseWhisper, !Task.isCancelled else { return }
+        var candidates: [WhisperCandidate] = []
+        for key in store.dayKeys.prefix(3) {
+            for segment in store.day(key).segments where segment.status == .transcribed && segment.whisperChecked != true && segment.hasText {
+                guard let file = segment.audioFile, FileManager.default.fileExists(atPath: store.audioURL(file).path) else { continue }
+                candidates.append(WhisperCandidate(dayKey: key, segmentID: segment.id, file: file, clipStart: 0, clipLength: segment.duration,
+                                                   lectureOffset: 0, excerpt: segment.transcript ?? "", locale: settings.transcriptionLocale))
+            }
+        }
+        let lectures = store.allLectures.filter { $0.needsSummary && $0.recordOnly == true && $0.refinedTranscript == nil && $0.whisperChecked != true && $0.transcribedAfterClass == true }
+        for lecture in lectures {
+            for part in lecture.audioParts {
+                guard FileManager.default.fileExists(atPath: store.audioURL(part.file).path) else { continue }
+                let base = part.start.timeIntervalSince(lecture.start)
+                let length = part.end.timeIntervalSince(part.start)
+                // 每 2 分鐘切一塊
+                var blockStart: TimeInterval = 0
+                while blockStart < length {
+                    let blockLength = min(120, length - blockStart)
+                    let lines = lecture.lines.filter { $0.offset >= base + blockStart && $0.offset < base + blockStart + blockLength }
+                    let text = lines.map(\.source).joined(separator: "")
+                    if !text.isEmpty, blockLength >= 10 {
+                        candidates.append(WhisperCandidate(lectureID: lecture.id, file: part.file, clipStart: blockStart, clipLength: blockLength,
+                                                           lectureOffset: base + blockStart, excerpt: text, locale: lecture.sourceLocale, subject: lecture.subject))
+                    }
+                    blockStart += 120
+                }
+            }
+        }
+        guard !candidates.isEmpty else { return }
+
+        statusText = "AI 檢查逐字稿品質・\(candidates.count) 段"
+        let scores = await Summarizer.rateForWhisper(candidates.map(\.excerpt))
+        guard !Task.isCancelled else { return }
+        for i in candidates.indices { candidates[i].score = scores[i] }
+        // 評估過就做記號，之後不再重複評估
+        for c in candidates {
+            if let key = c.dayKey, let id = c.segmentID { store.updateSegment(id, in: key) { $0.whisperChecked = true } }
+        }
+        for id in Set(candidates.compactMap(\.lectureID)) {
+            if var latest = store.lecture(id) { latest.whisperChecked = true; store.upsertLecture(latest) }
+        }
+
+        let picked = candidates.filter { $0.score >= 6 }.sorted { $0.score > $1.score }
+        var improvedBlocks: [UUID: Int] = [:]
+        for c in picked {
+            guard !Task.isCancelled else { break }
+            let remaining = WhisperBudget.remaining(limitMinutes: settings.whisperDailyMinutes)
+            guard WhisperBudget.cost(of: c.clipLength) <= remaining else { continue }
+            statusText = "Whisper 重新辨識中・今天剩 \(Int(remaining / 60)) 分鐘額度"
+            var clip: URL?
+            do {
+                let source = store.audioURL(c.file)
+                let url: URL
+                if c.lectureID == nil {
+                    url = source
+                } else {
+                    let made = try await AudioClipper.clip(source, from: c.clipStart, duration: c.clipLength)
+                    clip = made
+                    url = made
+                }
+                let terms = settings.recognitionVocabulary(subject: c.subject).prefix(40).joined(separator: "、")
+                let prompt = String("以下是台灣的繁體中文錄音，可能中英夾雜，英文術語保留英文。\(terms)".prefix(400))
+                let language = c.locale.hasPrefix("en") ? "en" : (c.locale.hasPrefix("zh") ? "zh" : nil)
+                let result = try await GroqWhisper.transcribe(url: url, language: language, prompt: prompt, model: settings.whisperModel, apiKey: settings.groqAPIKey)
+                WhisperBudget.spend(c.clipLength)
+                if let clip { try? FileManager.default.removeItem(at: clip) }
+                let text = result.map(\.1).joined(separator: c.locale.hasPrefix("en") ? " " : "")
+                guard !text.isEmpty else { continue }
+                if let key = c.dayKey, let id = c.segmentID {
+                    store.updateSegment(id, in: key) {
+                        $0.transcript = text
+                        $0.aligned = nil
+                        $0.correctedTranscript = nil
+                        $0.whisperImproved = true
+                    }
+                } else if let id = c.lectureID, var latest = store.lecture(id) {
+                    let end = c.lectureOffset + c.clipLength
+                    latest.lines.removeAll { $0.offset >= c.lectureOffset && $0.offset < end }
+                    latest.lines += result.map { LiveLine(offset: c.lectureOffset + min($0.0, c.clipLength - 0.1), source: $0.1, translation: "") }
+                    latest.lines.sort { $0.offset < $1.offset }
+                    if var windows = latest.aligned {
+                        windows.removeAll { $0.offset >= c.lectureOffset && $0.offset < end }
+                        // Whisper 已經處理好中英夾雜，兩欄都放同一份
+                        windows.append(AlignedWindow(offset: c.lectureOffset, primary: text, secondary: text))
+                        latest.aligned = windows.sorted { $0.offset < $1.offset }
+                    }
+                    improvedBlocks[id, default: 0] += 1
+                    latest.whisperBlocks = (latest.whisperBlocks ?? 0) + 1
+                    store.upsertLecture(latest)
+                }
+            } catch WhisperError.quota {
+                WhisperBudget.exhaust(limitMinutes: settings.whisperDailyMinutes)
+                if let clip { try? FileManager.default.removeItem(at: clip) }
+                break
+            } catch WhisperError.badKey {
+                if let clip { try? FileManager.default.removeItem(at: clip) }
+                appLog.error("Groq Key 無效")
+                break
+            } catch {
+                if let clip { try? FileManager.default.removeItem(at: clip) }
+                appLog.info("Whisper 重新辨識失敗：\(error.localizedDescription)")
+            }
+        }
+        if !improvedBlocks.isEmpty { appLog.info("Whisper 補強了 \(improvedBlocks.values.reduce(0, +)) 段課堂錄音") }
     }
 
     /// 最舊的待處理段落（舊的先做，今天的也照時間順序）。

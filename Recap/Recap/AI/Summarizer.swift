@@ -284,6 +284,37 @@ enum Summarizer {
 
     /// 用模型修正語音辨識的同音錯字、補標點。每塊不要太大，輸出才放得下。
     /// 中英夾雜：把中文模型與英文模型的結果合併成一份正確的逐字稿。
+    /// 評估每段逐字稿「需要重新辨識」的程度 0～10：越不通順、錯字越多、內容越專業（術語、中英夾雜、公式）分數越高。
+    static func rateForWhisper(_ excerpts: [String]) async -> [Int] {
+        var scores = Array(repeating: 0, count: excerpts.count)
+        let perItem = AIConfig.usesGemini ? 1_500 : 280
+        let batch = AIConfig.usesGemini ? 60 : 6
+        let instructions = """
+        你是語音辨識品質審查員。使用者給你幾段編號的語音辨識結果（台灣，中文為主，可能中英夾雜）。
+        每段給一個 0～10 的分數，代表「值得用更好的模型重新辨識」的程度：
+        - 句子不通順、出現沒意義的字詞、英文被寫成中文諧音、斷句錯亂 → 分數高
+        - 內容很專業或很複雜（課堂講解、專有名詞、公式、數字、英文術語多）→ 再加分
+        - 通順的日常閒聊、內容簡單 → 分數低
+        只輸出每段一行「編號：分數」，不要其他文字。
+        """
+        var index = 0
+        while index < excerpts.count {
+            if Task.isCancelled { break }
+            let range = index..<min(excerpts.count, index + batch)
+            let prompt = range.map { "【\($0 + 1)】\(excerpts[$0].prefix(perItem))" }.joined(separator: "\n\n")
+            if let reply = try? await respondText(instructions: instructions, prompt: prompt) {
+                for line in reply.components(separatedBy: .newlines) {
+                    let numbers = line.split(whereSeparator: { !($0.isASCII && $0.isNumber) }).compactMap { Int($0) }
+                    guard numbers.count >= 2 else { continue }
+                    let item = numbers[0] - 1
+                    if range.contains(item) { scores[item] = min(10, numbers[1]) }
+                }
+            }
+            index = range.upperBound
+        }
+        return scores
+    }
+
     static func mergeMixed(_ windows: [AlignedWindow], primaryName: String, secondaryName: String, vocabulary: [String], context: String) async -> String? {
         guard !windows.isEmpty else { return nil }
         let budget = AIConfig.usesGemini ? 30_000 : 650

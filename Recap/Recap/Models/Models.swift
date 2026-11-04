@@ -57,6 +57,10 @@ struct Segment: Codable, Identifiable, Hashable, Sendable {
     var points: [String] = []
     var todos: [String] = []
     var error: String?
+    /// AI 已經評估過要不要送 Whisper 重新辨識
+    var whisperChecked: Bool?
+    /// 已經用 Groq Whisper 重新辨識
+    var whisperImproved: Bool?
 
     var duration: TimeInterval { end.timeIntervalSince(start) }
     var hasText: Bool { !(transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -126,6 +130,10 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     /// Gemini 整理的詳細課程筆記（HTML 片段）
     var richNotes: String?
     var richNotesError: String?
+    /// AI 已經評估過哪些段落要送 Whisper
+    var whisperChecked: Bool?
+    /// 用 Groq Whisper 重新辨識了幾段（每段約 2 分鐘）
+    var whisperBlocks: Int?
 
     var displayTitle: String {
         if let name, !name.isEmpty { return name }
