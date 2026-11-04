@@ -70,7 +70,7 @@ final class RecordingController {
 
     /// - Parameters:
     ///   - duration: 錄多久後自動停止；nil 時若在排程時段內就錄到時段結束
-    func start(mode: RecordingMode, duration: TimeInterval? = nil, source: StartSource) async throws {
+    func start(mode: RecordingMode, duration: TimeInterval? = nil, source: StartSource, subject: SchoolSubject? = nil) async throws {
         if isActive {
             if self.mode == mode { return }
             await stop(manual: false)
@@ -92,15 +92,27 @@ final class RecordingController {
 
             let writer: SegmentWriter
             if mode == .lecture {
-                var lecture = Lecture(start: now, sourceLocale: settings.lectureSourceLocale, targetLanguage: settings.translationTarget)
-                lecture.subject = settings.lectureSubject
-                let session = LectureSession(lecture: lecture, store: store)
+                // 科目：Siri 指定 > 課表 > 下課後 AI 判斷
+                let entry = settings.timetableEntry(at: now)
+                let chosen = subject ?? entry?.subject
+                // 非中文授課才開即時字幕與翻譯；中文課只錄音，下課後再轉文字
+                let foreign = chosen == .english || (chosen == nil && settings.lectureForeign)
+                let locale = foreign ? (settings.lectureSourceLocale.hasPrefix("zh") ? "en-US" : settings.lectureSourceLocale) : settings.transcriptionLocale
+                var lecture = Lecture(start: now, sourceLocale: locale, targetLanguage: settings.translationTarget)
+                lecture.subject = chosen
+                lecture.recordOnly = !foreign
+                if let entry, !entry.name.isEmpty { lecture.name = entry.name }
+                let session = LectureSession(lecture: lecture, store: store, live: foreign)
                 session.onNewTranslation = { [weak self] text in self?.updateActivity(line: text, throttle: true) }
                 try await session.start()
                 self.lecture = session
                 // 課堂錄音每 30 分鐘一個檔
                 writer = SegmentWriter(root: store.recordingsDirectory, segmentSeconds: 30 * 60, tag: "lecture")
-                recorder.setSinks([writer as AudioSink, session.transcriber as AudioSink] + detectorSinks())
+                if foreign {
+                    recorder.setSinks([writer as AudioSink, session.transcriber as AudioSink] + detectorSinks())
+                } else {
+                    recorder.setSinks([writer as AudioSink] + detectorSinks())
+                }
             } else {
                 writer = SegmentWriter(root: store.recordingsDirectory, segmentSeconds: Double(settings.segmentMinutes) * 60, tag: "allday")
                 recorder.setSinks([writer as AudioSink] + detectorSinks())
@@ -219,6 +231,8 @@ final class RecordingController {
                 if !updated.audioParts.contains(where: { $0.file == closed.relativePath }) {
                     updated.audioParts.append(AudioPart(file: closed.relativePath, start: closed.start, end: closed.end))
                     store.upsertLecture(updated)
+                    // 最後一段音檔到了，可以開始轉文字
+                    queue.kick(summaries: UIApplication.shared.applicationState == .active)
                 }
             }
         } else {

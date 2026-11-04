@@ -395,11 +395,19 @@ struct AIProviderView: View {
         loading = true
         defer { loading = false }
         do {
-            let reply = try await GeminiClient.generate(system: "只回答「OK」。", prompt: "測試", model: settings.geminiModel, apiKey: key)
+            // 先用模型清單確認 Key 有效（不受模型忙碌影響），有效就先存起來
+            _ = try await GeminiClient.listModels(apiKey: key)
             settings.geminiAPIKey = key
-            message = "連線成功（\(settings.geminiModel) 回覆：\(reply.prefix(20))）"
-            Haptics.success()
             await loadModels()
+            do {
+                let reply = try await GeminiClient.generate(system: "只回答「OK」。", prompt: "測試", model: settings.geminiModel, apiKey: key)
+                message = "連線成功（回覆：\(reply.prefix(20))）"
+            } catch GeminiError.busy {
+                message = "Key 有效，已儲存。Google 的模型現在太忙，稍後整理時會自動重試或改用備用模型。"
+            } catch GeminiError.quota {
+                message = "Key 有效，已儲存。這個模型的免費額度暫時用完，整理時會自動改用備用模型。"
+            }
+            Haptics.success()
         } catch {
             message = "測試失敗：\(error.localizedDescription)"
             Haptics.error()

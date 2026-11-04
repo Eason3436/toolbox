@@ -52,27 +52,30 @@ struct LectureStartView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("上課時一邊錄音、一邊把老師說的話轉成文字並即時翻譯，錄音會存起來，下課後用 \(AIConfig.engineName) 整理重點。選了科目會自動加入那科的專有名詞，辨識更準。")
+                    Text("中文課只錄音，下課後才轉成文字並用 \(AIConfig.engineName) 整理重點、摘要和老師提醒的事項，比較省電。英文等非中文授課會即時顯示字幕和翻譯。")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
-                Picker("科目", selection: $settings.lectureSubject) {
-                    ForEach(SchoolSubject.allCases) { subject in
-                        Label(subject.title, systemImage: subject.symbol).tag(subject)
+                subjectRow
+                NavigationLink {
+                    TimetableView()
+                } label: {
+                    LabeledContent("課表", value: settings.timetable.isEmpty ? "未設定" : "\(settings.timetable.count) 節")
+                }
+            }
+            Section {
+                Toggle("非中文授課（即時字幕與翻譯）", isOn: foreignBinding)
+                if isForeign {
+                    Picker("上課語言", selection: $settings.lectureSourceLocale) {
+                        if locales.isEmpty { Text(settings.lectureSourceLocale).tag(settings.lectureSourceLocale) }
+                        ForEach(locales.filter { !$0.identifier.hasPrefix("zh") }, id: \.identifier) { locale in
+                            Text(SpeechSupport.displayName(locale)).tag(locale.identifier)
+                        }
                     }
-                }
-                .onChange(of: settings.lectureSubject) {
-                    if settings.lectureSubject != .general, !settings.lectureSubject.isSeminar { settings.lectureSourceLocale = settings.lectureSubject.defaultLocale }
-                }
-                Picker("上課語言", selection: $settings.lectureSourceLocale) {
-                    if locales.isEmpty { Text(settings.lectureSourceLocale).tag(settings.lectureSourceLocale) }
-                    ForEach(locales, id: \.identifier) { locale in
-                        Text(SpeechSupport.displayName(locale)).tag(locale.identifier)
+                    Picker("翻譯成", selection: $settings.translationTarget) {
+                        ForEach(TargetLanguage.all) { Text($0.name).tag($0.id) }
                     }
+                    translationRow
                 }
-                Picker("翻譯成", selection: $settings.translationTarget) {
-                    ForEach(TargetLanguage.all) { Text($0.name).tag($0.id) }
-                }
-                translationRow
             }
             Section {
                 Button {
@@ -117,7 +120,7 @@ struct LectureStartView: View {
         .navigationTitle("課堂模式")
         .sensoryFeedback(.selection, trigger: settings.lectureSourceLocale)
         .sensoryFeedback(.selection, trigger: settings.translationTarget)
-        .sensoryFeedback(.selection, trigger: settings.lectureSubject)
+        .sensoryFeedback(.selection, trigger: settings.lectureForeign)
         .task {
             locales = await SpeechSupport.supportedLocales().sorted { $0.identifier < $1.identifier }
             await refreshStatus()
@@ -131,6 +134,29 @@ struct LectureStartView: View {
                 self.error = "翻譯語言下載失敗：\(error.localizedDescription)"
             }
             await refreshStatus()
+        }
+    }
+
+    /// 現在課表上的那節課
+    private var currentEntry: TimetableEntry? { settings.timetableEntry() }
+
+    /// 課表上是英文課就自動開即時字幕；沒有課表時看開關
+    private var isForeign: Bool {
+        if let entry = currentEntry { return entry.subject == .english }
+        return settings.lectureForeign
+    }
+
+    private var foreignBinding: Binding<Bool> {
+        Binding { isForeign } set: { settings.lectureForeign = $0 }
+    }
+
+    @ViewBuilder
+    private var subjectRow: some View {
+        if let entry = currentEntry {
+            Label("依課表：\(entry.title)（\(entry.timeText)）", systemImage: entry.subject.symbol)
+        } else {
+            Label("科目：下課後由 AI 自動判斷", systemImage: "wand.and.stars")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -206,7 +232,13 @@ struct LectureLiveView: View {
                             }
                         }
                     }
-                    if session.lecture.lines.isEmpty && session.volatileText.isEmpty {
+                    if !session.isLive {
+                        ContentUnavailableView {
+                            Label(session.lecture.subject.map { $0 == .general ? "錄音中" : "\($0.title)課錄音中" } ?? "錄音中", systemImage: "waveform")
+                        } description: {
+                            Text("中文課只錄音，比較省電。下課後會轉成文字，並整理上課重點、摘要和老師提醒的事項。")
+                        }
+                    } else if session.lecture.lines.isEmpty && session.volatileText.isEmpty {
                         ContentUnavailableView("正在聽…", systemImage: "ear", description: Text("老師開始說話後，原文和翻譯會出現在這裡。第一次使用某個語言時要先下載語音模型。"))
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -470,6 +502,12 @@ struct LectureDetailView: View {
                 Button("再試一次") { queue.resummarizeLecture(lecture.id) }.buttonStyle(.glass)
             } else if lecture.end == nil {
                 Text("上課中，下課後會整理重點。").foregroundStyle(.secondary)
+            } else if lecture.needsTranscription {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("下課了，正在把錄音轉成文字…").foregroundStyle(.secondary)
+                }
+                Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
             } else if lecture.lines.isEmpty {
                 Text("這堂課沒有辨識到內容。").foregroundStyle(.secondary)
             } else {

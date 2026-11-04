@@ -49,16 +49,14 @@ struct StartLectureIntent: AudioRecordingIntent {
         if recorder.isActive, recorder.mode == .allDay {
             try await requestConfirmation(result: .result(dialog: "現在正在全天錄音，要先停掉、改錄這堂課嗎？"))
         }
-        let settings = AppSettings.shared
-        let chosen = subject ?? .general
-        settings.lectureSubject = chosen
-        if chosen != .general, !chosen.isSeminar { settings.lectureSourceLocale = chosen.defaultLocale }
+        let picked = subject == .general ? nil : subject
         do {
-            try await recorder.start(mode: .lecture, duration: minutes.map { TimeInterval($0 * 60) }, source: .shortcut)
+            try await recorder.start(mode: .lecture, duration: minutes.map { TimeInterval($0 * 60) }, source: .shortcut, subject: picked)
         } catch {
             throw RecapIntentError.from(error)
         }
         model.router.tab = .lecture
+        let chosen = recorder.lecture?.lecture.subject ?? .general
         let name = chosen == .general ? "這堂課" : (chosen.isSeminar ? "講座" : "\(chosen.title)課")
         return .result(dialog: "\(name)開始錄音，下課跟我說「停止錄音」。")
     }

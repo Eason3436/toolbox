@@ -101,6 +101,7 @@ final class ProcessingQueue {
         repeat {
             rerunRequested = false
             await transcribeAll()
+            await transcribeRecordedLectures()
             readiness = .current
             if allowSummaries, readiness == .available, !Task.isCancelled {
                 await summarizeSegments()
@@ -211,8 +212,31 @@ final class ProcessingQueue {
             statusText = "整理課堂重點：\(lecture.displayTitle)"
             let languageName = Locale(identifier: "zh-Hant-TW").localizedString(forIdentifier: lecture.sourceLocale) ?? lecture.sourceLocale
             var updated = lecture
+            // 只錄音的課：下課後已經用中、英兩種模型轉好，這裡只要 AI 合併／校正
+            if updated.refinedTranscript == nil, updated.recordOnly == true {
+                statusText = "AI 校正逐字稿：\(lecture.displayTitle)"
+                let vocabulary = settings.recognitionVocabulary(subject: lecture.subject)
+                let context = "這是台灣高中\(lecture.subject.map { $0 == .general ? "" : "「\($0.title)」" } ?? "")課的錄音，老師上課常中英夾雜。"
+                var refined: String?
+                if let windows = lecture.aligned, !windows.isEmpty {
+                    let names = Self.languageNames(lecture.sourceLocale)
+                    refined = await Summarizer.mergeMixed(windows, primaryName: names.0, secondaryName: names.1, vocabulary: vocabulary, context: context)
+                } else if settings.aiCorrection {
+                    refined = await Summarizer.correctTranscript(lecture.sourceText, vocabulary: vocabulary, context: context)
+                }
+                if let refined {
+                    LearningMemory.shared.learn(corrected: refined, original: lecture.sourceText, subject: lecture.subject)
+                    updated.refinedTranscript = refined
+                    if var latest = store.lecture(lecture.id) {
+                        latest.refinedTranscript = refined
+                        latest.aligned = nil
+                        store.upsertLecture(latest)
+                    }
+                }
+                statusText = "整理課堂重點：\(lecture.displayTitle)"
+            }
             // 中英夾雜：下課後用錄音重新辨識一次，AI 合併成更準的逐字稿
-            if updated.refinedTranscript == nil, let secondary = settings.secondaryLocale(for: lecture.sourceLocale), !lecture.audioParts.isEmpty {
+            if updated.refinedTranscript == nil, updated.recordOnly != true, let secondary = settings.secondaryLocale(for: lecture.sourceLocale), !lecture.audioParts.isEmpty {
                 statusText = "重新辨識中英夾雜：\(lecture.displayTitle)"
                 if let refined = await refineLecture(lecture, secondary: secondary) {
                     updated.refinedTranscript = refined
@@ -303,6 +327,42 @@ final class ProcessingQueue {
             }
         }
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
+    /// 只錄音的課（中文課）：下課後把錄音轉成文字（不需要 AI，背景也能做）。
+    private func transcribeRecordedLectures() async {
+        let pending = store.allLectures.filter(\.needsTranscription)
+        for lecture in pending {
+            guard !Task.isCancelled else { return }
+            statusText = "課堂轉文字：\(lecture.displayTitle)"
+            let vocabulary = settings.recognitionVocabulary(subject: lecture.subject)
+            let secondary = settings.secondaryLocale(for: lecture.sourceLocale)
+            var lines: [LiveLine] = []
+            var windows: [AlignedWindow] = []
+            for part in lecture.audioParts.sorted(by: { $0.start < $1.start }) {
+                let url = store.audioURL(part.file)
+                guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                let base = part.start.timeIntervalSince(lecture.start)
+                do {
+                    let first = try await FileTranscriber.transcribeTimed(url: url, localeID: lecture.sourceLocale, vocabulary: vocabulary)
+                    lines += first.map { LiveLine(offset: base + $0.0, source: $0.1, translation: "") }
+                    if let secondary, !first.isEmpty,
+                       let second = try? await FileTranscriber.transcribeTimed(url: url, localeID: secondary, vocabulary: vocabulary) {
+                        windows += FileTranscriber.align(first, second).map {
+                            AlignedWindow(offset: base + $0.offset, primary: $0.primary, secondary: $0.secondary)
+                        }
+                    }
+                } catch {
+                    appLog.error("課堂轉文字失敗：\(error.localizedDescription)")
+                }
+            }
+            if var latest = store.lecture(lecture.id) {
+                latest.lines = lines
+                latest.aligned = windows.isEmpty ? nil : windows
+                latest.transcribedAfterClass = true
+                store.upsertLecture(latest)
+            }
+        }
     }
 
     /// (主要語言名, 第二語言名)

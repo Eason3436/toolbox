@@ -28,7 +28,7 @@ enum RichNotes {
           <h1>這堂課的標題（點出主題）</h1>
           <p class="lead">摘要：4～6 句，這堂課在講什麼、依什麼順序、整體脈絡與結論</p>
         </header>
-        <nav class="chips"><a href="#s0">課堂流程</a><a href="#s1">主題一</a>…<a href="#vocab">單字表</a></nav>
+        <nav class="chips"><a href="#s0">課堂流程</a><a href="#s1">主題一</a>…<a href="#todo">\(subject.isSeminar ? "講者強調" : "老師提醒")</a><a href="#vocab">單字表</a></nav>
 
         <section class="card" id="s0"><h2><span class="num">00</span>課堂流程</h2>
           <ol class="steps"><li>依時間順序的每個環節（暖身、講解、看影片、討論、活動、交代作業…）</li></ol>
@@ -46,6 +46,8 @@ enum RichNotes {
           <aside class="note"><h3>補充</h3>幫助理解的背景知識（標明是補充）</aside>
           <aside class="check"><h3>事實查核</h3><ul><li>逐字稿或老師說法和目前事實不一致的地方，寫出正確說法與理由</li></ul></aside>
         </section>
+
+        \(subject.isSeminar ? seminarExtra : classExtra)
 
         最後一個 section：
         <section class="card" id="vocab"><h2><span class="num">字</span>單字表</h2><table><tr><th>英文</th><th>詞性</th><th>中文</th><th>課堂用法</th></tr>…</table></section>
@@ -68,6 +70,27 @@ enum RichNotes {
         }
         return sanitize(html)
     }
+
+    /// 一般課：專門一張卡收老師交代的事
+    private static let classExtra = """
+    主題之後，加一個 section 整理老師提醒事項（沒有就寫「這堂課沒有特別交代」）：
+    <section class="card" id="todo"><h2><span class="num">★</span>老師提醒事項</h2>
+      <div class="task"><strong>作業／小考／段考／報告／要帶的東西</strong>：內容、範圍（課本頁碼、題號）、日期或期限</div>…
+      <ul><li>老師說「會考」「要背」「很重要」的重點，一句話寫清楚要考什麼</li></ul>
+    </section>
+    重點放在：上課重點、摘要、老師提醒的事項；國文注意作者、文意、修辭與注釋，自然科注意公式、單位、實驗步驟與推導，社會科注意年代、因果與比較。
+    """
+
+    /// 講座：著重內容與論點
+    private static let seminarExtra = """
+    這是講座，第一個主題 section 前的 header 的 lead 要寫出講者（有提到才寫）、主題和核心論點；課堂流程改成「講座流程」。
+    主題之後，加一個 section：
+    <section class="card" id="todo"><h2><span class="num">★</span>講者強調</h2>
+      <ul><li>講者的核心論點、結論、特別要聽眾記住的話或行動建議</li></ul>
+      <div class="task"><strong>問答</strong>：聽眾問了什麼、講者怎麼回答（有才寫）</div>
+    </section>
+    重點放在：講座內容、核心論點與證據、講者舉的案例；不要寫成考試筆記。
+    """
 
     /// 去掉 code block 標記與任何可能執行的東西（WebView 也已關閉 JavaScript）。
     static func sanitize(_ raw: String) -> String {

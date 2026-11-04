@@ -117,6 +117,12 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     var subject: SchoolSubject?
     /// 下課後用錄音重新做中英夾雜辨識、AI 合併的逐字稿
     var refinedTranscript: String?
+    /// 只錄音（中文課）：下課後才轉文字
+    var recordOnly: Bool?
+    /// 下課後已經轉過文字（不管有沒有內容）
+    var transcribedAfterClass: Bool?
+    /// 中英夾雜：對齊好的兩種辨識結果，等 AI 合併（秒數從上課開始算）
+    var aligned: [AlignedWindow]?
     /// Gemini 整理的詳細課程筆記（HTML 片段）
     var richNotes: String?
     var richNotesError: String?
@@ -133,6 +139,8 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
 
     var sourceText: String { lines.map(\.source).joined(separator: "\n") }
     var needsSummary: Bool { end != nil && summary == nil && !lines.isEmpty }
+    /// 只錄音的課，下課後還沒轉文字
+    var needsTranscription: Bool { recordOnly == true && end != nil && transcribedAfterClass != true && !audioParts.isEmpty }
 }
 
 /// 一天的資料（存成一個 JSON 檔）。
