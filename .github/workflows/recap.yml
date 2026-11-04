@@ -5,6 +5,9 @@ on:
     paths:
       - "Recap/**"
       - ".github/workflows/recap.yml"
+  pull_request:
+    paths:
+      - "Recap/**"
   workflow_dispatch:
 
 permissions:
@@ -91,6 +94,7 @@ jobs:
           path: Recap/Recap.ipa
 
       - name: Publish to "recap-latest" release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
