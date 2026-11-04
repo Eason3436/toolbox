@@ -62,7 +62,22 @@ struct SettingsView: View {
                         Text("10 分鐘").tag(10)
                     }
                     Toggle("人聲加強（降低背景雜音）", isOn: $settings.voiceProcessing)
+                    Toggle("沒人說話時自動省電", isOn: $settings.autoPowerSave)
+                    if settings.autoPowerSave {
+                        Picker("近距離說話判定", selection: $settings.powerSaveSensitivity) {
+                            Text("要很近").tag(0)
+                            Text("一般").tag(1)
+                            Text("稍遠也算").tag(2)
+                        }
+                    }
                     Toggle("AI 校正逐字稿錯字", isOn: $settings.aiCorrection)
+                    Toggle("中英夾雜辨識", isOn: $settings.mixedLanguage)
+                    Toggle("高中上課用語與專有名詞", isOn: $settings.highSchoolMode)
+                    NavigationLink {
+                        LearningMemoryView()
+                    } label: {
+                        LabeledContent("學習記憶", value: settings.learningMemory ? "已記住 \(LearningMemory.shared.terms.count) 個詞" : "關閉")
+                    }
                     NavigationLink {
                         VocabularyView()
                     } label: {
@@ -73,13 +88,18 @@ struct SettingsView: View {
                 } header: {
                     Text("全天錄音")
                 } footer: {
-                    Text("清單是用 SpeechTranscriber.supportedLocales 實際查到的，打勾代表語音模型已在手機上。第一次用某個語言會自動下載模型（需要網路一次），之後完全離線。")
+                    Text("中英夾雜辨識：每段錄音會用中文和英文模型各聽一次，再由 AI 合併，英文單字和術語不會變成中文諧音。轉文字時間約多一倍（在背景或充電時做）。課堂模式會在下課後用錄音重新辨識一次。\n高中上課用語：加入段考、學測、講義、第幾頁等上課常講的詞，課堂模式再依科目加入那科的專有名詞。\n自動省電：連續 3 分鐘沒有人在近處說話（只有遠處的背景人聲或安靜）就關掉人聲加強、改用較低位元率；一偵測到有人靠近說話或老師開始講課，就馬上恢復。下次開始錄音時生效。\n清單是用 SpeechTranscriber.supportedLocales 實際查到的，打勾代表語音模型已在手機上。第一次用某個語言會自動下載模型（需要網路一次），之後完全離線。")
                 }
 
-                Section("Apple Intelligence") {
-                    Label(queue.readiness.message, systemImage: queue.readiness == .available ? "checkmark.circle.fill" : "exclamationmark.triangle")
-                        .foregroundStyle(queue.readiness == .available ? .green : .orange)
-                    Text("摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
+                Section("AI 摘要與追問") {
+                    NavigationLink {
+                        AIProviderView()
+                    } label: {
+                        LabeledContent("AI 模型", value: settings.aiProvider == .gemini ? (settings.geminiAPIKey.isEmpty ? "Gemini（未設定 Key）" : settings.geminiModel) : "Apple Intelligence")
+                    }
+                    Label(ModelReadiness.current.message, systemImage: ModelReadiness.current == .available ? "checkmark.circle.fill" : "exclamationmark.triangle")
+                        .foregroundStyle(ModelReadiness.current == .available ? .green : .orange)
+                    Text(settings.aiProvider == .gemini ? "用 Gemini 時，逐字稿會傳到 Google 伺服器處理，上下文很大，整天的內容可以一次整理、追問也能看完整份紀錄。沒網路時會改用裝置上的模型。" : "摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("現在整理全部") { queue.kick(summaries: true) }
                         .disabled(queue.isRunning)
@@ -263,5 +283,213 @@ struct VocabularyView: View {
         Haptics.success()
         settings.vocabulary.append(contentsOf: words)
         newWord = ""
+    }
+}
+
+/// 選擇 AI：Apple Intelligence 或 Gemini（API Key、模型）。
+struct AIProviderView: View {
+    @Environment(AppSettings.self) private var settings
+    @State private var keyDraft = ""
+    @State private var models: [GeminiModelInfo] = []
+    @State private var loading = false
+    @State private var message: String?
+    @State private var customModel = ""
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section {
+                Picker("使用", selection: $settings.aiProvider) {
+                    ForEach(AIConfig.Provider.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } footer: {
+                Text("Apple Intelligence 完全離線、免費，但一次只能看一小段。Gemini 需要網路和 API Key，能一次讀完整天的逐字稿，摘要和追問更完整。")
+            }
+
+            if settings.aiProvider == .gemini {
+                Section {
+                    SecureField("貼上 API Key", text: $keyDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("儲存並測試") { Task { await saveAndTest() } }
+                        .disabled(keyDraft.trimmingCharacters(in: .whitespaces).isEmpty || loading)
+                    if !settings.geminiAPIKey.isEmpty {
+                        Button("移除 API Key", role: .destructive) {
+                            settings.geminiAPIKey = ""
+                            keyDraft = ""
+                            models = []
+                            message = nil
+                            Haptics.warning()
+                        }
+                    }
+                    if loading { ProgressView() }
+                    if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+                } header: {
+                    Text("API Key")
+                } footer: {
+                    Text("到 Google AI Studio（aistudio.google.com）登入後按「Get API key」免費建立。Key 只存在這支手機的鑰匙圈。")
+                }
+
+                Section {
+                    ForEach(GeminiClient.recommended) { item in
+                        modelRow(id: item.id, title: item.title, detail: item.detail)
+                    }
+                } header: {
+                    Text("推薦模型")
+                } footer: {
+                    Text("「latest」會自動使用 Google 最新的同級模型，不用擔心舊型號下架。")
+                }
+
+                if !models.isEmpty {
+                    Section("這把 Key 可用的全部模型") {
+                        ForEach(models) { model in
+                            modelRow(id: model.id, title: model.displayName, detail: model.id + (model.inputLimit > 0 ? "・上下文 \(model.inputLimit / 1000)K" : ""))
+                        }
+                    }
+                } else if !settings.geminiAPIKey.isEmpty {
+                    Section {
+                        Button("取得可用模型清單") { Task { await loadModels() } }.disabled(loading)
+                    }
+                }
+
+                Section {
+                    TextField("自訂模型代號，例如 gemini-2.5-flash", text: $customModel)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit {
+                            let id = customModel.trimmingCharacters(in: .whitespaces)
+                            if !id.isEmpty { settings.geminiModel = id; Haptics.selection() }
+                        }
+                } footer: {
+                    Text("目前使用：\(settings.geminiModel)")
+                }
+            }
+        }
+        .navigationTitle("AI 模型")
+        .sensoryFeedback(.selection, trigger: settings.aiProvider)
+        .onAppear { keyDraft = settings.geminiAPIKey }
+    }
+
+    private func modelRow(id: String, title: String, detail: String) -> some View {
+        Button {
+            settings.geminiModel = id
+            Haptics.selection()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if settings.geminiModel == id {
+                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+    }
+
+    private func saveAndTest() async {
+        let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        loading = true
+        defer { loading = false }
+        do {
+            let reply = try await GeminiClient.generate(system: "只回答「OK」。", prompt: "測試", model: settings.geminiModel, apiKey: key)
+            settings.geminiAPIKey = key
+            message = "連線成功（\(settings.geminiModel) 回覆：\(reply.prefix(20))）"
+            Haptics.success()
+            await loadModels()
+        } catch {
+            message = "測試失敗：\(error.localizedDescription)"
+            Haptics.error()
+        }
+    }
+
+    private func loadModels() async {
+        let key = settings.geminiAPIKey
+        guard !key.isEmpty else { return }
+        loading = true
+        defer { loading = false }
+        do {
+            models = try await GeminiClient.listModels(apiKey: key)
+        } catch {
+            message = "取得模型清單失敗：\(error.localizedDescription)"
+        }
+    }
+}
+
+/// 學習記憶：App 從課堂筆記和 AI 校正裡學到的詞。
+struct LearningMemoryView: View {
+    @Environment(AppSettings.self) private var settings
+    @State private var memory = LearningMemory.shared
+    @State private var filter: SchoolSubject?
+    @State private var newTerm = ""
+    @State private var confirmClear = false
+
+    var body: some View {
+        @Bindable var settings = settings
+        List {
+            Section {
+                Toggle("學習記憶", isOn: $settings.learningMemory)
+            } footer: {
+                Text("開啟後，App 會記住課堂筆記裡的術語，以及 AI 校正時改回來的英文單字。之後轉文字時會優先認這些詞，整理新的一堂課時也會參考同科目之前上過的課，越用越準。全部只存在這支手機。")
+            }
+            if settings.learningMemory {
+                Section {
+                    Picker("科目", selection: $filter) {
+                        Text("全部").tag(SchoolSubject?.none)
+                        ForEach(SchoolSubject.allCases) { Text($0.title).tag(SchoolSubject?.some($0)) }
+                    }
+                    HStack {
+                        TextField("手動加入一個詞", text: $newTerm)
+                            .textInputAutocapitalization(.never)
+                            .onSubmit(add)
+                        Button("加入", action: add).disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                Section("記住的詞（\(shown.count)）") {
+                    if shown.isEmpty { Text("還沒有學到的詞，上幾堂課之後就會出現。").foregroundStyle(.secondary) }
+                    ForEach(shown) { term in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(term.term)
+                                Spacer()
+                                if let subject = term.subject { Text(subject.title).font(.caption).foregroundStyle(.secondary) }
+                                Text("×\(term.count)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                            }
+                            if let note = term.note, !note.isEmpty {
+                                Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        for index in offsets { memory.remove(shown[index]) }
+                        Haptics.warning()
+                    }
+                }
+                Section {
+                    Button("清除全部記憶", role: .destructive) { confirmClear = true }
+                }
+            }
+        }
+        .navigationTitle("學習記憶")
+        .confirmationDialog("要清除所有記住的詞嗎？", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("清除", role: .destructive) { memory.clear(); Haptics.warning() }
+        }
+    }
+
+    private var shown: [LearnedTerm] {
+        memory.terms
+            .filter { filter == nil || $0.subject == filter }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.lastSeen > $1.lastSeen }
+    }
+
+    private func add() {
+        let term = newTerm.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else { return }
+        memory.add(term, subject: filter)
+        newTerm = ""
+        Haptics.success()
     }
 }

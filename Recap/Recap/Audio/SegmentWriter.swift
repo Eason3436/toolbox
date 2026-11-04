@@ -22,6 +22,13 @@ final class SegmentWriter: AudioSink, @unchecked Sendable {
     private var frames: AVAudioFramePosition = 0
     private var sampleRate: Double = 48_000
     private var voiced: Double = 0
+    private var low = false
+
+    /// 省電時用較低的位元率（下一個檔案開始生效）
+    var lowBitrate: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return low }
+        set { lock.lock(); low = newValue; lock.unlock() }
+    }
 
     /// 每段寫完時呼叫（任意執行緒）
     var onClosed: (@Sendable (Closed) -> Void)?
@@ -83,7 +90,7 @@ final class SegmentWriter: AudioSink, @unchecked Sendable {
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: format.sampleRate,
             AVNumberOfChannelsKey: channels,
-            AVEncoderBitRateKey: channels > 1 ? 96_000 : 64_000,
+            AVEncoderBitRateKey: low ? (channels > 1 ? 48_000 : 32_000) : (channels > 1 ? 96_000 : 64_000),
         ]
         do {
             file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)

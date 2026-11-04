@@ -91,6 +91,12 @@ struct RecorderCard: View {
                 }
             }
             LevelMeter(level: recorder.level)
+            if recorder.isPowerSaving {
+                Label("省電中：附近沒人在說話，有人靠近說話會自動恢復", systemImage: "leaf.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            }
             HStack {
                 if let stopAt = recorder.stopAt {
                     Label("錄到 \(stopAt.hm)", systemImage: "clock")

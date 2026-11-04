@@ -45,8 +45,16 @@ struct LectureStartView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("上課時一邊錄音、一邊把老師說的話轉成文字並即時翻譯，錄音會存起來，下課後用 Apple Intelligence 整理重點。")
+                    Text("上課時一邊錄音、一邊把老師說的話轉成文字並即時翻譯，錄音會存起來，下課後用 \(AIConfig.engineName) 整理重點。選了科目會自動加入那科的專有名詞，辨識更準。")
                         .font(.subheadline).foregroundStyle(.secondary)
+                }
+                Picker("科目", selection: $settings.lectureSubject) {
+                    ForEach(SchoolSubject.allCases) { subject in
+                        Label(subject.title, systemImage: subject.symbol).tag(subject)
+                    }
+                }
+                .onChange(of: settings.lectureSubject) {
+                    if settings.lectureSubject != .general, !settings.lectureSubject.isSeminar { settings.lectureSourceLocale = settings.lectureSubject.defaultLocale }
                 }
                 Picker("上課語言", selection: $settings.lectureSourceLocale) {
                     if locales.isEmpty { Text(settings.lectureSourceLocale).tag(settings.lectureSourceLocale) }
@@ -101,6 +109,7 @@ struct LectureStartView: View {
         .navigationTitle("課堂模式")
         .sensoryFeedback(.selection, trigger: settings.lectureSourceLocale)
         .sensoryFeedback(.selection, trigger: settings.translationTarget)
+        .sensoryFeedback(.selection, trigger: settings.lectureSubject)
         .task {
             locales = await SpeechSupport.supportedLocales().sorted { $0.identifier < $1.identifier }
             await refreshStatus()
@@ -168,19 +177,21 @@ struct LectureLiveView: View {
     @Environment(AppSettings.self) private var settings
     @State private var follow = true
 
+    private var noTranslation: Bool { session.translatorName == "不需翻譯" }
+
     var body: some View {
         @Bindable var settings = settings
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(session.lecture.lines) { line in
-                        LineView(line: line, showSource: settings.lectureShowSource)
+                        LineView(line: line, showSource: settings.lectureShowSource || noTranslation, sourceIsMain: noTranslation)
                             .id(line.id)
                     }
                     if !session.volatileText.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            if settings.lectureShowSource {
-                                Text(session.volatileText).font(.subheadline).foregroundStyle(.tertiary)
+                            if settings.lectureShowSource || noTranslation {
+                                Text(session.volatileText).font(noTranslation ? .title3 : .subheadline).foregroundStyle(.tertiary)
                             }
                             if !session.volatileTranslation.isEmpty {
                                 Text(session.volatileTranslation).font(.title3).foregroundStyle(.secondary)
@@ -257,12 +268,15 @@ struct LectureLiveView: View {
 private struct LineView: View {
     let line: LiveLine
     let showSource: Bool
+    var sourceIsMain = false
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showSource {
-                Text(line.source).font(.subheadline).foregroundStyle(.secondary)
+                Text(line.source).font(sourceIsMain ? .title3 : .subheadline).foregroundStyle(sourceIsMain ? .primary : .secondary)
             }
-            if let t = line.translation {
+            if sourceIsMain {
+                EmptyView()
+            } else if let t = line.translation {
                 if !t.isEmpty { Text(t).font(.title3) }
             } else {
                 Text("翻譯中…").font(.footnote).foregroundStyle(.tertiary)
@@ -295,6 +309,15 @@ struct LectureDetailView: View {
                             }
                         }
                     }
+                    if let refined = lecture.refinedTranscript, !refined.isEmpty {
+                        Card {
+                            DisclosureGroup {
+                                Text(refined).font(.subheadline).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            } label: {
+                                Label("中英合併逐字稿", systemImage: "text.badge.checkmark").font(.headline)
+                            }
+                        }
+                    }
                     Card {
                         HStack {
                             Text("逐字稿（\(lecture.lines.count) 句）").font(.headline)
@@ -320,7 +343,18 @@ struct LectureDetailView: View {
                 NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) { Image(systemName: "questionmark.bubble") }
                 ShareLink(item: MarkdownExport.lecture(lecture)) { Image(systemName: "square.and.arrow.up") }
                 Menu {
-                    Button("重新命名", systemImage: "pencil") { newName = lecture.name ?? ""; renaming = true }
+                    Button("重新命名", systemImage: "pencil") { newName = lecture.name ?? lecture.displayTitle; renaming = true }
+                    Picker(selection: Binding(get: { lecture.subject ?? .general }, set: { value in
+                        var updated = lecture
+                        updated.subject = value
+                        store.upsertLecture(updated)
+                        Haptics.selection()
+                    })) {
+                        ForEach(SchoolSubject.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                    } label: {
+                        Label("科目：\(lecture.subject?.title ?? "未判斷")", systemImage: "books.vertical")
+                    }
+                    .pickerStyle(.menu)
                     Button("重新整理重點", systemImage: "sparkles") { queue.resummarizeLecture(lecture.id) }
                 } label: { Image(systemName: "ellipsis") }
             }
@@ -341,14 +375,27 @@ struct LectureDetailView: View {
     @ViewBuilder
     private func summaryCard(_ lecture: Lecture) -> some View {
         Card {
-            Text("\(lecture.start.formatted(date: .abbreviated, time: .shortened))\(lecture.end.map { "–\($0.hm)" } ?? "")")
-                .font(.subheadline).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                if let subject = lecture.subject, subject != .general {
+                    Label(subject.title, systemImage: subject.symbol)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.tint.opacity(0.12), in: Capsule())
+                }
+                Text("\(lecture.start.formatted(date: .abbreviated, time: .shortened))\(lecture.end.map { "–\($0.hm)" } ?? "")")
+            }
+            .font(.subheadline).foregroundStyle(.secondary)
             if let s = lecture.summary, !s.title.isEmpty {
                 Text(s.title).font(.title2.bold())
                 Text(s.overview)
                 if !s.keyPoints.isEmpty {
                     Text("課堂重點").font(.headline).padding(.top, 4)
                     BulletList(items: s.keyPoints)
+                }
+                if let exam = s.examPoints, !exam.isEmpty {
+                    Label(lecture.subject?.isSeminar == true ? "講者強調" : "老師說會考", systemImage: "star.fill")
+                        .font(.headline).foregroundStyle(.orange).padding(.top, 4)
+                    BulletList(items: exam, symbol: "star", tint: .orange)
                 }
                 if !s.terms.isEmpty {
                     Text("術語").font(.headline).padding(.top, 4)

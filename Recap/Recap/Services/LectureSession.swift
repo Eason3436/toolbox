@@ -33,7 +33,7 @@ final class LectureSession {
         transcriber.onResult = { [weak self] text, isFinal in
             self?.handle(text: text, isFinal: isFinal)
         }
-        try await transcriber.start(localeID: lecture.sourceLocale, vocabulary: AppSettings.shared.vocabulary)
+        try await transcriber.start(localeID: lecture.sourceLocale, vocabulary: AppSettings.shared.recognitionVocabulary(subject: lecture.subject))
         store.upsertLecture(lecture)
     }
 

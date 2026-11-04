@@ -17,7 +17,11 @@ final class LiveTranslator {
     }
 
     /// 檢查語言包；已下載就用翻譯框架，否則改用 Foundation Models。
+    /// 上課語言和翻譯語言一樣（例如中文課翻成中文）就不用翻
+    private var sameLanguage: Bool { source.languageCode == target.languageCode }
+
     func prepare() async {
+        if sameLanguage { return }
         let status = await LanguageAvailability().status(from: source, to: target)
         if status == .installed {
             session = TranslationSession(installedSource: source, target: target)
@@ -27,11 +31,11 @@ final class LiveTranslator {
         }
     }
 
-    var engineName: String { useModelFallback ? "Apple Intelligence 翻譯" : "系統翻譯（裝置上）" }
+    var engineName: String { sameLanguage ? "不需翻譯" : useModelFallback ? "Apple Intelligence 翻譯" : "系統翻譯（裝置上）" }
 
     func translate(_ text: String) async -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.isEmpty, !sameLanguage else { return nil }
         if !useModelFallback, let session {
             do {
                 return try await session.translate(trimmed).targetText

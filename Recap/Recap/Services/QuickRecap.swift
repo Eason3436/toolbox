@@ -59,7 +59,7 @@ final class QuickRecap {
                 state = .failed("最近 \(minutes) 分鐘沒有辨識到說話的內容。")
                 return
             }
-            state = .working("Apple Intelligence 摘要中…")
+            state = .working("\(AIConfig.engineName) 摘要中…")
             let chunks = Summarizer.chunk(text)
             var parts: [SegmentDigest] = []
             var lastError: Error?
@@ -91,7 +91,7 @@ final class QuickRecap {
             var text = segment.bestTranscript
             if text == nil, segment.status == .recorded, let file = segment.audioFile {
                 state = .working("轉文字中（\(index + 1)/\(segments.count)）…")
-                let result = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale, vocabulary: settings.vocabulary)
+                let result = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale, vocabulary: settings.recognitionVocabulary())
                 text = result
                 let empty = result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 store.updateSegment(segment.id, in: key) {

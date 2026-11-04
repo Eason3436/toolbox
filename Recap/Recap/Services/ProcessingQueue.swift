@@ -119,10 +119,21 @@ final class ProcessingQueue {
             }
             statusText = "轉文字中（\(segment.start.formatted(date: .omitted, time: .shortened))）・還有 \(pendingTranscriptions) 段"
             do {
-                let text = try await FileTranscriber.transcribe(url: store.audioURL(file), localeID: settings.transcriptionLocale, vocabulary: settings.vocabulary)
+                let url = store.audioURL(file)
+                let vocabulary = settings.recognitionVocabulary()
+                var text: String
+                var windows: [AlignedWindow]?
+                if let secondary = settings.secondaryLocale(for: settings.transcriptionLocale) {
+                    let mixed = try await FileTranscriber.transcribeMixed(url: url, primary: settings.transcriptionLocale, secondary: secondary, vocabulary: vocabulary)
+                    text = mixed.text
+                    windows = mixed.windows.isEmpty ? nil : mixed.windows
+                } else {
+                    text = try await FileTranscriber.transcribe(url: url, localeID: settings.transcriptionLocale, vocabulary: vocabulary)
+                }
                 let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 store.updateSegment(segment.id, in: key) {
                     $0.transcript = text
+                    $0.aligned = windows
                     $0.correctedTranscript = nil
                     $0.status = empty ? .silent : .transcribed
                     $0.error = nil
@@ -145,11 +156,21 @@ final class ProcessingQueue {
             statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
             let label = segment.start.formatted(date: .omitted, time: .shortened)
             var text = segment.bestTranscript ?? ""
-            if settings.aiCorrection, segment.correctedTranscript == nil, let raw = segment.transcript {
+            if segment.correctedTranscript == nil, let windows = segment.aligned, !windows.isEmpty {
+                statusText = "AI 合併中英辨識・還有 \(pendingSummaries) 項"
+                let names = Self.languageNames(settings.transcriptionLocale)
+                if let merged = await Summarizer.mergeMixed(windows, primaryName: names.0, secondaryName: names.1, vocabulary: settings.recognitionVocabulary(), context: settings.highSchoolMode ? "使用者是台灣高中生，內容可能是上課或同學間的對話。" : "") {
+                    text = merged
+                    store.updateSegment(segment.id, in: key) { $0.correctedTranscript = merged }
+                    LearningMemory.shared.learn(corrected: merged, original: segment.transcript ?? "", subject: nil)
+                }
+                statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
+            } else if settings.aiCorrection, segment.correctedTranscript == nil, let raw = segment.transcript {
                 statusText = "AI 校正逐字稿・還有 \(pendingSummaries) 項"
-                if let fixed = await Summarizer.correctTranscript(raw, vocabulary: settings.vocabulary) {
+                if let fixed = await Summarizer.correctTranscript(raw, vocabulary: settings.recognitionVocabulary(), context: settings.highSchoolMode ? "使用者是台灣高中生，內容可能是上課或同學間的對話。" : "") {
                     text = fixed
                     store.updateSegment(segment.id, in: key) { $0.correctedTranscript = fixed }
+                    LearningMemory.shared.learn(corrected: fixed, original: raw, subject: nil)
                 }
                 statusText = "AI 摘要中・還有 \(pendingSummaries) 項"
             }
@@ -187,9 +208,27 @@ final class ProcessingQueue {
             statusText = "整理課堂重點：\(lecture.displayTitle)"
             let languageName = Locale(identifier: "zh-Hant-TW").localizedString(forIdentifier: lecture.sourceLocale) ?? lecture.sourceLocale
             var updated = lecture
+            // 中英夾雜：下課後用錄音重新辨識一次，AI 合併成更準的逐字稿
+            if updated.refinedTranscript == nil, let secondary = settings.secondaryLocale(for: lecture.sourceLocale), !lecture.audioParts.isEmpty {
+                statusText = "重新辨識中英夾雜：\(lecture.displayTitle)"
+                if let refined = await refineLecture(lecture, secondary: secondary) {
+                    updated.refinedTranscript = refined
+                    if var latest = store.lecture(lecture.id) {
+                        latest.refinedTranscript = refined
+                        store.upsertLecture(latest)
+                    }
+                }
+                statusText = "整理課堂重點：\(lecture.displayTitle)"
+            }
             do {
-                let output = try await Summarizer.summarizeLecture(sourceText: lecture.sourceText, languageName: languageName)
-                updated.summary = LectureSummary(title: output.title, overview: output.overview, keyPoints: output.keyPoints, terms: output.terms, todos: output.todos, generatedAt: .now)
+                let memory = LearningMemory.previousLectureContext(for: lecture, in: store)
+                let output = try await Summarizer.summarizeLecture(sourceText: updated.refinedTranscript ?? lecture.sourceText, languageName: languageName, subject: lecture.subject, memory: memory)
+                updated.summary = LectureSummary(title: output.title, overview: output.overview, keyPoints: output.keyPoints, terms: output.terms, todos: output.todos, generatedAt: .now, examPoints: output.examPoints)
+                // 沒選科目：用 AI 判斷的
+                if updated.subject == nil || updated.subject == .general, let guess = output.subject {
+                    updated.subject = guess
+                }
+                LearningMemory.shared.learn(fromTerms: output.terms, subject: updated.subject)
                 updated.summaryError = nil
             } catch is CancellationError {
                 return
@@ -201,9 +240,36 @@ final class ProcessingQueue {
             if var latest = store.lecture(lecture.id) {
                 latest.summary = updated.summary
                 latest.summaryError = updated.summaryError
+                latest.subject = updated.subject
                 store.upsertLecture(latest)
             }
         }
+    }
+
+    private func refineLecture(_ lecture: Lecture, secondary: String) async -> String? {
+        let vocabulary = settings.recognitionVocabulary(subject: lecture.subject)
+        let names = Self.languageNames(lecture.sourceLocale)
+        var parts: [String] = []
+        for part in lecture.audioParts.sorted(by: { $0.start < $1.start }) {
+            guard !Task.isCancelled else { return nil }
+            let url = store.audioURL(part.file)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            do {
+                let mixed = try await FileTranscriber.transcribeMixed(url: url, primary: lecture.sourceLocale, secondary: secondary, vocabulary: vocabulary)
+                let context = "這是台灣高中\(lecture.subject.map { $0 == .general ? "" : "「\($0.title)」" } ?? "")課的錄音，老師上課常中英夾雜。"
+                let merged = await Summarizer.mergeMixed(mixed.windows, primaryName: names.0, secondaryName: names.1, vocabulary: vocabulary, context: context)
+                if let merged { LearningMemory.shared.learn(corrected: merged, original: mixed.text, subject: lecture.subject) }
+                if let text = merged ?? (mixed.text.isEmpty ? nil : mixed.text) { parts.append(text) }
+            } catch {
+                appLog.info("課堂重新辨識失敗：\(error.localizedDescription)")
+            }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
+    /// (主要語言名, 第二語言名)
+    static func languageNames(_ primary: String) -> (String, String) {
+        primary.hasPrefix("en") ? ("英文", "中文") : ("中文", "英文")
     }
 
     private func buildRecaps() async {
