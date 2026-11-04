@@ -53,6 +53,10 @@ targets:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
           - com.eason3436.recap.process
+        NSUserActivityTypes:
+          - com.eason3436.recap.lecture
+          - com.eason3436.recap.day
+          - com.eason3436.recap.segment
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.recap

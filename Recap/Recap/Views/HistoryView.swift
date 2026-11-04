@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 struct HistoryView: View {
@@ -65,6 +66,15 @@ struct SegmentDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        content
+            .userActivity(SiriScreen.segmentActivity) { activity in
+                activity.title = store.day(route.dayKey).segments.first(where: { $0.id == route.id })?.title ?? "錄音片段"
+                activity.appEntityIdentifier = EntityIdentifier(for: RecordingSegmentEntity.self, identifier: RecordingSegmentEntity.makeID(dayKey: route.dayKey, segmentID: route.id))
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let segment = store.day(route.dayKey).segments.first(where: { $0.id == route.id }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {

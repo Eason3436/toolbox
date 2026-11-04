@@ -73,6 +73,7 @@ final class RecapStore {
 
     func deleteLecture(_ lecture: Lecture) {
         for part in lecture.audioParts { removeAudio(part.file) }
+        SiriIndex.remove(lecture: lecture.id)
         update(DayKey.key(for: lecture.start)) { record in
             record.lectures.removeAll { $0.id == lecture.id }
         }
