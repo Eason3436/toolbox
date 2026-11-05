@@ -61,6 +61,8 @@ struct Segment: Codable, Identifiable, Hashable, Sendable {
     var whisperChecked: Bool?
     /// 已經用 Groq Whisper 重新辨識
     var whisperImproved: Bool?
+    /// Claude 透過同步伺服器寫回的摘要（Markdown）
+    var claudeNotes: String?
 
     var duration: TimeInterval { end.timeIntervalSince(start) }
     var hasText: Bool { !(transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -134,6 +136,8 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     var whisperChecked: Bool?
     /// 用 Groq Whisper 重新辨識了幾段（每段約 2 分鐘）
     var whisperBlocks: Int?
+    /// Claude 透過同步伺服器寫回的課堂筆記（Markdown）
+    var claudeNotes: String?
 
     var displayTitle: String {
         if let name, !name.isEmpty { return name }
@@ -157,6 +161,8 @@ struct DayRecord: Codable, Sendable {
     var segments: [Segment] = []
     var lectures: [Lecture] = []
     var recap: DailyRecap?
+    /// Claude 寫回的今日 Recap（Markdown）
+    var claudeRecap: String?
     /// 有新內容，Recap 需要重新產生
     var recapDirty = false
 
