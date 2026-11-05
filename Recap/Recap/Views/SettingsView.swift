@@ -588,11 +588,11 @@ struct WhisperSettingsView: View {
     }
 }
 
-/// 同步到自己的 Recap MCP 伺服器（Cloudflare Worker），claude.ai 透過自訂連接器讀取。
+/// 同步到自己的 Supabase，claude.ai 用官方 Supabase 連接器讀取。
 struct SyncSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var urlDraft = ""
-    @State private var tokenDraft = ""
+    @State private var keyDraft = ""
     @State private var loading = false
     @State private var message: String?
 
@@ -601,24 +601,25 @@ struct SyncSettingsView: View {
         Form {
             Section {
                 Toggle("同步到 Claude", isOn: $settings.syncEnabled)
+                    .disabled(settings.syncToken.isEmpty)
             } footer: {
-                Text("整理完逐字稿後，會把最近 7 天有文字的錄音和課堂上傳到你自己的伺服器，Claude 就能在 claude.ai 讀、搜尋、幫你整理；Claude 寫回的筆記會出現在課堂和今天的畫面。只傳文字，不傳錄音。")
+                Text("整理完逐字稿後，會把最近 7 天有文字的錄音和課堂（逐字稿＋重點）上傳到你自己的 Supabase。在 claude.ai 打開 Supabase 連接器，就能請 Claude 讀、搜尋、幫你整理；Claude 寫回的筆記會出現在課堂和今天的畫面。只傳文字，不傳錄音。")
             }
             Section {
-                TextField("https://recap-mcp.你的帳號.workers.dev", text: $urlDraft)
+                TextField("https://xxxx.supabase.co", text: $urlDraft)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                SecureField(settings.syncToken.isEmpty ? "Bearer Token" : "已設定（重新貼上可更換）", text: $tokenDraft)
+                TextField("Publishable key（sb_publishable_… 或 anon key）", text: $keyDraft)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                Button(loading ? "測試中…" : "儲存並測試") { Task { await saveAndTest() } }
-                    .disabled(loading || urlDraft.isEmpty || (tokenDraft.isEmpty && settings.syncToken.isEmpty))
+                Button(loading ? "連線中…" : (settings.syncToken.isEmpty ? "連線" : "重新連線")) { Task { await connect() } }
+                    .disabled(loading || urlDraft.isEmpty || keyDraft.isEmpty)
                 if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
             } header: {
-                Text("伺服器")
+                Text("Supabase 專案")
             } footer: {
-                Text("網址填 Worker 的網址（結尾有沒有 /mcp 都可以）。Token 只存在這支手機的鑰匙圈。")
+                Text("網址和 publishable key 在 Supabase 專案的 Settings → API。第一次連線時，App 會自己產生一組私人 Token 綁定這個專案（只存在這支手機的鑰匙圈），之後只有這支手機能讀寫。")
             }
             Section {
                 Button("立即同步") {
@@ -639,24 +640,23 @@ struct SyncSettingsView: View {
         }
         .navigationTitle("同步到 Claude")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { urlDraft = settings.syncServerURL }
+        .onAppear {
+            urlDraft = settings.syncServerURL
+            keyDraft = settings.syncAPIKey
+        }
     }
 
-    private func saveAndTest() async {
-        let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let token = tokenDraft.isEmpty ? settings.syncToken : tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func connect() async {
         loading = true
         defer { loading = false }
         do {
-            try await RecapSync.test(url: url, token: token)
-            settings.syncServerURL = url
-            settings.syncToken = token
-            settings.syncEnabled = true
-            tokenDraft = ""
-            message = "連線成功，已開啟同步。"
+            try await RecapSync.connect(url: urlDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        apiKey: keyDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+            message = "連線成功，正在第一次同步…"
             Haptics.success()
+            message = await RecapSync.run()
         } catch {
-            message = "測試失敗：\(error.localizedDescription)"
+            message = "連線失敗：\(error.localizedDescription)"
             Haptics.error()
         }
     }

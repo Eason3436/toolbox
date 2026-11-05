@@ -69,9 +69,13 @@ final class AppSettings {
     var canUseWhisper: Bool { whisperEnabled && !groqAPIKey.isEmpty }
     /// 同步到自己的 Recap MCP 伺服器，讓 Claude 讀得到
     var syncEnabled: Bool { didSet { defaults.set(syncEnabled, forKey: "syncEnabled") } }
+    /// Supabase 專案網址（https://xxxx.supabase.co）
     var syncServerURL: String { didSet { defaults.set(syncServerURL, forKey: "syncServerURL") } }
+    /// Supabase 的 publishable／anon key（本來就是公開用的）
+    var syncAPIKey: String { didSet { defaults.set(syncAPIKey, forKey: "syncAPIKey") } }
+    /// App 自己產生、第一次連線時綁定的私人 Token（只存鑰匙圈）
     var syncToken: String { didSet { Keychain.write(syncToken, for: "syncToken") } }
-    var canSync: Bool { syncEnabled && !syncServerURL.isEmpty && !syncToken.isEmpty }
+    var canSync: Bool { syncEnabled && !syncServerURL.isEmpty && !syncAPIKey.isEmpty && !syncToken.isEmpty }
     /// 課堂畫面只顯示翻譯
     var lectureShowSource: Bool { didSet { defaults.set(lectureShowSource, forKey: "lectureShowSource") } }
 
@@ -132,6 +136,7 @@ final class AppSettings {
         whisperEnabled = defaults.bool(forKey: "whisperEnabled")
         syncEnabled = defaults.bool(forKey: "syncEnabled")
         syncServerURL = defaults.string(forKey: "syncServerURL") ?? ""
+        syncAPIKey = defaults.string(forKey: "syncAPIKey") ?? ""
         syncToken = Keychain.read("syncToken") ?? ""
         groqAPIKey = Keychain.read("groqAPIKey") ?? ""
         whisperModel = defaults.string(forKey: "whisperModel") ?? GroqWhisper.defaultModel
