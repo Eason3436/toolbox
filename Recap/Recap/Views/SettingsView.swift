@@ -102,6 +102,11 @@ struct SettingsView: View {
                     } label: {
                         LabeledContent("Whisper 補強辨識", value: settings.canUseWhisper ? "每天 \(settings.whisperDailyMinutes) 分鐘" : "關閉")
                     }
+                    NavigationLink {
+                        SyncSettingsView()
+                    } label: {
+                        LabeledContent("同步到 Claude", value: settings.canSync ? "開啟" : "關閉")
+                    }
                     Label(ModelReadiness.current.message, systemImage: ModelReadiness.current == .available ? "checkmark.circle.fill" : "exclamationmark.triangle")
                         .foregroundStyle(ModelReadiness.current == .available ? .green : .orange)
                     Text(settings.aiProvider == .gemini ? "用 Gemini 時，逐字稿會傳到 Google 伺服器處理，上下文很大，整天的內容可以一次整理、追問也能看完整份紀錄。沒網路時會改用裝置上的模型。" : "摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
@@ -576,6 +581,80 @@ struct WhisperSettingsView: View {
             settings.groqAPIKey = key
             keyDraft = ""
             message = "Key 已儲存，但今天的 Groq 額度已經用完，明天會自動開始補強。"
+        } catch {
+            message = "測試失敗：\(error.localizedDescription)"
+            Haptics.error()
+        }
+    }
+}
+
+/// 同步到自己的 Recap MCP 伺服器（Cloudflare Worker），claude.ai 透過自訂連接器讀取。
+struct SyncSettingsView: View {
+    @Environment(AppSettings.self) private var settings
+    @State private var urlDraft = ""
+    @State private var tokenDraft = ""
+    @State private var loading = false
+    @State private var message: String?
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section {
+                Toggle("同步到 Claude", isOn: $settings.syncEnabled)
+            } footer: {
+                Text("整理完逐字稿後，會把最近 7 天有文字的錄音和課堂上傳到你自己的伺服器，Claude 就能在 claude.ai 讀、搜尋、幫你整理；Claude 寫回的筆記會出現在課堂和今天的畫面。只傳文字，不傳錄音。")
+            }
+            Section {
+                TextField("https://recap-mcp.你的帳號.workers.dev", text: $urlDraft)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField(settings.syncToken.isEmpty ? "Bearer Token" : "已設定（重新貼上可更換）", text: $tokenDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(loading ? "測試中…" : "儲存並測試") { Task { await saveAndTest() } }
+                    .disabled(loading || urlDraft.isEmpty || (tokenDraft.isEmpty && settings.syncToken.isEmpty))
+                if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            } header: {
+                Text("伺服器")
+            } footer: {
+                Text("網址填 Worker 的網址（結尾有沒有 /mcp 都可以）。Token 只存在這支手機的鑰匙圈。")
+            }
+            Section {
+                Button("立即同步") {
+                    Task {
+                        loading = true
+                        message = await RecapSync.run()
+                        loading = false
+                    }
+                }
+                .disabled(loading || !settings.canSync)
+                if let last = RecapSync.lastSync {
+                    LabeledContent("上次同步", value: last.formatted(date: .abbreviated, time: .shortened))
+                }
+                if let error = RecapSync.lastError {
+                    Text(error).font(.footnote).foregroundStyle(.orange)
+                }
+            }
+        }
+        .navigationTitle("同步到 Claude")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { urlDraft = settings.syncServerURL }
+    }
+
+    private func saveAndTest() async {
+        let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = tokenDraft.isEmpty ? settings.syncToken : tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        loading = true
+        defer { loading = false }
+        do {
+            try await RecapSync.test(url: url, token: token)
+            settings.syncServerURL = url
+            settings.syncToken = token
+            settings.syncEnabled = true
+            tokenDraft = ""
+            message = "連線成功，已開啟同步。"
+            Haptics.success()
         } catch {
             message = "測試失敗：\(error.localizedDescription)"
             Haptics.error()

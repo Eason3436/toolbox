@@ -67,6 +67,11 @@ final class AppSettings {
     /// 每天最多送幾分鐘的錄音
     var whisperDailyMinutes: Int { didSet { defaults.set(whisperDailyMinutes, forKey: "whisperDailyMinutes") } }
     var canUseWhisper: Bool { whisperEnabled && !groqAPIKey.isEmpty }
+    /// 同步到自己的 Recap MCP 伺服器，讓 Claude 讀得到
+    var syncEnabled: Bool { didSet { defaults.set(syncEnabled, forKey: "syncEnabled") } }
+    var syncServerURL: String { didSet { defaults.set(syncServerURL, forKey: "syncServerURL") } }
+    var syncToken: String { didSet { Keychain.write(syncToken, for: "syncToken") } }
+    var canSync: Bool { syncEnabled && !syncServerURL.isEmpty && !syncToken.isEmpty }
     /// 課堂畫面只顯示翻譯
     var lectureShowSource: Bool { didSet { defaults.set(lectureShowSource, forKey: "lectureShowSource") } }
 
@@ -125,6 +130,9 @@ final class AppSettings {
         geminiModel = defaults.string(forKey: "geminiModel") ?? GeminiClient.defaultModel
         geminiAPIKey = Keychain.read("geminiAPIKey") ?? ""
         whisperEnabled = defaults.bool(forKey: "whisperEnabled")
+        syncEnabled = defaults.bool(forKey: "syncEnabled")
+        syncServerURL = defaults.string(forKey: "syncServerURL") ?? ""
+        syncToken = Keychain.read("syncToken") ?? ""
         groqAPIKey = Keychain.read("groqAPIKey") ?? ""
         whisperModel = defaults.string(forKey: "whisperModel") ?? GroqWhisper.defaultModel
         whisperDailyMinutes = defaults.integer(forKey: "whisperDailyMinutes")

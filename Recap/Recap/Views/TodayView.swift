@@ -225,6 +225,7 @@ struct DayContentView: View {
         let record = store.day(dayKey)
         VStack(spacing: 16) {
             recapCard(record)
+            if let notes = record.claudeRecap { ClaudeNotesCard(title: "Claude 的整理", markdown: notes) }
             if let status = queue.statusText {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

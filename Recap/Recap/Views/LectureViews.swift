@@ -342,6 +342,7 @@ struct LectureDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     richNotesCard(lecture)
+                    if let notes = lecture.claudeNotes { ClaudeNotesCard(title: "Claude 的課堂筆記", markdown: notes) }
                     summaryCard(lecture)
                     if !lecture.audioParts.isEmpty {
                         Card {

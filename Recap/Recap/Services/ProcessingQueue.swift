@@ -113,6 +113,7 @@ final class ProcessingQueue {
         } while rerunRequested && !Task.isCancelled
         store.purgeAudio(olderThan: settings.audioRetentionDays)
         SiriIndex.refresh()
+        if settings.canSync, !Task.isCancelled { await RecapSync.run() }
     }
 
     private func transcribeAll() async {
