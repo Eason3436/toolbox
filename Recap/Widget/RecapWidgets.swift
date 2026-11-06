@@ -24,39 +24,44 @@ struct RecordingLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    StatusLabel(context: context)
-                        .padding(.leading, 6)
-                        .padding(.top, 2)
+                    ActionButtons(state: context.state, dark: true, size: 50)
+                        .frame(maxHeight: .infinity, alignment: .center)
+                        .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ElapsedText(state: context.state)
-                        .font(.system(size: 28, weight: .regular).monospacedDigit())
-                        .foregroundStyle(stateTint(context.state))
-                        .contentTransition(.numericText())
-                        .padding(.trailing, 6)
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(context.state.isPaused ? "已暫停" : modeTitle(context))
+                            .font(.subheadline.weight(.semibold))
+                        ElapsedText(state: context.state)
+                            .font(.system(size: 40, weight: .regular).monospacedDigit())
+                            .contentTransition(.numericText())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .foregroundStyle(stateTint(context.state))
+                    .frame(maxHeight: .infinity, alignment: .center)
+                    .padding(.trailing, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(alignment: .center, spacing: 12) {
+                    if context.attributes.isLecture, let line = context.state.line, !line.isEmpty {
                         CaptionLine(context: context, dark: true)
-                        Spacer(minLength: 0)
-                        ActionButtons(state: context.state, dark: true, size: 44)
+                            .padding(.horizontal, 8)
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.top, 6)
                 }
             } compactLeading: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : symbol(context))
+                Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(stateTint(context.state))
                     .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: !context.state.isPaused)
                     .contentTransition(.symbolEffect(.replace))
+                    .padding(.leading, 4)
             } compactTrailing: {
                 ElapsedText(state: context.state)
                     .font(.body.weight(.medium).monospacedDigit())
                     .foregroundStyle(stateTint(context.state))
                     .frame(width: 52, alignment: .trailing)
             } minimal: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : symbol(context))
+                Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(stateTint(context.state))
                     .contentTransition(.symbolEffect(.replace))
@@ -157,20 +162,19 @@ private struct ActionButtons: View {
         HStack(spacing: 10) {
             if state.isPaused {
                 Button(intent: ResumeFromActivityIntent()) {
-                    circle("play.fill", fill: AnyShapeStyle(recordRed), fg: .white)
+                    circle("play.fill", fill: AnyShapeStyle(recordRed.opacity(0.3)), fg: recordRed)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("繼續錄音")
             } else {
                 Button(intent: PauseFromActivityIntent()) {
-                    circle("pause.fill", fill: neutralFill, fg: dark ? .white : .primary)
+                    circle("pause.fill", fill: AnyShapeStyle(Color.orange.opacity(0.3)), fg: .orange)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("暫停")
             }
             Button(intent: StopFromActivityIntent()) {
-                circle("stop.fill", fill: state.isPaused ? neutralFill : AnyShapeStyle(recordRed.opacity(0.22)),
-                       fg: state.isPaused ? (dark ? .white : .primary) : recordRed)
+                circle("stop.fill", fill: neutralFill, fg: dark ? .white : .primary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("停止")
@@ -192,18 +196,18 @@ private struct LockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 12) {
+                ActionButtons(state: context.state, size: 50)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 0) {
                     StatusLabel(context: context)
                     ElapsedText(state: context.state)
-                        .font(.system(size: 40, weight: .regular).monospacedDigit())
-                        .foregroundStyle(context.state.isPaused ? Color.orange : Color.primary)
+                        .font(.system(size: 44, weight: .regular).monospacedDigit())
+                        .foregroundStyle(stateTint(context.state))
                         .contentTransition(.numericText())
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                 }
-                Spacer(minLength: 8)
-                ActionButtons(state: context.state, size: 48)
             }
             CaptionLine(context: context)
         }
