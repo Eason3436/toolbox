@@ -17,6 +17,8 @@ struct RecordingActivityAttributes: ActivityAttributes {
         var stopAt: Date?
         /// 已停止錄音（結束後留在鎖定畫面顯示「錄音已儲存」）
         var endedAt: Date?
+        /// 最近幾秒的音量（0–1），動態島畫即時波形
+        var levels: [Double] = []
     }
 
     /// "allDay" 或 "lecture"

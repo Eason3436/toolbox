@@ -54,7 +54,11 @@ final class RecordingController {
             Task { @MainActor in self?.handle(event) }
         }
         recorder.onLevel = { [weak self] value in
-            Task { @MainActor in self?.level = value }
+            Task { @MainActor in
+                guard let self else { return }
+                self.level = value
+                self.levelPeak = max(self.levelPeak, value)
+            }
         }
     }
 
@@ -151,6 +155,7 @@ final class RecordingController {
         guard isActive else { return }
         if manual, settings.activeSchedule() != nil { manualStopAt = .now }
         tickTask?.cancel()
+        meterTask?.cancel()
         Haptics.recordStop()
         recorder.stop()
         recorder.setSinks([])
@@ -315,7 +320,32 @@ final class RecordingController {
 
     // MARK: - 定時檢查
 
+    /// 動態島的即時波形：每秒取這一秒的最大音量，留最近 6 格送給即時動態。
+    private var levelPeak: Float = 0
+    private var levelHistory: [Double] = []
+    private var meterTask: Task<Void, Never>?
+
+    private func startMeter() {
+        meterTask?.cancel()
+        levelHistory = []
+        levelPeak = 0
+        meterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                guard self.state == .recording else { continue }
+                // 人聲的音量偏小，開根號讓波形看得出起伏
+                let value = Double(min(1, max(0, self.levelPeak))).squareRoot()
+                self.levelPeak = 0
+                self.levelHistory.append((value * 100).rounded() / 100)
+                if self.levelHistory.count > 6 { self.levelHistory.removeFirst(self.levelHistory.count - 6) }
+                self.updateActivity(meter: true)
+            }
+        }
+    }
+
     private func startTicking() {
+        startMeter()
         tickTask?.cancel()
         tickTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -345,12 +375,13 @@ final class RecordingController {
             manualPause: state == .paused,
             line: line ?? lecture?.lastTranslation,
             segmentCount: mode == .lecture ? (lecture?.lecture.lines.count ?? 0) : segmentsThisSession,
-            stopAt: stopAt
+            stopAt: stopAt,
+            levels: state == .recording ? levelHistory : []
         )
     }
 
-    private func updateActivity(line: String? = nil, throttle: Bool = false, alert: Bool = false) {
-        liveActivity.update(activityState(line: line), throttle: throttle, alert: alert)
+    private func updateActivity(line: String? = nil, throttle: Bool = false, alert: Bool = false, meter: Bool = false) {
+        liveActivity.update(activityState(line: line), throttle: throttle, alert: alert, meter: meter)
     }
 
     func cleanUpStaleActivities() {

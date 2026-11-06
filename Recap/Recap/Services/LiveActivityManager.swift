@@ -23,9 +23,11 @@ final class LiveActivityManager {
 
     /// `throttle` 為 true 時最多每 2 秒更新一次（課堂翻譯用）。
     /// `alert` 為 true 時會亮起動態島並震動提醒（例如錄音被打斷）。
-    func update(_ state: RecordingActivityAttributes.ContentState, throttle: Bool = false, alert: Bool = false) {
+    /// `meter` 是每秒的波形更新：距離上次更新不到 0.8 秒就略過，避免跟其他更新疊在一起。
+    func update(_ state: RecordingActivityAttributes.ContentState, throttle: Bool = false, alert: Bool = false, meter: Bool = false) {
         guard let activity else { return }
         if throttle, !alert, Date().timeIntervalSince(lastUpdate) < 2 { return }
+        if meter, Date().timeIntervalSince(lastUpdate) < 0.8 { return }
         lastUpdate = .now
         let content = ActivityContent(state: state, staleDate: nil)
         Task {
