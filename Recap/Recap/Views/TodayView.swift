@@ -79,6 +79,7 @@ struct RecorderCard: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.glass)
+                .accessibilityLabel("錄一段時間")
             }
         }
     }
@@ -135,6 +136,7 @@ struct RecorderCard: View {
                     Image(systemName: "clock.arrow.circlepath").font(.headline).padding(.vertical, 6)
                 }
                 .buttonStyle(.glass)
+                .accessibilityLabel("其他時間範圍的重點")
             }
 
             HStack(spacing: 10) {

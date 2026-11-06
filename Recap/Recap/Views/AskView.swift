@@ -54,8 +54,9 @@ struct AskView: View {
                     .submitLabel(.send)
                     .onSubmit(send)
                 Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
+                    Image(systemName: "arrow.up.circle.fill").font(.title)
                 }
+                .accessibilityLabel("送出")
                 .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty || asking)
             }
             .padding(.horizontal, 16)

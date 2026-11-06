@@ -79,10 +79,14 @@ struct AudioPlayerView: View {
             if model.isLoaded {
                 HStack(spacing: 14) {
                     Button { model.skip(-15) } label: { Image(systemName: "gobackward.15") }
+                        .accessibilityLabel("倒退 15 秒")
                     Button { model.toggle() } label: {
-                        Image(systemName: model.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 36))
+                        Image(systemName: model.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.largeTitle)
+                            .contentTransition(.symbolEffect(.replace))
                     }
+                    .accessibilityLabel(model.isPlaying ? "暫停" : "播放")
                     Button { model.skip(15) } label: { Image(systemName: "goforward.15") }
+                        .accessibilityLabel("快轉 15 秒")
                     VStack(spacing: 2) {
                         Slider(value: Binding(get: { model.currentTime }, set: { model.seek($0) }), in: 0...max(1, model.duration))
                         HStack {
