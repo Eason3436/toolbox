@@ -123,7 +123,10 @@ enum BackgroundProcessing {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         BackgroundProcessing.register()
-        MainActor.assumeIsolated { _ = AppModel.shared }
+        MainActor.assumeIsolated {
+            _ = AppModel.shared
+            HealthMiHost.registerBackground()
+        }
         Notifications.registerCategories()
         UNUserNotificationCenter.current().delegate = self
         return true

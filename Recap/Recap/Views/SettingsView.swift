@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    @State private var showHealthMi = false
     @Environment(AppSettings.self) private var settings
     @Environment(RecapStore.self) private var store
     @Environment(ProcessingQueue.self) private var queue
@@ -74,10 +75,22 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button {
+                        showHealthMi = true
+                    } label: {
+                        SettingsRow(title: "小米健康同步", detail: nil, symbol: "heart.fill", tint: .pink)
+                    }
+                } header: {
+                    Text("其他工具")
+                } footer: {
+                    Text("把小米運動健康的資料寫進 Apple 健康。改編自開源專案 HealthMi（Apache-2.0）。")
+                }
+
+                Section {
                     NavigationLink {
                         ChangelogView()
                     } label: {
-                        SettingsRow(title: "更新日誌", detail: Changelog.entries.first.map { Changelog.dateText($0.date) }, symbol: "list.bullet.rectangle", tint: .pink)
+                        SettingsRow(title: "更新日誌", detail: Changelog.entries.first.map { Changelog.dateText($0.date) }, symbol: "list.bullet.rectangle", tint: .gray)
                     }
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
@@ -87,6 +100,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("設定")
+            .sheet(isPresented: $showHealthMi) {
+                HealthMiScreen()
+            }
         }
     }
 }
