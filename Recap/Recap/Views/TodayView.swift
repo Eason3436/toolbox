@@ -238,7 +238,6 @@ struct DayContentView: View {
     }
 
     @ViewBuilder
-    @ViewBuilder
     private func recapCard(_ record: DayRecord) -> some View {
         if let muse = record.claudeRecap, !muse.isEmpty {
             // Muse 的整理就是這天的 Recap
