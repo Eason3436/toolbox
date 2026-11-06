@@ -31,6 +31,19 @@ extension AppSettings {
             .filter { $0.weekday == weekday && minute >= $0.startMinute - 10 && minute <= $0.endMinute }
             .min { abs($0.startMinute - minute) < abs($1.startMinute - minute) }
     }
+
+    /// 今天的所有課，依時間排序
+    func timetableToday(_ date: Date = .now) -> [TimetableEntry] {
+        let weekday = Calendar.current.component(.weekday, from: date)
+        return timetable.filter { $0.weekday == weekday }.sorted { $0.startMinute < $1.startMinute }
+    }
+
+    /// 今天接下來的下一節（還沒開始的）
+    func timetableNext(after date: Date = .now) -> TimetableEntry? {
+        let calendar = Calendar.current
+        let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        return timetableToday(date).first { $0.startMinute - 10 > minute }
+    }
 }
 
 struct TimetableView: View {

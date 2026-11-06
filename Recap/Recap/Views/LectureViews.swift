@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Translation
 
-/// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面（過去的課在歷史頁）。
+/// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面（過去的課在紀錄頁）。
 struct LectureHomeView: View {
     @Environment(RecordingController.self) private var recorder
     @Environment(Router.self) private var router
@@ -54,19 +54,20 @@ struct LectureStartView: View {
         @Bindable var settings = settings
         List {
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("中文課只錄音，下課後才轉成文字並用 \(AIConfig.engineName) 整理重點、摘要和老師提醒的事項，比較省電。英文等非中文授課會即時顯示字幕和翻譯。")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                heroCard
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                if recorder.isActive, recorder.mode == .allDay {
+                    Label("目前在全天錄音，開始上課會先停止全天錄音。", systemImage: "info.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                subjectRow
-                NavigationLink {
-                    TimetableView()
-                } label: {
-                    LabeledContent("課表", value: settings.timetable.isEmpty ? "未設定" : "\(settings.timetable.count) 節")
-                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
+            todaySection
             Section {
-                Toggle("非中文授課（即時字幕與翻譯）", isOn: foreignBinding)
+                Toggle(isOn: foreignBinding) {
+                    Label("非中文授課", systemImage: "character.bubble")
+                }
                 if isForeign {
                     Picker("上課語言", selection: $settings.lectureSourceLocale) {
                         if locales.isEmpty { Text(settings.lectureSourceLocale).tag(settings.lectureSourceLocale) }
@@ -79,31 +80,28 @@ struct LectureStartView: View {
                     }
                     translationRow
                 }
-            }
-            Section {
-                Button {
-                    start()
-                } label: {
-                    HStack {
-                        Spacer()
-                        if starting { ProgressView() } else { Label("開始上課", systemImage: "record.circle").font(.headline) }
-                        Spacer()
-                    }
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.glassProminent)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
-                .disabled(starting)
-                if recorder.isActive, recorder.mode == .allDay {
-                    Text("目前在全天錄音，開始上課會先停止全天錄音。").font(.footnote).foregroundStyle(.secondary)
-                }
-                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
-            }
-            Section {
-                Button("匯入錄音檔整理", systemImage: "waveform.badge.plus") { importing = true }
+            } header: {
+                Text("語言")
             } footer: {
-                Text("把語音備忘錄或其他錄音匯進來，一樣轉成文字並整理重點和筆記。過去的課在「歷史 → 課堂」。")
+                Text(isForeign ? "上課時即時顯示字幕和翻譯。" : "中文課只錄音，下課後才轉文字並由 \(AIConfig.engineName) 整理，比較省電。")
+            }
+            Section {
+                Button { importing = true } label: {
+                    Label("匯入錄音檔整理", systemImage: "waveform.badge.plus")
+                }
+                NavigationLink {
+                    TimetableView()
+                } label: {
+                    LabeledContent {
+                        Text(settings.timetable.isEmpty ? "未設定" : "\(settings.timetable.count) 節")
+                    } label: {
+                        Label("課表", systemImage: "tablecells")
+                    }
+                }
+            } header: {
+                Text("更多")
+            } footer: {
+                Text("語音備忘錄或其他錄音也能匯進來整理。過去的課在「紀錄 → 課堂」。")
             }
         }
         .navigationTitle("課堂模式")
@@ -127,6 +125,73 @@ struct LectureStartView: View {
             }
             await refreshStatus()
         }
+    }
+
+    /// 頂部大卡：現在這節課（或下一節）＋開始按鈕
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: currentEntry?.subject.symbol ?? "graduationcap")
+                    .font(.title2)
+                    .frame(width: 48, height: 48)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.25)), in: .circle)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(currentEntry == nil ? "隨堂錄音" : "現在這節")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(currentEntry?.title ?? "科目下課後自動判斷")
+                        .font(.title3.bold())
+                    if let entry = currentEntry {
+                        Text(entry.timeText + (isForeign ? "・即時字幕" : "・下課後整理"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else if let next = settings.timetableNext() {
+                        Text("下一節 \(next.title)・\(TimetableEntry.hm(next.startMinute))")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            Button {
+                start()
+            } label: {
+                HStack {
+                    Spacer()
+                    if starting { ProgressView() } else { Label("開始上課", systemImage: "record.circle").font(.headline) }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(starting)
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    @ViewBuilder
+    private var todaySection: some View {
+        let today = settings.timetableToday()
+        if !today.isEmpty {
+            Section("今天的課") {
+                ForEach(today) { entry in
+                    HStack(spacing: 12) {
+                        Image(systemName: entry.subject.symbol)
+                            .foregroundStyle(entry.id == currentEntry?.id ? Color.accentColor : .secondary)
+                            .frame(width: 24)
+                        Text(entry.title)
+                            .fontWeight(entry.id == currentEntry?.id ? .semibold : .regular)
+                        Spacer()
+                        Text(entry.timeText).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .opacity(isPast(entry) ? 0.45 : 1)
+                }
+            }
+        }
+    }
+
+    private func isPast(_ entry: TimetableEntry) -> Bool {
+        let c = Calendar.current
+        let minute = c.component(.hour, from: .now) * 60 + c.component(.minute, from: .now)
+        return entry.endMinute < minute
     }
 
     /// 現在課表上的那節課
