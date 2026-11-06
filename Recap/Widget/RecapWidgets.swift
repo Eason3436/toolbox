@@ -43,17 +43,17 @@ struct RecordingLiveActivity: Widget {
                     .padding(.trailing, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if context.attributes.isLecture, let line = context.state.line, !line.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
                         CaptionLine(context: context, dark: true)
-                            .padding(.horizontal, 8)
+                        if context.state.endedAt == nil {
+                            SummaryButton(dark: true)
+                        }
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
                 }
             } compactLeading: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(stateTint(context.state))
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: !context.state.isPaused && context.state.endedAt == nil)
-                    .contentTransition(.symbolEffect(.replace))
+                LiveWaveform(state: context.state, bars: 6)
             } compactTrailing: {
                 ElapsedText(state: context.state)
                     .font(.body.weight(.medium).monospacedDigit())
@@ -61,10 +61,7 @@ struct RecordingLiveActivity: Widget {
                     .contentTransition(.numericText())
                     .frame(width: 52, alignment: .trailing)
             } minimal: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(stateTint(context.state))
-                    .contentTransition(.symbolEffect(.replace))
+                LiveWaveform(state: context.state, bars: 4)
             }
             .keylineTint(recordRed)
             .widgetURL(RecapURL.open)
@@ -213,7 +210,58 @@ private struct LockScreenView: View {
                 }
             }
             CaptionLine(context: context)
+            if context.state.endedAt == nil {
+                SummaryButton()
+            }
         }
         .padding(14)
+    }
+}
+
+/// 即時波形：每秒一格，跟著實際音量起伏；暫停或結束時換成圖示。
+private struct LiveWaveform: View {
+    let state: RecordingActivityAttributes.ContentState
+    let bars: Int
+
+    var body: some View {
+        if state.endedAt != nil {
+            Image(systemName: "checkmark")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(stateTint(state))
+        } else if state.isPaused {
+            Image(systemName: "pause.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.orange)
+        } else if state.levels.isEmpty {
+            Image(systemName: "waveform")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(recordRed)
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers)
+        } else {
+            let values = Array((Array(repeating: 0.0, count: bars) + state.levels).suffix(bars))
+            HStack(alignment: .center, spacing: 2) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                    Capsule()
+                        .fill(recordRed)
+                        .frame(width: 3, height: 4 + 14 * value)
+                }
+            }
+            .frame(height: 18)
+            .animation(.smooth(duration: 0.4), value: state.levels)
+        }
+    }
+}
+
+/// 「最近 15 分鐘摘要」：打開 App 直接顯示整理結果。
+private struct SummaryButton: View {
+    var dark = false
+    var body: some View {
+        Link(destination: RecapURL.quick(minutes: 15)) {
+            Label("最近 15 分鐘摘要", systemImage: "text.line.first.and.arrowtriangle.forward")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(dark ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(dark ? AnyShapeStyle(Color.white.opacity(0.14)) : AnyShapeStyle(.fill.tertiary), in: .capsule)
+        }
     }
 }
