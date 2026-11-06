@@ -9,6 +9,14 @@ struct SettingsView: View {
     @State private var editing: ScheduleRule?
     @State private var cleanupMessage: String?
 
+    private var aiModelLabel: String {
+        switch settings.aiProvider {
+        case .gemini: settings.geminiAPIKey.isEmpty ? "Gemini（未設定 Key）" : settings.geminiModel
+        case .muse: settings.canSync ? "Muse" : "Muse（未連線）"
+        case .apple: "Apple Intelligence"
+        }
+    }
+
     var body: some View {
         @Bindable var settings = settings
         NavigationStack {
@@ -95,7 +103,7 @@ struct SettingsView: View {
                     NavigationLink {
                         AIProviderView()
                     } label: {
-                        LabeledContent("AI 模型", value: settings.aiProvider == .gemini ? (settings.geminiAPIKey.isEmpty ? "Gemini（未設定 Key）" : settings.geminiModel) : "Apple Intelligence")
+                        LabeledContent("AI 模型", value: aiModelLabel)
                     }
                     NavigationLink {
                         WhisperSettingsView()
@@ -105,11 +113,11 @@ struct SettingsView: View {
                     NavigationLink {
                         SyncSettingsView()
                     } label: {
-                        LabeledContent("同步到 Claude", value: settings.canSync ? "開啟" : "關閉")
+                        LabeledContent("Muse 同步", value: settings.canSync ? "開啟" : "關閉")
                     }
                     Label(ModelReadiness.current.message, systemImage: ModelReadiness.current == .available ? "checkmark.circle.fill" : "exclamationmark.triangle")
                         .foregroundStyle(ModelReadiness.current == .available ? .green : .orange)
-                    Text(settings.aiProvider == .gemini ? "用 Gemini 時，逐字稿會傳到 Google 伺服器處理，上下文很大，整天的內容可以一次整理、追問也能看完整份紀錄。沒網路時會改用裝置上的模型。" : "摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
+                    Text(settings.aiProvider == .muse ? "用 Muse 時，錄音只在手機上轉成文字，逐字稿同步給 Muse，由 Muse 整理筆記、摘要和每日 Recap。Apple Intelligence 只做小事：確認是不是課表上的那堂課、檢查辨識品質、回答追問。" : settings.aiProvider == .gemini ? "用 Gemini 時，逐字稿會傳到 Google 伺服器處理，上下文很大，整天的內容可以一次整理、追問也能看完整份紀錄。沒網路時會改用裝置上的模型。" : "摘要用裝置上的模型，一次只能看約 4096 tokens，所以每段先各自摘要，再合併成今日 Recap。背景只錄音與轉文字，摘要在打開 App 或充電時進行。")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("現在整理全部") { queue.kick(summaries: true) }
                         .disabled(queue.isRunning)
@@ -315,7 +323,19 @@ struct AIProviderView: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
             } footer: {
-                Text("Apple Intelligence 完全離線、免費，但一次只能看一小段。Gemini 需要網路和 API Key，能一次讀完整天的逐字稿，摘要和追問更完整。")
+                Text("Apple Intelligence 完全離線、免費，但一次只能看一小段。Gemini 需要網路和 API Key，能一次讀完整天的逐字稿，摘要和追問更完整。選 Muse 的話，App 不自己整理筆記和摘要，逐字稿同步給 Muse，由 Muse 整理後寫回來。")
+            }
+
+            if settings.aiProvider == .muse {
+                Section {
+                    NavigationLink {
+                        SyncSettingsView()
+                    } label: {
+                        LabeledContent("Muse 同步", value: settings.canSync ? "已連線" : "未連線")
+                    }
+                } footer: {
+                    Text("Apple Intelligence 只用在小事：確認是不是課表上的那堂課、檢查辨識品質、回答追問。")
+                }
             }
 
             if settings.aiProvider == .gemini {
@@ -588,7 +608,7 @@ struct WhisperSettingsView: View {
     }
 }
 
-/// 同步到自己的 Supabase，claude.ai 用官方 Supabase 連接器讀取。
+/// 同步到自己的 Supabase，Muse 讀取後整理並寫回。
 struct SyncSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var urlDraft = ""
@@ -600,10 +620,10 @@ struct SyncSettingsView: View {
         @Bindable var settings = settings
         Form {
             Section {
-                Toggle("同步到 Claude", isOn: $settings.syncEnabled)
+                Toggle("同步給 Muse", isOn: $settings.syncEnabled)
                     .disabled(settings.syncToken.isEmpty)
             } footer: {
-                Text("整理完逐字稿後，會把最近 7 天有文字的錄音和課堂（逐字稿＋重點）上傳到你自己的 Supabase。在 claude.ai 打開 Supabase 連接器，就能請 Claude 讀、搜尋、幫你整理；Claude 寫回的筆記會出現在課堂和今天的畫面。只傳文字，不傳錄音。")
+                Text("轉好文字後，會把最近 7 天的錄音逐字稿和課堂上傳到你自己的 Supabase，Muse 讀取後整理成筆記、摘要和 Recap 寫回來，顯示在課堂和今天的畫面。只傳文字，不傳錄音。")
             }
             Section {
                 TextField("https://xxxx.supabase.co", text: $urlDraft)
@@ -638,7 +658,7 @@ struct SyncSettingsView: View {
                 }
             }
         }
-        .navigationTitle("同步到 Claude")
+        .navigationTitle("Muse 同步")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             urlDraft = settings.syncServerURL

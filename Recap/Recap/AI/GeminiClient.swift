@@ -8,11 +8,13 @@ enum AIConfig {
     enum Provider: String, CaseIterable, Identifiable, Sendable {
         case apple
         case gemini
+        case muse
         var id: String { rawValue }
         var title: String {
             switch self {
             case .apple: "Apple Intelligence（裝置上）"
             case .gemini: "Google Gemini（雲端）"
+            case .muse: "Muse（同步後由 Muse 整理）"
             }
         }
     }
@@ -36,8 +38,11 @@ enum AIConfig {
     /// 選了 Gemini 而且有填 API Key
     static var usesGemini: Bool { provider == .gemini && !apiKey.isEmpty }
 
-    /// 顯示用名稱
-    static var engineName: String { usesGemini ? "Gemini" : "Apple Intelligence" }
+    /// 選了 Muse：筆記、摘要、Recap 都交給 Muse，App 裡的 AI 只做小事（判斷科目、標題、檢查辨識品質）
+    static var usesMuse: Bool { provider == .muse }
+
+    /// 顯示用名稱（整理摘要與筆記的是誰）
+    static var engineName: String { usesGemini ? "Gemini" : (usesMuse ? "Muse" : "Apple Intelligence") }
 }
 
 // MARK: - Gemini API

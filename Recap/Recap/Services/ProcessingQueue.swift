@@ -105,6 +105,12 @@ final class ProcessingQueue {
             readiness = .current
             if allowSummaries, readiness == .available, !Task.isCancelled {
                 await improveWithWhisper()
+                await verifyTimetableSubjects()
+            }
+            if AIConfig.usesMuse {
+                // 摘要、筆記、Recap 交給 Muse：段落直接標成整理完，等同步
+                handOffSegmentsToMuse()
+            } else if allowSummaries, readiness == .available, !Task.isCancelled {
                 await summarizeSegments()
                 await summarizeLectures()
                 await buildRichNotes()
@@ -404,6 +410,52 @@ final class ProcessingQueue {
                 appLog.error("Recap 失敗：\(Summarizer.describe(error))")
                 statusText = "Recap 失敗：\(Summarizer.describe(error))"
             }
+        }
+    }
+
+    // MARK: - Muse
+
+    private func handOffSegmentsToMuse() {
+        while let next = nextSegment(status: .transcribed) {
+            store.updateSegment(next.1.id, in: next.0) { $0.status = .summarized }
+        }
+    }
+
+    // MARK: - 課表科目確認
+
+    /// 科目照課表填的課：下課後讓 AI（小任務，裝置上就能做）看逐字稿確認是不是真的這堂課，調課、代課時自動改正。
+    private func verifyTimetableSubjects() async {
+        let pending = store.allLectures.filter { $0.subjectFromTimetable == true && $0.subjectChecked != true && $0.end != nil && !$0.lines.isEmpty }
+        for lecture in pending {
+            guard !Task.isCancelled else { return }
+            statusText = "確認科目：\(lecture.displayTitle)"
+            let planned = lecture.subject ?? .general
+            let plannedName = lecture.name ?? planned.title
+            // 取開頭、中間、結尾各一段，裝置上的模型也看得完
+            let lines = lecture.lines.map(\.source)
+            let picks = [lines.prefix(8), lines.dropFirst(lines.count / 2).prefix(8), lines.suffix(8)].map { $0.joined() }
+            let sample = String(picks.joined(separator: "\n…\n").prefix(1_200))
+            let instructions = """
+            你是台灣高中的助教。課表上這節是「\(plannedName)」課，但老師有時會調課、代課。
+            請看逐字稿片段判斷這節實際上是哪一科，只回答一個詞：
+            國文、英文、數學、物理、化學、生物、地球科學、歷史、地理、公民與社會、講座、其他。
+            如果跟課表一樣，或看不出來，就回答「同課表」。
+            """
+            var corrected: SchoolSubject?
+            if let reply = try? await Summarizer.respondText(instructions: instructions, prompt: sample) {
+                let answer = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !answer.contains("同課表"), let guess = SchoolSubject.match(answer), guess != planned {
+                    corrected = guess
+                }
+            }
+            guard var latest = store.lecture(lecture.id) else { continue }
+            latest.subjectChecked = true
+            if let corrected {
+                appLog.info("課表是 \(plannedName)，AI 判斷實際是 \(corrected.title)")
+                latest.subject = corrected
+                latest.name = nil
+            }
+            store.upsertLecture(latest)
         }
     }
 

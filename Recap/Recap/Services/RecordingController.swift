@@ -100,6 +100,7 @@ final class RecordingController {
                 let locale = foreign ? (settings.lectureSourceLocale.hasPrefix("zh") ? "en-US" : settings.lectureSourceLocale) : settings.transcriptionLocale
                 var lecture = Lecture(start: now, sourceLocale: locale, targetLanguage: settings.translationTarget)
                 lecture.subject = chosen
+                lecture.subjectFromTimetable = subject == nil && entry != nil
                 lecture.recordOnly = !foreign
                 if let entry, !entry.name.isEmpty { lecture.name = entry.name }
                 let session = LectureSession(lecture: lecture, store: store, live: foreign)

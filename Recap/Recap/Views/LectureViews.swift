@@ -335,8 +335,12 @@ struct LectureDetailView: View {
         if let lecture = store.lecture(id) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    richNotesCard(lecture)
-                    if let notes = lecture.claudeNotes { ClaudeNotesCard(title: "Claude 的課堂筆記", markdown: notes) }
+                    if let notes = lecture.claudeNotes, !notes.isEmpty {
+                        // Muse 整理好了：直接看它的筆記，下面不再重複整理
+                        MuseNotesCard(label: "Muse 課堂筆記", raw: notes, sheetTitle: lecture.displayTitle)
+                    } else {
+                        richNotesCard(lecture)
+                    }
                     summaryCard(lecture)
                     if !lecture.audioParts.isEmpty {
                         Card {
@@ -500,7 +504,7 @@ struct LectureDetailView: View {
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showingNotes) { RichNotesSheet(lecture: lecture, html: html) }
-        } else if !AIConfig.usesGemini || lecture.richNotesError != nil, !lecture.lines.isEmpty {
+        } else if !AIConfig.usesMuse, !AIConfig.usesGemini || lecture.richNotesError != nil, !lecture.lines.isEmpty {
             Card {
                 Label("用任何 AI 做課程筆記", systemImage: "doc.richtext").font(.headline)
                 Text("1. 按「匯出」複製逐字稿和提示詞，貼給 ChatGPT、Claude、Gemini 等任何 AI。\n2. 把 AI 產生的 notes.html 檔案或回覆內容匯回來，這裡就會用整理好的排版顯示。")
@@ -588,6 +592,16 @@ struct LectureDetailView: View {
                 Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
             } else if lecture.lines.isEmpty {
                 Text("這堂課沒有辨識到內容。").foregroundStyle(.secondary)
+            } else if lecture.claudeNotes != nil {
+                // 已經有 Muse 的筆記，不再顯示整理中
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) {
+                    Label("對這堂課追問", systemImage: "questionmark.bubble")
+                }
+                .buttonStyle(.glass)
+            } else if AIConfig.usesMuse {
+                Label("逐字稿已交給 Muse，整理好會自動出現在上面。", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button("立即同步") { Task { await RecapSync.run() } }.buttonStyle(.glass)
             } else {
                 HStack {
                     ProgressView().controlSize(.small)

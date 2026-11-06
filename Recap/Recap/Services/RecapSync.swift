@@ -12,7 +12,7 @@ enum SyncError: LocalizedError {
         switch self {
         case .notConfigured: "還沒連上 Supabase。"
         case .unauthorized: "Supabase 拒絕了這支手機（Token 不符），請到設定重新連線。"
-        case .claimedByOther: "這個 Supabase 專案已經綁定別的裝置。要重新綁定，請 Claude 清空 recap_owner 資料表後再連一次。"
+        case .claimedByOther: "這個 Supabase 專案已經綁定別的裝置。要重新綁定，請 Muse 清空 recap_owner 資料表後再連一次。"
         case .server(let code, let message): "Supabase 錯誤 \(code)：\(message)"
         }
     }
@@ -100,7 +100,7 @@ enum RecapSync {
             let pulled = try await pullNotes()
             defaults.set(Date.now, forKey: "syncLast")
             defaults.removeObject(forKey: "syncError")
-            let message = "已同步：上傳 \(rows.count) 筆，Claude 筆記 \(pulled) 筆更新。"
+            let message = "已同步：上傳 \(rows.count) 筆，Muse 筆記 \(pulled) 筆更新。"
             appLog.info("\(message)")
             return message
         } catch {
