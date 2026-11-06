@@ -3,37 +3,106 @@ import SwiftUI
 
 struct HistoryView: View {
     @Environment(RecapStore.self) private var store
+    @State private var category = Category.days
+    @State private var path = NavigationPath()
+    @State private var importing = false
+
+    enum Category: String, CaseIterable, Identifiable {
+        case days = "每日紀錄"
+        case lectures = "課堂"
+        var id: String { rawValue }
+    }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
-                if store.dayKeys.isEmpty {
-                    ContentUnavailableView("還沒有紀錄", systemImage: "calendar", description: Text("開始錄音後，每天的 Recap 會出現在這裡。"))
+                Picker("分類", selection: $category) {
+                    ForEach(Category.allCases) { Text($0.rawValue).tag($0) }
                 }
-                ForEach(store.dayKeys, id: \.self) { key in
-                    let record = store.day(key)
-                    NavigationLink(value: DayRoute(dayKey: key)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(record.date.formatted(.dateTime.month().day().weekday(.wide)))
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            Text(record.recap?.title ?? "尚未整理").font(.headline)
-                            HStack(spacing: 12) {
-                                Label("\(record.spokenSegments.count) 段", systemImage: "waveform")
-                                if !record.lectures.isEmpty {
-                                    Label("\(record.lectures.count) 堂課", systemImage: "graduationcap")
-                                }
-                            }
-                            .font(.caption).foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .swipeActions {
-                        Button("刪除", role: .destructive) { store.deleteDay(key) }
-                    }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+                switch category {
+                case .days: dayRows
+                case .lectures: lectureRows
                 }
             }
             .navigationTitle("歷史")
+            .toolbar {
+                if category == .lectures {
+                    Button("匯入錄音檔", systemImage: "waveform.badge.plus") { importing = true }
+                }
+            }
+            .sheet(isPresented: $importing) {
+                ImportAudioView { id in path.append(LectureRoute(id: id)) }
+            }
+            .sensoryFeedback(.selection, trigger: category)
             .navigationDestinations()
+        }
+    }
+
+    @ViewBuilder
+    private var dayRows: some View {
+        if store.dayKeys.isEmpty {
+            ContentUnavailableView("還沒有紀錄", systemImage: "calendar", description: Text("開始錄音後，每天的 Recap 會出現在這裡。"))
+        }
+        ForEach(store.dayKeys, id: \.self) { key in
+            let record = store.day(key)
+            NavigationLink(value: DayRoute(dayKey: key)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(record.date.formatted(.dateTime.month().day().weekday(.wide)))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text(record.recap?.title ?? (record.spokenSegments.isEmpty ? "沒有全天錄音" : "尚未整理")).font(.headline)
+                    HStack(spacing: 12) {
+                        Label("\(record.spokenSegments.count) 段", systemImage: "waveform")
+                        if !record.lectures.isEmpty {
+                            Label("\(record.lectures.count) 堂課", systemImage: "graduationcap")
+                        }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+            .swipeActions {
+                Button("刪除", role: .destructive) { store.deleteDay(key) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var lectureRows: some View {
+        let lectures = store.allLectures
+        if lectures.isEmpty {
+            ContentUnavailableView("還沒有課堂紀錄", systemImage: "graduationcap",
+                                   description: Text("在「課堂」分頁開始上課，或按右上角匯入錄音檔。"))
+        }
+        ForEach(lectures) { lecture in
+            NavigationLink(value: LectureRoute(id: lecture.id)) {
+                HStack(spacing: 12) {
+                    Image(systemName: lecture.subject?.symbol ?? "graduationcap")
+                        .font(.title3).foregroundStyle(.tint).frame(width: 30)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(lecture.displayTitle).font(.headline).lineLimit(2)
+                        HStack(spacing: 6) {
+                            Text(lecture.start.formatted(.dateTime.month().day().weekday().hour().minute()))
+                            if let end = lecture.end {
+                                Text("・\(Int(end.timeIntervalSince(lecture.start) / 60)) 分鐘")
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                        if lecture.needsTranscription {
+                            Label("轉文字中", systemImage: "hourglass").font(.caption2).foregroundStyle(.orange)
+                        } else if lecture.richNotes != nil {
+                            Label("有詳細筆記", systemImage: "doc.richtext").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
+            .swipeActions {
+                Button("刪除", role: .destructive) { store.deleteLecture(lecture) }
+            }
         }
     }
 }

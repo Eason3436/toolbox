@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Translation
 
-/// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面與過去的課。
+/// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面（過去的課在歷史頁）。
 struct LectureHomeView: View {
     @Environment(RecordingController.self) private var recorder
     @Environment(Router.self) private var router
@@ -47,6 +47,8 @@ struct LectureStartView: View {
     @State private var downloadConfig: TranslationSession.Configuration?
     @State private var error: String?
     @State private var starting = false
+    @State private var importing = false
+    @Environment(Router.self) private var router
 
     var body: some View {
         @Bindable var settings = settings
@@ -98,27 +100,16 @@ struct LectureStartView: View {
                 }
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
-            Section("過去的課") {
-                let lectures = store.allLectures
-                if lectures.isEmpty {
-                    Text("還沒有上過課").foregroundStyle(.secondary)
-                }
-                ForEach(lectures) { lecture in
-                    NavigationLink(value: LectureRoute(id: lecture.id)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(lecture.displayTitle).font(.headline)
-                            Text("\(lecture.start.formatted(date: .abbreviated, time: .shortened))・\(lecture.lines.count) 句")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
-                }
-                .onDelete { offsets in
-                    for index in offsets { store.deleteLecture(lectures[index]) }
-                }
+            Section {
+                Button("匯入錄音檔整理", systemImage: "waveform.badge.plus") { importing = true }
+            } footer: {
+                Text("把語音備忘錄或其他錄音匯進來，一樣轉成文字並整理重點和筆記。過去的課在「歷史 → 課堂」。")
             }
         }
         .navigationTitle("課堂模式")
+        .sheet(isPresented: $importing) {
+            ImportAudioView { id in router.lecturePath.append(LectureRoute(id: id)) }
+        }
         .sensoryFeedback(.selection, trigger: settings.lectureSourceLocale)
         .sensoryFeedback(.selection, trigger: settings.translationTarget)
         .sensoryFeedback(.selection, trigger: settings.lectureForeign)
