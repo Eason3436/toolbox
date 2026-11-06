@@ -464,6 +464,7 @@ struct ShortcutsGuideView: View {
             }
         }
         .navigationTitle("捷徑自動化")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func step(_ n: Int, _ text: String) -> some View {
@@ -497,6 +498,7 @@ struct VocabularyView: View {
             }
         }
         .navigationTitle("自訂詞彙")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func add() {
@@ -604,6 +606,7 @@ struct AIProviderView: View {
             }
         }
         .navigationTitle("AI 模型")
+        .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.aiProvider)
         .onAppear { keyDraft = settings.geminiAPIKey }
     }
@@ -718,6 +721,7 @@ struct LearningMemoryView: View {
             }
         }
         .navigationTitle("學習記憶")
+        .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("要清除所有記住的詞嗎？", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("清除", role: .destructive) { memory.clear(); Haptics.warning() }
         }

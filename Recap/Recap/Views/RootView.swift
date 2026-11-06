@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(Router.self) private var router
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var router = router
@@ -20,6 +21,10 @@ struct RootView: View {
             }
         }
         .sensoryFeedback(.selection, trigger: router.tab)
+        // 「減少動態效果」開啟時，彈性與位移動畫改成短暫淡入淡出
+        .transaction { transaction in
+            if reduceMotion, transaction.animation != nil { transaction.animation = .easeInOut(duration: 0.15) }
+        }
         .sheet(isPresented: $router.showQuickRecap) {
             QuickRecapSheet()
         }

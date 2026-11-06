@@ -86,6 +86,7 @@ struct TimetableView: View {
             }
         }
         .navigationTitle("課表")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button("貼上課表", systemImage: "doc.on.clipboard") { pasting = true }
         }
