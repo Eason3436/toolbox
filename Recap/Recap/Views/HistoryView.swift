@@ -6,6 +6,7 @@ struct HistoryView: View {
     @State private var category = Category.days
     @State private var path = NavigationPath()
     @State private var importing = false
+    @State private var query = ""
 
     enum Category: String, CaseIterable, Identifiable {
         case days = "每日紀錄"
@@ -27,7 +28,8 @@ struct HistoryView: View {
                 case .lectures: lectureRows
                 }
             }
-            .navigationTitle("歷史")
+            .navigationTitle("紀錄")
+            .searchable(text: $query, prompt: category == .days ? "搜尋日期或內容" : "搜尋課名或科目")
             .toolbar {
                 if category == .lectures {
                     Button("匯入錄音檔", systemImage: "waveform.badge.plus") { importing = true }
@@ -41,12 +43,34 @@ struct HistoryView: View {
         }
     }
 
+    private var trimmed: String { query.trimmingCharacters(in: .whitespaces) }
+
+    private var filteredDays: [String] {
+        guard !trimmed.isEmpty else { return store.dayKeys }
+        return store.dayKeys.filter { key in
+            let record = store.day(key)
+            if key.contains(trimmed) { return true }
+            if record.date.formatted(.dateTime.month().day().weekday(.wide)).contains(trimmed) { return true }
+            if let recap = record.recap, (recap.title + recap.overview + (record.claudeRecap ?? "")).localizedCaseInsensitiveContains(trimmed) { return true }
+            return record.segments.contains { ($0.title ?? "").localizedCaseInsensitiveContains(trimmed) }
+        }
+    }
+
+    private var filteredLectures: [Lecture] {
+        guard !trimmed.isEmpty else { return store.allLectures }
+        return store.allLectures.filter {
+            $0.displayTitle.localizedCaseInsensitiveContains(trimmed)
+                || ($0.subject?.title ?? "").contains(trimmed)
+                || $0.start.formatted(.dateTime.month().day()).contains(trimmed)
+        }
+    }
+
     @ViewBuilder
     private var dayRows: some View {
-        if store.dayKeys.isEmpty {
+        if store.dayKeys.isEmpty, trimmed.isEmpty {
             ContentUnavailableView("還沒有紀錄", systemImage: "calendar", description: Text("開始錄音後，每天的 Recap 會出現在這裡。"))
         }
-        ForEach(store.dayKeys, id: \.self) { key in
+        ForEach(filteredDays, id: \.self) { key in
             let record = store.day(key)
             NavigationLink(value: DayRoute(dayKey: key)) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -71,8 +95,8 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var lectureRows: some View {
-        let lectures = store.allLectures
-        if lectures.isEmpty {
+        let lectures = filteredLectures
+        if store.allLectures.isEmpty, trimmed.isEmpty {
             ContentUnavailableView("還沒有課堂紀錄", systemImage: "graduationcap",
                                    description: Text("在「課堂」分頁開始上課，或按右上角匯入錄音檔。"))
         }
