@@ -1,5 +1,6 @@
 import AppIntents
 import SwiftUI
+import UniformTypeIdentifiers
 import Translation
 
 /// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面與過去的課。
@@ -336,6 +337,8 @@ struct LectureDetailView: View {
     @State private var newName = ""
     @State private var showSource = true
     @State private var showingNotes = false
+    @State private var importingFile = false
+    @State private var notice: String?
 
     var body: some View {
         if let lecture = store.lecture(id) {
@@ -407,7 +410,20 @@ struct LectureDetailView: View {
                     if AIConfig.usesGemini {
                         Button("重新製作詳細筆記", systemImage: "doc.richtext") { queue.regenerateRichNotes(lecture.id) }
                     }
+                    Section("用其他 AI 做筆記") {
+                        exportMenuItems(lecture)
+                    }
                 } label: { Image(systemName: "ellipsis") }
+            }
+            .fileImporter(isPresented: $importingFile, allowedContentTypes: Self.importTypes) { result in
+                guard case .success(let url) = result else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let data = (try? Data(contentsOf: url)) ?? Data()
+                importNotes(String(decoding: data, as: UTF8.self), into: lecture)
+            }
+            .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+                Button("好") { notice = nil }
             }
             .alert("課堂名稱", isPresented: $renaming) {
                 TextField("例如：經濟學原理", text: $newName)
@@ -421,6 +437,54 @@ struct LectureDetailView: View {
         } else {
             ContentUnavailableView("找不到這堂課", systemImage: "questionmark")
         }
+    }
+
+    static let importTypes: [UTType] = [.html, .plainText, .text, .utf8PlainText] + [UTType(filenameExtension: "md")].compactMap { $0 }
+
+    private func exportText(_ lecture: Lecture) -> String {
+        let transcript = lecture.refinedTranscript ?? lecture.sourceText
+        return RichNotes.exportText(lecture: lecture, transcript: transcript, memory: LearningMemory.previousLectureContext(for: lecture, in: store))
+    }
+
+    private func exportFileURL(_ lecture: Lecture) -> URL {
+        let safe = lecture.displayTitle.replacingOccurrences(of: "/", with: "-").prefix(40)
+        let url = FileManager.default.temporaryDirectory.appending(path: "\(safe)-逐字稿與提示詞.txt")
+        try? exportText(lecture).write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @ViewBuilder
+    private func exportMenuItems(_ lecture: Lecture) -> some View {
+        Button("複製逐字稿＋提示詞", systemImage: "doc.on.doc") { copyExport(lecture) }
+            .disabled(lecture.lines.isEmpty)
+        ShareLink(item: exportFileURL(lecture)) { Label("分享成文字檔", systemImage: "square.and.arrow.up") }
+            .disabled(lecture.lines.isEmpty)
+        Button("從剪貼簿匯入筆記", systemImage: "doc.on.clipboard") { importFromClipboard(lecture) }
+        Button("從檔案匯入筆記", systemImage: "folder") { importingFile = true }
+    }
+
+    private func copyExport(_ lecture: Lecture) {
+        UIPasteboard.general.string = exportText(lecture)
+        Haptics.success()
+        notice = "已複製逐字稿和提示詞。貼給任何 AI，把它產生的 notes.html（或整段回覆）存起來，再回來按「匯入」。"
+    }
+
+    private func importFromClipboard(_ lecture: Lecture) {
+        importNotes(UIPasteboard.general.string ?? "", into: lecture)
+    }
+
+    private func importNotes(_ raw: String, into lecture: Lecture) {
+        guard let html = RichNotes.importNotes(raw), html.count > 40 else {
+            Haptics.error()
+            notice = "看不懂這份內容。請貼上 AI 產生的 HTML 或 Markdown 筆記。"
+            return
+        }
+        guard var latest = store.lecture(lecture.id) else { return }
+        latest.richNotes = html
+        latest.richNotesError = nil
+        store.upsertLecture(latest)
+        Haptics.success()
+        showingNotes = true
     }
 
     @ViewBuilder
@@ -445,6 +509,28 @@ struct LectureDetailView: View {
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showingNotes) { RichNotesSheet(lecture: lecture, html: html) }
+        } else if !AIConfig.usesGemini || lecture.richNotesError != nil, !lecture.lines.isEmpty {
+            Card {
+                Label("用任何 AI 做課程筆記", systemImage: "doc.richtext").font(.headline)
+                Text("1. 按「匯出」複製逐字稿和提示詞，貼給 ChatGPT、Claude、Gemini 等任何 AI。\n2. 把 AI 產生的 notes.html 檔案或回覆內容匯回來，這裡就會用整理好的排版顯示。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if let error = lecture.richNotesError {
+                    Label("Gemini 失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.footnote)
+                }
+                HStack {
+                    Button("匯出", systemImage: "doc.on.doc") { copyExport(lecture) }
+                    Menu {
+                        Button("從剪貼簿貼上", systemImage: "doc.on.clipboard") { importFromClipboard(lecture) }
+                        Button("選擇檔案", systemImage: "folder") { importingFile = true }
+                    } label: {
+                        Label("匯入", systemImage: "square.and.arrow.down")
+                    }
+                    if AIConfig.usesGemini {
+                        Button("Gemini 再試") { queue.regenerateRichNotes(lecture.id) }
+                    }
+                }
+                .buttonStyle(.glass)
+            }
         } else if AIConfig.usesGemini, lecture.summary != nil {
             Card {
                 if let error = lecture.richNotesError {
