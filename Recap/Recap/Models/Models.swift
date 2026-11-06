@@ -136,8 +136,12 @@ struct Lecture: Codable, Identifiable, Hashable, Sendable {
     var whisperChecked: Bool?
     /// 用 Groq Whisper 重新辨識了幾段（每段約 2 分鐘）
     var whisperBlocks: Int?
-    /// Claude 透過同步伺服器寫回的課堂筆記（Markdown）
+    /// Muse（或 Claude）透過同步寫回的課堂筆記（Markdown 或 HTML）
     var claudeNotes: String?
+    /// 科目是照課表填的（下課後要讓 AI 確認是不是真的這堂課）
+    var subjectFromTimetable: Bool?
+    /// AI 已經確認過科目
+    var subjectChecked: Bool?
 
     var displayTitle: String {
         if let name, !name.isEmpty { return name }

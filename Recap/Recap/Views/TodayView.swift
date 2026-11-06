@@ -225,7 +225,6 @@ struct DayContentView: View {
         let record = store.day(dayKey)
         VStack(spacing: 16) {
             recapCard(record)
-            if let notes = record.claudeRecap { ClaudeNotesCard(title: "Claude 的整理", markdown: notes) }
             if let status = queue.statusText {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -239,7 +238,18 @@ struct DayContentView: View {
     }
 
     @ViewBuilder
+    @ViewBuilder
     private func recapCard(_ record: DayRecord) -> some View {
+        if let muse = record.claudeRecap, !muse.isEmpty {
+            // Muse 的整理就是這天的 Recap
+            MuseNotesCard(label: "Recap・Muse 整理", raw: muse,
+                          sheetTitle: record.date.formatted(.dateTime.month().day().weekday()) + " Recap")
+        } else {
+            appRecapCard(record)
+        }
+    }
+
+    private func appRecapCard(_ record: DayRecord) -> some View {
         Card {
             HStack {
                 Label("Recap", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
@@ -249,15 +259,17 @@ struct DayContentView: View {
                         Label("追問", systemImage: "questionmark.bubble").font(.footnote)
                     }
                     .buttonStyle(.glass)
-                    Button {
-                        Haptics.tap()
-                        queue.regenerateRecap(dayKey)
-                    } label: {
-                        Label(record.recap == nil ? "整理" : "重新整理", systemImage: "arrow.clockwise")
-                            .font(.footnote)
+                    if !AIConfig.usesMuse {
+                        Button {
+                            Haptics.tap()
+                            queue.regenerateRecap(dayKey)
+                        } label: {
+                            Label(record.recap == nil ? "整理" : "重新整理", systemImage: "arrow.clockwise")
+                                .font(.footnote)
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(queue.isRunning)
                     }
-                    .buttonStyle(.glass)
-                    .disabled(queue.isRunning)
                 }
             }
             if let recap = record.recap {
@@ -273,8 +285,10 @@ struct DayContentView: View {
                 }
                 Text("整理於 \(recap.generatedAt.hm)・\(recap.sourceCount) 段內容\(record.recapDirty ? "・有新內容" : "")")
                     .font(.caption).foregroundStyle(.secondary)
+            } else if AIConfig.usesMuse, !record.segments.isEmpty || !record.lectures.isEmpty {
+                Text("逐字稿會同步給 Muse，整理好的 Recap 會自動出現在這裡。").font(.subheadline).foregroundStyle(.secondary)
             } else if record.segments.isEmpty {
-                Text(isToday ? "今天還沒有錄音。開始錄音後，App 會每 5 分鐘切一段、在背景轉成文字，打開 App 或充電時再用 Apple Intelligence 摘要成今日 Recap。" : "這天沒有內容。")
+                Text(isToday ? "今天還沒有錄音。開始錄音後，App 會每 5 分鐘切一段、在背景轉成文字，再用 \(AIConfig.engineName) 整理成今日 Recap。" : "這天沒有內容。")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 Text(pendingText(record)).font(.subheadline).foregroundStyle(.secondary)
