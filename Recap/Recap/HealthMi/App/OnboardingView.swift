@@ -124,7 +124,11 @@ struct OnboardingView: View {
             }
             .sheet(isPresented: $showWebLogin) {
                 MiWebLoginView(onConnected: {
-                    try? await model.requestHealthKit()
+                    do {
+                        try await model.requestHealthKit()
+                    } catch {
+                        errorMessage = "Apple 健康授權失敗：\(error.localizedDescription)"
+                    }
                 })
             }
         }

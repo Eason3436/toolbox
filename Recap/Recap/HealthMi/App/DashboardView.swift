@@ -29,6 +29,26 @@ struct DashboardView: View {
     }
 
     @Environment(\.dismiss) private var closeHost
+    @State private var healthHint: String?
+
+    /// 系統只會跳一次授權畫面；之後要到「健康」App 裡開。失敗時把原因顯示出來。
+    private func askHealth() async {
+        do {
+            try await model.requestHealthKit()
+            if !model.healthKitAuthorized {
+                healthHint = "系統沒有跳出授權畫面，代表之前已經問過。請打開「健康」App → 右上角頭像 → App → Recap，把要寫入的項目打開。"
+            } else {
+                healthHint = nil
+            }
+        } catch {
+            let message = error.localizedDescription
+            if message.localizedCaseInsensitiveContains("entitlement") {
+                healthHint = "這個安裝版本沒有 Apple 健康權限（\(message)）。通常是安裝工具重新簽名時把權限拿掉了。"
+            } else {
+                healthHint = "授權失敗：\(message)"
+            }
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -44,8 +64,15 @@ struct DashboardView: View {
                     }
                     LabeledContent("Apple 健康", value: model.healthKitAuthorized ? "已授權" : "未授權")
                     if !model.healthKitAuthorized {
-                        Button("請求健康許可權") {
-                            Task { try? await model.requestHealthKit() }
+                        Button("允許寫入 Apple 健康") {
+                            Task { await askHealth() }
+                        }
+                        if let healthHint {
+                            Text(healthHint)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Link("打開「健康」App", destination: URL(string: "x-apple-health://")!)
+                                .font(.footnote)
                         }
                     }
                     if model.authNeedsRefresh {
