@@ -26,6 +26,12 @@ targets:
     dependencies:
       - target: RecapWidget
         embed: true
+      - sdk: WebKit.framework
+    entitlements:
+      path: Recap/Recap.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
     info:
       path: Recap/Info.plist
       properties:
@@ -51,8 +57,12 @@ targets:
         UIBackgroundModes:
           - audio
           - processing
+          - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - com.eason3436.recap.process
+          - com.eason3436.recap.healthsync
+        NSHealthShareUsageDescription: 小米健康同步需要讀取 Apple 健康裡的資料來避免重複寫入。
+        NSHealthUpdateUsageDescription: 小米健康同步會把小米手環或手錶的步數、心率、睡眠、血氧、體重等資料寫進 Apple 健康。
         NSUserActivityTypes:
           - com.eason3436.recap.lecture
           - com.eason3436.recap.day

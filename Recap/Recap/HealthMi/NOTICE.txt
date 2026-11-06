@@ -1,0 +1,12 @@
+HealthMi
+Copyright 2026 HealthMi contributors
+
+This product includes software developed by the HealthMi project.
+
+It is licensed under the Apache License, Version 2.0. See the LICENSE file
+for the full license text.
+
+Third-party components:
+
+- tools/mi-fitness-mcp-cn — MIT License, Copyright (c) 2026 Aleksej Kubulashvili.
+  See tools/mi-fitness-mcp-cn/LICENSE for details.
