@@ -6,6 +6,20 @@ import WebKit
 /// 課堂流程、各主題重點、會考、補充、事實查核、單字表。App 用自己的樣式顯示，不執行任何程式碼。
 enum RichNotes {
     static func generate(lecture: Lecture, transcript: String, memory: String) async throws -> String {
+        let (system, prompt) = prompts(lecture: lecture, transcript: transcript, memory: memory)
+        let html: String
+        do {
+            // 可以上網查證，事實查核比較準
+            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4, googleSearch: true)
+        } catch GeminiError.server(let code, _) where code == 400 {
+            // 這個模型或方案不支援搜尋：不查證也照樣整理
+            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4)
+        }
+        return sanitize(html)
+    }
+
+    /// 給 Gemini 或其他 AI 用的（系統提示, 使用者提示）
+    static func prompts(lecture: Lecture, transcript: String, memory: String) -> (String, String) {
         let subject = lecture.subject ?? .general
         let kind = subject.isSeminar ? "講座" : (subject == .general ? "課" : "\(subject.title)課")
         let date = lecture.start.formatted(.dateTime.year().month().day().weekday(.wide).hour().minute())
@@ -26,7 +40,7 @@ enum RichNotes {
         <header>
           <p class="eyebrow">科目或課名・上課紀錄整理</p>
           <h1>這堂課的標題（點出主題）</h1>
-          <p class="lead">摘要：4～6 句，這堂課在講什麼、依什麼順序、整體脈絡與結論</p>
+          <p class="lead">高層次摘要：4～6 句，先點出核心主題，再講各主題之間的脈絡、因果與結論，不逐條列細節</p>
         </header>
         <nav class="chips"><a href="#s0">課堂流程</a><a href="#s1">主題一</a>…<a href="#todo">\(subject.isSeminar ? "講者強調" : "老師提醒")</a><a href="#vocab">單字表</a></nav>
 
@@ -60,15 +74,48 @@ enum RichNotes {
         - 英文術語一律用 <code> 包起來；重點詞用 <strong>。
         - 只根據逐字稿與可靠常識，不要編造課堂上沒發生的事；補充與事實查核要標清楚。
         """
-        let html: String
-        do {
-            // 可以上網查證，事實查核比較準
-            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4, googleSearch: true)
-        } catch GeminiError.server(let code, _) where code == 400 {
-            // 這個模型或方案不支援搜尋：不查證也照樣整理
-            html = try await GeminiClient.generate(system: system, prompt: prompt, temperature: 0.4)
+        return (system, prompt)
+    }
+
+    /// 一鍵匯出：提示詞＋逐字稿，貼給任何 AI（ChatGPT、Claude、Gemini 網頁版…）。
+    static func exportText(lecture: Lecture, transcript: String, memory: String) -> String {
+        let (system, prompt) = prompts(lecture: lecture, transcript: transcript, memory: memory)
+        return """
+        【給 AI 的指示】
+        \(system)
+
+        請整理成「課程筆記」：高層次摘要、課堂流程、各主題重點、老師提醒事項、單字表，排版清楚明瞭。
+        摘要要寫成高層次摘要：先用一兩句點出這堂課的核心主題，再說明各主題之間的脈絡與因果、老師想讓學生理解的大方向和結論；不要逐條列細節（細節放在各主題的重點裡）。
+        輸出方式（二選一，優先第一種）：
+        1. 如果你能產生檔案，請產生一個 notes.html 檔案讓我下載，內容就是下面規定的 HTML 片段。
+        2. 不能產生檔案的話，直接在回覆裡輸出下面規定的 HTML 片段，整段放在一個 ```html 程式碼區塊裡。
+        如果你沒辦法輸出 HTML，改用 Markdown 也可以：# 課名、> 摘要、## 每個主題、- 重點、表格、**粗體**。
+        不要在筆記前後加任何說明文字。
+
+        \(prompt)
+        """
+    }
+
+    /// 匯入其他 AI 產生的筆記：HTML 片段、整份 HTML、Markdown 都可以。
+    static func importNotes(_ raw: String) -> String? {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 取出 ```html … ``` 或 ``` … ``` 裡的內容
+        if let start = text.range(of: "```"), let close = text.range(of: "```", options: .backwards), close.lowerBound > start.upperBound {
+            var inner = String(text[start.upperBound..<close.lowerBound])
+            if let newline = inner.firstIndex(of: "\n") { inner = String(inner[inner.index(after: newline)...]) }
+            text = inner.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return sanitize(html)
+        guard !text.isEmpty else { return nil }
+        let looksHTML = text.range(of: #"<(section|h1|h2|header|div|ul|p|table)[\s>]"#, options: [.regularExpression, .caseInsensitive]) != nil
+        if looksHTML {
+            // 整份 HTML：只留 body 內容
+            if let body = text.range(of: #"(?is)<body[^>]*>(.*)</body>"#, options: .regularExpression) {
+                text = String(text[body]).replacingOccurrences(of: #"(?is)</?body[^>]*>"#, with: "", options: .regularExpression)
+            }
+            text = text.replacingOccurrences(of: #"(?is)</?main[^>]*>"#, with: "", options: .regularExpression)
+            return sanitize(text)
+        }
+        return MarkdownHTML.convert(text)
     }
 
     /// 一般課：專門一張卡收老師交代的事
