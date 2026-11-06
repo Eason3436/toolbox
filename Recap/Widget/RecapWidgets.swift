@@ -59,6 +59,7 @@ struct RecordingLiveActivity: Widget {
                 ElapsedText(state: context.state)
                     .font(.body.weight(.medium).monospacedDigit())
                     .foregroundStyle(stateTint(context.state))
+                    .contentTransition(.numericText())
                     .frame(width: 52, alignment: .trailing)
             } minimal: {
                 Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
