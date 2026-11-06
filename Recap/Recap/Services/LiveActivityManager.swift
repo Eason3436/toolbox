@@ -44,7 +44,14 @@ final class LiveActivityManager {
     func end() {
         let current = activity
         activity = nil
-        Task { await current?.end(nil, dismissalPolicy: .immediate) }
+        // 錄完留在鎖定畫面 15 分鐘，方便點進去看（設計規範建議 15–30 分鐘）
+        if let current {
+            var final = current.content.state
+            final.endedAt = .now
+            final.isPaused = false
+            final.manualPause = false
+            Task { await current.end(ActivityContent(state: final, staleDate: nil), dismissalPolicy: .after(.now.addingTimeInterval(15 * 60))) }
+        }
         // 清掉 App 被砍掉時殘留的
         for leftover in Activity<RecordingActivityAttributes>.activities where leftover.id != current?.id {
             Task { await leftover.end(nil, dismissalPolicy: .immediate) }

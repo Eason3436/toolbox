@@ -33,7 +33,7 @@ struct RecordingLiveActivity: Widget {
                         Text(context.state.isPaused ? "已暫停" : modeTitle(context))
                             .font(.subheadline.weight(.semibold))
                         ElapsedText(state: context.state)
-                            .font(.system(size: 40, weight: .regular).monospacedDigit())
+                            .font(.system(size: 40, weight: .medium).monospacedDigit())
                             .contentTransition(.numericText())
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
@@ -52,9 +52,8 @@ struct RecordingLiveActivity: Widget {
                 Image(systemName: context.state.isPaused ? "pause.fill" : "waveform")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(stateTint(context.state))
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: !context.state.isPaused)
+                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: !context.state.isPaused && context.state.endedAt == nil)
                     .contentTransition(.symbolEffect(.replace))
-                    .padding(.leading, 4)
             } compactTrailing: {
                 ElapsedText(state: context.state)
                     .font(.body.weight(.medium).monospacedDigit())
@@ -74,7 +73,8 @@ struct RecordingLiveActivity: Widget {
 }
 
 private func stateTint(_ state: RecordingActivityAttributes.ContentState) -> Color {
-    state.isPaused ? .orange : recordRed
+    if state.endedAt != nil { return .secondary }
+    return state.isPaused ? .orange : recordRed
 }
 
 private func symbol(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
@@ -87,6 +87,7 @@ private func modeTitle(_ context: ActivityViewContext<RecordingActivityAttribute
 
 private func statusText(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
     let s = context.state
+    if s.endedAt != nil { return "錄音已儲存" }
     if s.manualPause { return "已暫停" }
     if s.isPaused { return "被打斷" }
     if let stopAt = s.stopAt { return "錄到 \(stopAt.formatted(date: .omitted, time: .shortened))" }
@@ -99,7 +100,7 @@ private struct StatusLabel: View {
     let context: ActivityViewContext<RecordingActivityAttributes>
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: context.state.isPaused ? "pause.circle.fill" : "record.circle")
+            Image(systemName: context.state.endedAt != nil ? "checkmark.circle.fill" : (context.state.isPaused ? "pause.circle.fill" : "record.circle"))
                 .foregroundStyle(stateTint(context.state))
                 .contentTransition(.symbolEffect(.replace))
             Text(modeTitle(context))
@@ -117,7 +118,9 @@ private struct StatusLabel: View {
 private struct ElapsedText: View {
     let state: RecordingActivityAttributes.ContentState
     var body: some View {
-        if state.isPaused {
+        if let end = state.endedAt {
+            Text(Duration.seconds(max(0, end.timeIntervalSince(state.startedAt))).formatted(.time(pattern: end.timeIntervalSince(state.startedAt) >= 3600 ? .hourMinuteSecond : .minuteSecond)))
+        } else if state.isPaused {
             Text("暫停")
         } else {
             Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: true)
@@ -139,12 +142,6 @@ private struct CaptionLine: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .id(line)
                 .transition(.push(from: .bottom))
-        } else {
-            Link(destination: RecapURL.quick(minutes: 15)) {
-                Label("最近 15 分鐘重點", systemImage: "sparkles")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(dark ? Color.white.opacity(0.85) : Color.secondary)
-            }
         }
     }
 }
@@ -160,6 +157,10 @@ private struct ActionButtons: View {
     }
 
     var body: some View {
+        if state.endedAt == nil { buttons }
+    }
+
+    private var buttons: some View {
         HStack(spacing: 10) {
             if state.isPaused {
                 Button(intent: ResumeFromActivityIntent()) {
@@ -199,11 +200,12 @@ private struct LockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 ActionButtons(state: context.state, size: 50)
+                    .animation(.smooth, value: context.state.isPaused)
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 0) {
                     StatusLabel(context: context)
                     ElapsedText(state: context.state)
-                        .font(.system(size: 44, weight: .regular).monospacedDigit())
+                        .font(.system(size: 44, weight: .medium).monospacedDigit())
                         .foregroundStyle(stateTint(context.state))
                         .contentTransition(.numericText())
                         .lineLimit(1)
@@ -212,7 +214,6 @@ private struct LockScreenView: View {
             }
             CaptionLine(context: context)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(14)
     }
 }
