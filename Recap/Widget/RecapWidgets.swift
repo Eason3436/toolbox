@@ -31,7 +31,7 @@ struct RecordingLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     ElapsedText(state: context.state)
                         .font(.system(size: 28, weight: .regular).monospacedDigit())
-                        .foregroundStyle(tint(context.state))
+                        .foregroundStyle(stateTint(context.state))
                         .contentTransition(.numericText())
                         .padding(.trailing, 6)
                 }
@@ -47,18 +47,18 @@ struct RecordingLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: context.state.isPaused ? "pause.fill" : symbol(context))
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(tint(context.state))
+                    .foregroundStyle(stateTint(context.state))
                     .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: !context.state.isPaused)
                     .contentTransition(.symbolEffect(.replace))
             } compactTrailing: {
                 ElapsedText(state: context.state)
                     .font(.body.weight(.medium).monospacedDigit())
-                    .foregroundStyle(tint(context.state))
+                    .foregroundStyle(stateTint(context.state))
                     .frame(width: 52, alignment: .trailing)
             } minimal: {
                 Image(systemName: context.state.isPaused ? "pause.fill" : symbol(context))
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(tint(context.state))
+                    .foregroundStyle(stateTint(context.state))
                     .contentTransition(.symbolEffect(.replace))
             }
             .keylineTint(recordRed)
@@ -67,7 +67,7 @@ struct RecordingLiveActivity: Widget {
     }
 }
 
-private func tint(_ state: RecordingActivityAttributes.ContentState) -> Color {
+private func stateTint(_ state: RecordingActivityAttributes.ContentState) -> Color {
     state.isPaused ? .orange : recordRed
 }
 
@@ -94,10 +94,10 @@ private struct StatusLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: context.state.isPaused ? "pause.circle.fill" : "record.circle")
-                .foregroundStyle(tint(context.state))
+                .foregroundStyle(stateTint(context.state))
                 .contentTransition(.symbolEffect(.replace))
             Text(modeTitle(context))
-                .foregroundStyle(tint(context.state))
+                .foregroundStyle(stateTint(context.state))
             Text(statusText(context))
                 .foregroundStyle(.secondary)
                 .contentTransition(.opacity)
