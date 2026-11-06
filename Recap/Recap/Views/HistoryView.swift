@@ -17,16 +17,19 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Picker("分類", selection: $category) {
-                    ForEach(Category.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
                 switch category {
                 case .days: dayRows
                 case .lectures: lectureRows
                 }
+            }
+            .animation(.smooth, value: category)
+            .safeAreaBar(edge: .top) {
+                Picker("分類", selection: $category) {
+                    ForEach(Category.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
             }
             .navigationTitle("紀錄")
             .searchable(text: $query, prompt: category == .days ? "搜尋日期或內容" : "搜尋課名或科目")
@@ -69,6 +72,7 @@ struct HistoryView: View {
     private var dayRows: some View {
         if store.dayKeys.isEmpty, trimmed.isEmpty {
             ContentUnavailableView("還沒有紀錄", systemImage: "calendar", description: Text("開始錄音後，每天的 Recap 會出現在這裡。"))
+                .listRowBackground(Color.clear)
         }
         ForEach(filteredDays, id: \.self) { key in
             let record = store.day(key)
@@ -93,41 +97,81 @@ struct HistoryView: View {
         }
     }
 
+    private var lectureGroups: [(day: String, items: [Lecture])] {
+        let grouped = Dictionary(grouping: filteredLectures) { DayKey.key(for: $0.start) }
+        return grouped.keys.sorted(by: >).map { key in
+            (key, grouped[key, default: []].sorted { $0.start > $1.start })
+        }
+    }
+
     @ViewBuilder
     private var lectureRows: some View {
-        let lectures = filteredLectures
         if store.allLectures.isEmpty, trimmed.isEmpty {
             ContentUnavailableView("還沒有課堂紀錄", systemImage: "graduationcap",
                                    description: Text("在「課堂」分頁開始上課，或按右上角匯入錄音檔。"))
+                .listRowBackground(Color.clear)
         }
-        ForEach(lectures) { lecture in
-            NavigationLink(value: LectureRoute(id: lecture.id)) {
-                HStack(spacing: 12) {
-                    Image(systemName: lecture.subject?.symbol ?? "graduationcap")
-                        .font(.title3).foregroundStyle(.tint).frame(width: 30)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(lecture.displayTitle).font(.headline).lineLimit(2)
-                        HStack(spacing: 6) {
-                            Text(lecture.start.formatted(.dateTime.month().day().weekday().hour().minute()))
-                            if let end = lecture.end {
-                                Text("・\(Int(end.timeIntervalSince(lecture.start) / 60)) 分鐘")
-                            }
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                        if lecture.needsTranscription {
-                            Label("轉文字中", systemImage: "hourglass").font(.caption2).foregroundStyle(.orange)
-                        } else if lecture.richNotes != nil {
-                            Label("有詳細筆記", systemImage: "doc.richtext").font(.caption2).foregroundStyle(.secondary)
-                        }
+        ForEach(lectureGroups, id: \.day) { group in
+            Section {
+                ForEach(group.items) { lecture in
+                    NavigationLink(value: LectureRoute(id: lecture.id)) {
+                        LectureRow(lecture: lecture)
+                    }
+                    .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
+                    .swipeActions {
+                        Button("刪除", role: .destructive) { store.deleteLecture(lecture) }
                     }
                 }
-                .padding(.vertical, 4)
-            }
-            .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
-            .swipeActions {
-                Button("刪除", role: .destructive) { store.deleteLecture(lecture) }
+            } header: {
+                Text(group.items[0].start.formatted(.dateTime.month().day().weekday(.wide)))
             }
         }
+    }
+}
+
+/// 紀錄頁的一堂課：科目圖示、課名、時間與長度、狀態。
+private struct LectureRow: View {
+    let lecture: Lecture
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: lecture.subject?.symbol ?? "graduationcap")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Color.accentColor.gradient, in: .rect(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.body.weight(.medium)).lineLimit(2)
+                HStack(spacing: 4) {
+                    Text(lecture.start.formatted(date: .omitted, time: .shortened))
+                    if let end = lecture.end {
+                        Text("・\(max(1, Int(end.timeIntervalSince(lecture.start) / 60))) 分鐘")
+                    }
+                    if let status {
+                        Text("・")
+                        Text(status.0).foregroundStyle(status.1)
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// 沒取名的課不要再重複時間，改顯示科目或「課堂」
+    private var title: String {
+        if lecture.name?.isEmpty == false || lecture.summary?.title.isEmpty == false { return lecture.displayTitle }
+        if let subject = lecture.subject, subject != .general { return subject.title + "課" }
+        return "未命名課堂"
+    }
+
+    private var status: (String, Color)? {
+        if lecture.needsTranscription { return ("轉文字中", .orange) }
+        if lecture.claudeNotes != nil { return ("Muse 筆記", .secondary) }
+        if lecture.richNotes != nil { return ("有筆記", .secondary) }
+        return nil
     }
 }
 

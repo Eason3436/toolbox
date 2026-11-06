@@ -35,8 +35,12 @@ struct RecorderCard: View {
             }
             if let error {
                 Text(error).font(.footnote).foregroundStyle(.red)
+                    .transition(.opacity)
             }
         }
+        .animation(.smooth, value: recorder.isActive)
+        .animation(.smooth, value: recorder.isPowerSaving)
+        .animation(.smooth, value: error)
     }
 
     private var idleContent: some View {
@@ -107,6 +111,7 @@ struct RecorderCard: View {
                 Spacer()
                 if recorder.mode == .allDay {
                     Text("本次已存 \(recorder.segmentsThisSession) 段")
+                        .contentTransition(.numericText(value: Double(recorder.segmentsThisSession)))
                 }
             }
             .font(.footnote)
@@ -229,12 +234,15 @@ struct DayContentView: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(status).font(.footnote).foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
                     Spacer()
                 }
                 .padding(.horizontal, 4)
+                .transition(.opacity)
             }
             timeline(record)
         }
+        .animation(.smooth, value: queue.statusText)
     }
 
     @ViewBuilder

@@ -155,6 +155,44 @@ final class RecapStore {
         return total
     }
 
+    /// 各類資料佔用的空間（給儲存空間頁的長條圖）
+    struct StorageUsage: Sendable, Equatable {
+        var allDayAudio: Int64 = 0
+        var lectureAudio: Int64 = 0
+        var text: Int64 = 0
+        var memory: Int64 = 0
+        var total: Int64 { allDayAudio + lectureAudio + text + memory }
+    }
+
+    func storageUsage() async -> StorageUsage {
+        let lectureFiles = Set(days.values.flatMap { $0.lectures.flatMap { $0.audioParts.map(\.file) } })
+        let recordings = recordingsDirectory
+        let daysDir = daysDirectory
+        return await Task.detached(priority: .utility) {
+            var usage = StorageUsage()
+            func size(_ url: URL) -> Int64 { Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+            let base = recordings.standardizedFileURL.path
+            if let e = FileManager.default.enumerator(at: recordings, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let url as URL in e {
+                    var rel = url.standardizedFileURL.path
+                    if rel.hasPrefix(base) { rel.removeFirst(base.count) }
+                    while rel.hasPrefix("/") { rel.removeFirst() }
+                    if lectureFiles.contains(rel) || rel.contains("import-") || rel.contains("lecture") {
+                        usage.lectureAudio += size(url)
+                    } else {
+                        usage.allDayAudio += size(url)
+                    }
+                }
+            }
+            if let e = FileManager.default.enumerator(at: daysDir, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let url as URL in e { usage.text += size(url) }
+            }
+            let docs = daysDir.deletingLastPathComponent()
+            usage.memory = size(docs.appending(path: "learned-terms.json"))
+            return usage
+        }.value
+    }
+
     // MARK: - 讀寫
 
     private func fileURL(for key: String) -> URL { daysDirectory.appending(path: "\(key).json") }
