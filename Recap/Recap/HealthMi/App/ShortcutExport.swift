@@ -72,13 +72,22 @@ enum MiHealthKind: String, AppEnum, CaseIterable {
 }
 
 enum MiSleepStage: String, AppEnum, CaseIterable {
-    case inBed, core, deep, rem, awake
+    case asleep, inBed, awake, core, deep, rem
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "睡眠階段"
     static let caseDisplayRepresentations: [MiSleepStage: DisplayRepresentation] = [
-        .inBed: "在床上", .core: "核心", .deep: "深層", .rem: "快速動眼", .awake: "清醒",
+        .asleep: "睡眠時間（淺眠＋深眠＋REM）", .inBed: "床上時間", .awake: "清醒",
+        .core: "只有淺眠", .deep: "只有深眠", .rem: "只有 REM",
     ]
+    /// 捷徑的「記錄健康樣本」只有清醒、床上時間、睡眠時間三種，淺眠／深眠／REM 要合併成「睡眠時間」
+    func matches(_ stage: String) -> Bool {
+        switch self {
+        case .asleep: ["核心", "深層", "快速動眼"].contains(stage)
+        default: title == stage
+        }
+    }
     var title: String {
         switch self {
+        case .asleep: "睡眠時間"
         case .inBed: "在床上"
         case .core: "核心"
         case .deep: "深層"
@@ -144,7 +153,7 @@ struct GetMiHealthSamplesIntent: AppIntent {
     @Parameter(title: "只給新資料", default: true)
     var onlyNew: Bool
 
-    @Parameter(title: "最多往回抓幾天", default: 7)
+    @Parameter(title: "最多往回抓幾天", description: "第一次想補舊資料可以設大一點，最多 365 天。", default: 7)
     var days: Int
 
     @Parameter(title: "睡眠階段", description: "資料類型是睡眠時才用得到：只給這個階段，配合「記錄健康樣本」選同一個階段。")
@@ -159,7 +168,7 @@ struct GetMiHealthSamplesIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<[MiHealthSample]> {
-        let samples = try await MiShortcutExport.samples(kind: kind, days: max(1, min(days, 90)), onlyNew: onlyNew,
+        let samples = try await MiShortcutExport.samples(kind: kind, days: max(1, min(days, 365)), onlyNew: onlyNew,
                                                          sleepStage: kind == .sleep ? sleepStage : nil)
         return .result(value: samples)
     }
@@ -207,7 +216,7 @@ enum MiShortcutExport {
                 case .asleepREM: "快速動眼"
                 default: "核心"
                 }
-                if let sleepStage, sleepStage.title != stage { continue }
+                if let sleepStage, !sleepStage.matches(stage) { continue }
                 result.append(MiHealthSample(value: sample.endDate.timeIntervalSince(sample.startDate) / 60, unit: "分鐘",
                                              start: sample.startDate, end: sample.endDate, stage: stage))
             }
