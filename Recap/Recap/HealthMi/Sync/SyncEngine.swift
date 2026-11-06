@@ -134,6 +134,12 @@ actor SyncEngine {
         return (samples, SyncOutcome(type: .stress, fetched: samples.count, added: 0, highWater: now))
     }
 
+    /// 只抓資料、不寫入 HealthKit（給「捷徑」用：沒有健康權限時由捷徑寫入）。
+    func fetchObjects(type: SyncDataType, days: Int) async throws -> [HKObject] {
+        let (_, _, startTime, endTime) = syncWindow(highWater: nil, backfillDays: days, forceBackfill: true)
+        return try await fetchAndMap(type: type, startTime: startTime, endTime: endTime).flatMap(\.objects)
+    }
+
     // MARK: - 視窗計算
 
     func syncWindow(

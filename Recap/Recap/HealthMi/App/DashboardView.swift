@@ -242,6 +242,31 @@ struct DashboardView: View {
                 }
 
                 Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("用「捷徑」寫入 Apple 健康").font(.headline)
+                        Text("免費開發者帳號拿不到健康權限，上面的同步按鈕會失敗。改用捷徑：")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Text("""
+                        1. 在「捷徑」新增捷徑，加入 Recap 的「取得小米健康資料」，選一種資料類型（例如步數）。
+                        2. 加入「重複每一項目」。
+                        3. 在重複裡加入「記錄健康樣本」，選同一種類型；「值」選「重複項目」的「數值」，「日期」選「開始時間」，「結束日期」選「結束時間」。
+                        4. 其他資料類型照著再做一組。睡眠要選「睡眠階段」，每個階段各做一組。
+                        5. 到「自動化」設定每天早上自動執行，就會每天補上新資料。
+                        """)
+                        .font(.footnote)
+                        Text("預設只給上次之後的新資料，不會重複寫入。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                    Link(destination: URL(string: "shortcuts://")!) {
+                        Label("打開「捷徑」App", systemImage: "square.2.layers.3d")
+                    }
+                    Button("重設捷徑進度（重新給全部資料）") {
+                        MiShortcutExport.resetCursors()
+                    }
+                }
+
+                Section {
                     Button("退出登入並清除小米憑據", role: .destructive) {
                         model.disconnect(modelContext: modelContext)
                     }
