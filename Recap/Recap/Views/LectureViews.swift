@@ -22,6 +22,7 @@ struct LectureHomeView: View {
                     LectureStartView()
                 }
             }
+            .animation(.smooth, value: recorder.isActive)
             .navigationDestinations()
         }
     }
@@ -63,9 +64,10 @@ struct LectureStartView: View {
                 }
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
+            .animation(.smooth, value: error)
             todaySection
             Section {
-                Toggle(isOn: foreignBinding) {
+                Toggle(isOn: foreignBinding.animation(.smooth)) {
                     Label("非中文授課", systemImage: "character.bubble")
                 }
                 if isForeign {
@@ -159,6 +161,7 @@ struct LectureStartView: View {
                     Spacer()
                 }
                 .padding(.vertical, 8)
+                .animation(.smooth(duration: 0.2), value: starting)
             }
             .buttonStyle(.glassProminent)
             .disabled(starting)

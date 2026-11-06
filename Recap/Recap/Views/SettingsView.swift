@@ -73,9 +73,16 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Text("錄音時狀態列會亮橘色麥克風燈號，這是系統規定，App 無法隱藏。整天收音很耗電，建議放桌上或接電源。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
+                    NavigationLink {
+                        ChangelogView()
+                    } label: {
+                        SettingsRow(title: "更新日誌", detail: Changelog.entries.first.map { Changelog.dateText($0.date) }, symbol: "list.bullet.rectangle", tint: .pink)
+                    }
+                } footer: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("錄音時狀態列會亮橘色麥克風燈號，這是系統規定，App 無法隱藏。整天收音很耗電，建議放桌上或接電源。")
+                        Text("Recap \(Changelog.appVersion)")
+                    }
                 }
             }
             .navigationTitle("設定")
@@ -234,35 +241,144 @@ struct RecognitionSettingsView: View {
 struct StorageSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(RecapStore.self) private var store
+    @State private var usage: RecapStore.StorageUsage?
     @State private var cleanupMessage: String?
+    @State private var confirmCleanup = false
+
+    private struct Slice: Identifiable {
+        let id: String
+        let title: String
+        let bytes: Int64
+        let color: Color
+    }
+
+    private var slices: [Slice] {
+        guard let usage else { return [] }
+        return [
+            Slice(id: "allDay", title: "全天錄音", bytes: usage.allDayAudio, color: .blue),
+            Slice(id: "lecture", title: "課堂錄音", bytes: usage.lectureAudio, color: .orange),
+            Slice(id: "text", title: "文字與筆記", bytes: usage.text, color: .green),
+            Slice(id: "memory", title: "學習記憶", bytes: usage.memory, color: .purple),
+        ].filter { $0.bytes > 0 }
+    }
 
     var body: some View {
         @Bindable var settings = settings
         Form {
             Section {
-                LabeledContent("錄音檔佔用", value: ByteCountFormatter.string(fromByteCount: store.storageBytes, countStyle: .file))
-                Picker("錄音檔保留", selection: $settings.audioRetentionDays) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(usage.map { size($0.total) } ?? "計算中…")
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                            .contentTransition(.numericText())
+                        Text("已使用").foregroundStyle(.secondary)
+                    }
+                    UsageBar(slices: slices.map { ($0.bytes, $0.color) })
+                        .frame(height: 14)
+                    legend
+                }
+                .padding(.vertical, 6)
+            }
+
+            Section {
+                Picker(selection: $settings.audioRetentionDays) {
                     Text("1 天").tag(1)
                     Text("3 天").tag(3)
                     Text("7 天").tag(7)
                     Text("14 天").tag(14)
                     Text("30 天").tag(30)
-                    Text("永久保留").tag(0)
+                    Text("永久").tag(0)
+                } label: {
+                    SettingsRow(title: "錄音檔保留", detail: nil, symbol: "clock.arrow.circlepath", tint: .blue)
                 }
-                Toggle("轉好文字後馬上刪除音檔", isOn: $settings.deleteAudioAfterTranscribe)
-                Button("現在清理過期錄音檔") {
-                    let n = store.purgeAudio(olderThan: settings.audioRetentionDays)
-                    cleanupMessage = n == 0 ? "沒有過期的錄音檔" : "刪除了 \(n) 個錄音檔（文字稿和筆記都還在）"
+                Toggle(isOn: $settings.deleteAudioAfterTranscribe) {
+                    SettingsRow(title: "轉好文字就刪音檔", detail: nil, symbol: "waveform.slash", tint: .orange)
+                }
+                ShareLink(item: allText, preview: SharePreview("Recap 文字紀錄")) {
+                    SettingsRow(title: "匯出所有文字紀錄", detail: nil, symbol: "square.and.arrow.up", tint: .indigo)
+                }
+                Button {
+                    confirmCleanup = true
+                } label: {
+                    SettingsRow(title: "清理過期錄音檔", detail: nil, symbol: "trash", tint: .red)
                 }
                 .disabled(settings.audioRetentionDays == 0)
-                if let cleanupMessage { Text(cleanupMessage).font(.footnote).foregroundStyle(.secondary) }
             } footer: {
-                Text("超過保留天數的錄音檔會自動刪除，只留下文字稿、翻譯和筆記，追問照樣能用。還沒轉成文字的錄音不會被刪。")
+                if let cleanupMessage {
+                    Text(cleanupMessage)
+                } else {
+                    Text("超過保留天數的錄音檔會自動刪除，只留下文字稿、翻譯和筆記，追問照樣能用。還沒轉成文字的錄音不會被刪。")
+                }
             }
         }
         .navigationTitle("儲存空間")
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.audioRetentionDays)
+        .confirmationDialog("刪除超過 \(settings.audioRetentionDays) 天的錄音檔？", isPresented: $confirmCleanup, titleVisibility: .visible) {
+            Button("刪除錄音檔", role: .destructive) { cleanup() }
+        } message: {
+            Text("文字稿和筆記會保留。")
+        }
+        .task { await refresh() }
+    }
+
+    private var legend: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 8) {
+            ForEach(slices) { slice in
+                HStack(spacing: 6) {
+                    Circle().fill(slice.color).frame(width: 8, height: 8)
+                    Text(slice.title).foregroundStyle(.secondary)
+                    Text(size(slice.bytes)).foregroundStyle(.secondary).monospacedDigit()
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
+    private var allText: String {
+        store.dayKeys.map { MarkdownExport.day(store.day($0)) }.joined(separator: "\n\n---\n\n")
+    }
+
+    private func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+
+    private func refresh() async {
+        let value = await store.storageUsage()
+        withAnimation(.smooth) { usage = value }
+    }
+
+    private func cleanup() {
+        let n = store.purgeAudio(olderThan: settings.audioRetentionDays)
+        Haptics.success()
+        withAnimation(.smooth) {
+            cleanupMessage = n == 0 ? "沒有過期的錄音檔。" : "刪除了 \(n) 個錄音檔，文字稿和筆記都還在。"
+        }
+        Task { await refresh() }
+    }
+}
+
+/// 分段用量長條，段與段之間留細縫，像「設定 → 一般 → 儲存空間」。
+struct UsageBar: View {
+    let slices: [(Int64, Color)]
+
+    var body: some View {
+        GeometryReader { geo in
+            let total = max(1, slices.reduce(0) { $0 + $1.0 })
+            let gap: CGFloat = 2
+            let usable = max(0, geo.size.width - gap * CGFloat(max(0, slices.count - 1)))
+            HStack(spacing: gap) {
+                if slices.isEmpty {
+                    Rectangle().fill(.fill.tertiary)
+                } else {
+                    ForEach(Array(slices.enumerated()), id: \.offset) { _, slice in
+                        Rectangle()
+                            .fill(slice.1)
+                            .frame(width: max(3, usable * CGFloat(slice.0) / CGFloat(total)))
+                    }
+                }
+            }
+            .frame(width: geo.size.width, alignment: .leading)
+            .clipShape(.capsule)
+        }
     }
 }
 
