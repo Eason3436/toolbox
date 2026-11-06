@@ -115,7 +115,7 @@ struct HistoryView: View {
             Section {
                 ForEach(group.items) { lecture in
                     NavigationLink(value: LectureRoute(id: lecture.id)) {
-                        LectureRow(lecture: lecture)
+                        HistoryLectureRow(lecture: lecture)
                     }
                     .appEntityIdentifier(EntityIdentifier(for: LectureEntity.self, identifier: lecture.id))
                     .swipeActions {
@@ -130,7 +130,7 @@ struct HistoryView: View {
 }
 
 /// 紀錄頁的一堂課：科目圖示、課名、時間與長度、狀態。
-private struct LectureRow: View {
+private struct HistoryLectureRow: View {
     let lecture: Lecture
 
     var body: some View {
