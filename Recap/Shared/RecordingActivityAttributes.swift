@@ -15,6 +15,8 @@ struct RecordingActivityAttributes: ActivityAttributes {
         var segmentCount: Int
         /// 自動停止的時間（排程或指定時長）
         var stopAt: Date?
+        /// 已停止錄音（結束後留在鎖定畫面顯示「錄音已儲存」）
+        var endedAt: Date?
     }
 
     /// "allDay" 或 "lecture"
