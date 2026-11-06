@@ -1,0 +1,102 @@
+name: Build HealthMi IPA
+
+# 編譯第三方開源 App：https://github.com/ShawnDiego/HealthMi（Apache-2.0）
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "HealthMi 的分支 / tag / commit"
+        required: false
+        default: "main"
+  push:
+    paths:
+      - ".github/workflows/healthmi.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: healthmi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    steps:
+      - name: Clone HealthMi
+        run: |
+          REF="${{ github.event.inputs.ref || 'main' }}"
+          git clone https://github.com/ShawnDiego/HealthMi.git src
+          cd src
+          git checkout "$REF"
+          echo "HM_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          git log -1 --oneline
+
+      - name: Show Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Generate Xcode project
+        working-directory: src
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: src
+        run: |
+          STATUS=0
+          xcodebuild \
+            -project HealthMi.xcodeproj \
+            -scheme HealthMi \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || STATUS=$?
+          grep -E "error:" build.log | sort -u | head -150 || true
+          tail -3 build.log
+          exit $STATUS
+
+      - name: Embed HealthKit entitlement with ad-hoc signature
+        working-directory: src
+        run: |
+          # 把 HealthKit 權限寫進執行檔，SideStore 重新簽署時才會沿用
+          APP=build/Build/Products/Release-iphoneos/HealthMi.app
+          codesign -f -s - --entitlements HealthMi/Support/HealthMi.entitlements "$APP"
+          codesign -d --entitlements - "$APP" || true
+
+      - name: Package IPA
+        working-directory: src
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/HealthMi.app Payload/
+          zip -qry ../HealthMi.ipa Payload
+          ls -lh ../HealthMi.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: healthmi-build-log
+          path: src/build.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HealthMi-ipa
+          path: HealthMi.ipa
+
+      - name: Publish to "healthmi-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete healthmi-latest --yes --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create healthmi-latest HealthMi.ipa -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "HealthMi（上游 ${HM_SHA}）" \
+            --notes "第三方開源 App ShawnDiego/HealthMi（commit ${HM_SHA}）未簽署版。用 SideStore 安裝：下載 HealthMi.ipa，在 SideStore 的 My Apps 按 + 選這個檔案。" \
+            --prerelease
