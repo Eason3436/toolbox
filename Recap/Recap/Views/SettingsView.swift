@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
@@ -62,7 +63,7 @@ struct SettingsView: View {
                     NavigationLink {
                         StorageSettingsView()
                     } label: {
-                        SettingsRow(title: "儲存空間", detail: ByteCountFormatter.string(fromByteCount: store.storageBytes, countStyle: .file), symbol: "internaldrive", tint: .gray)
+                        SettingsRow(title: "儲存空間與備份", detail: ByteCountFormatter.string(fromByteCount: store.storageBytes, countStyle: .file), symbol: "internaldrive", tint: .gray)
                     }
                     Button {
                         queue.kick(summaries: true)
@@ -244,6 +245,13 @@ struct StorageSettingsView: View {
     @State private var usage: RecapStore.StorageUsage?
     @State private var cleanupMessage: String?
     @State private var confirmCleanup = false
+    @State private var includeAudio = false
+    @State private var backupFile: URL?
+    @State private var savingBackup = false
+    @State private var backupBusy = false
+    @State private var backupMessage: String?
+    @State private var pickingBackup = false
+    @State private var pendingRestore: URL?
 
     private struct Slice: Identifiable {
         let id: String
@@ -310,8 +318,52 @@ struct StorageSettingsView: View {
                     Text("超過保留天數的錄音檔會自動刪除，只留下文字稿、翻譯和筆記，追問照樣能用。還沒轉成文字的錄音不會被刪。")
                 }
             }
+
+            Section {
+                Button {
+                    makeBackup()
+                } label: {
+                    HStack {
+                        SettingsRow(title: "匯出備份", detail: nil, symbol: "externaldrive.badge.icloud", tint: .gray)
+                        if backupBusy { ProgressView() }
+                    }
+                }
+                .disabled(backupBusy)
+                Toggle(isOn: $includeAudio) {
+                    SettingsRow(title: "備份包含錄音檔", detail: usage.map { size($0.allDayAudio + $0.lectureAudio) }, symbol: "waveform", tint: .blue)
+                }
+                Button {
+                    pickingBackup = true
+                } label: {
+                    SettingsRow(title: "從備份還原", detail: nil, symbol: "arrow.counterclockwise", tint: .green)
+                }
+                .disabled(backupBusy)
+            } header: {
+                Text("備份")
+            } footer: {
+                if let backupMessage {
+                    Text(backupMessage)
+                } else {
+                    Text("所有紀錄、課堂筆記、課表和設定存成一個檔案，可以存到「檔案」或 iCloud 雲碟。換手機或重裝後用「從備份還原」就能全部拿回來。API Key 不會放進備份，還原後要重新貼上。")
+                }
+            }
         }
-        .navigationTitle("儲存空間")
+        .fileMover(isPresented: $savingBackup, file: backupFile) { result in
+            if case .success = result {
+                backupMessage = "備份已儲存。"
+                Haptics.success()
+            }
+            if let backupFile { try? FileManager.default.removeItem(at: backupFile) }
+        }
+        .fileImporter(isPresented: $pickingBackup, allowedContentTypes: [.data, .item]) { result in
+            if case .success(let url) = result { pendingRestore = url }
+        }
+        .confirmationDialog("從這份備份還原？", isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }), titleVisibility: .visible) {
+            Button("還原") { if let url = pendingRestore { restore(url) } }
+        } message: {
+            Text("備份裡有的日子會取代手機上同一天的紀錄，其他資料會保留。")
+        }
+        .navigationTitle("儲存空間與備份")
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.audioRetentionDays)
         .confirmationDialog("刪除超過 \(settings.audioRetentionDays) 天的錄音檔？", isPresented: $confirmCleanup, titleVisibility: .visible) {
@@ -344,6 +396,45 @@ struct StorageSettingsView: View {
     private func refresh() async {
         let value = await store.storageUsage()
         withAnimation(.smooth) { usage = value }
+    }
+
+    private func makeBackup() {
+        backupBusy = true
+        backupMessage = nil
+        Task {
+            do {
+                backupFile = try await BackupManager.export(includeAudio: includeAudio)
+                savingBackup = true
+            } catch {
+                backupMessage = "備份失敗：\(error.localizedDescription)"
+                Haptics.error()
+            }
+            backupBusy = false
+        }
+    }
+
+    private func restore(_ url: URL) {
+        backupBusy = true
+        backupMessage = nil
+        Task {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let summary = try await BackupManager.restore(from: url)
+                var text = "已還原 \(summary.days) 天的紀錄"
+                if summary.audioFiles > 0 { text += "、\(summary.audioFiles) 個錄音檔" }
+                text += "。"
+                if summary.restoredSettings { text += "設定和課表會在重新打開 App 後套用。" }
+                withAnimation(.smooth) { backupMessage = text }
+                Haptics.success()
+                await refresh()
+            } catch {
+                backupMessage = "還原失敗：\(error.localizedDescription)"
+                Haptics.error()
+            }
+            backupBusy = false
+            pendingRestore = nil
+        }
     }
 
     private func cleanup() {

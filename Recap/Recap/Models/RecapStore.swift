@@ -197,6 +197,12 @@ final class RecapStore {
 
     private func fileURL(for key: String) -> URL { daysDirectory.appending(path: "\(key).json") }
 
+    /// 還原備份後重新讀取所有紀錄。
+    func reloadFromDisk() {
+        days = [:]
+        loadAll()
+    }
+
     private func loadAll() {
         let files = (try? FileManager.default.contentsOfDirectory(at: daysDirectory, includingPropertiesForKeys: nil)) ?? []
         let decoder = JSONDecoder()

@@ -30,6 +30,13 @@ final class LearningMemory {
         }
     }
 
+    /// 還原備份後重新讀檔。
+    func reload() {
+        if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode([LearnedTerm].self, from: data) {
+            terms = saved
+        }
+    }
+
     /// 記住一批詞（重複出現的會加權）。
     func learn(_ items: [(term: String, note: String?)], subject: SchoolSubject?) {
         guard AppSettings.shared.learningMemory else { return }
