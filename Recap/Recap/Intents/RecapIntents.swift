@@ -12,16 +12,16 @@ struct StartAllDayRecordingIntent: AudioRecordingIntent {
     var minutes: Int?
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         do {
             try await AppModel.shared.recorder.start(mode: .allDay, duration: minutes.map { TimeInterval($0 * 60) }, source: .shortcut)
         } catch {
             throw RecapIntentError.from(error)
         }
         if let stopAt = AppModel.shared.recorder.stopAt {
-            return .result(dialog: "開始錄音，會錄到 \(stopAt.formatted(date: .omitted, time: .shortened))。")
+            return .result(dialog: "開始錄音，會錄到 \(stopAt.formatted(date: .omitted, time: .shortened))。", snippetIntent: RecordingSnippetIntent())
         }
-        return .result(dialog: "開始錄音。")
+        return .result(dialog: "開始錄音。", snippetIntent: RecordingSnippetIntent())
     }
 }
 
@@ -43,7 +43,7 @@ struct StartLectureIntent: AudioRecordingIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let model = AppModel.shared
         let recorder = model.recorder
         if recorder.isActive, recorder.mode == .allDay {
@@ -58,7 +58,7 @@ struct StartLectureIntent: AudioRecordingIntent {
         model.router.tab = .lecture
         let chosen = recorder.lecture?.lecture.subject ?? .general
         let name = chosen == .general ? "這堂課" : (chosen.isSeminar ? "講座" : "\(chosen.title)課")
-        return .result(dialog: "\(name)開始錄音，下課跟我說「停止錄音」。")
+        return .result(dialog: "\(name)開始錄音，下課跟我說「停止錄音」。", snippetIntent: RecordingSnippetIntent())
     }
 }
 
@@ -67,11 +67,11 @@ struct PauseRecordingIntent: AppIntent {
     static let description = IntentDescription("暫停 Recap 的錄音，之後可以繼續。")
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let recorder = AppModel.shared.recorder
         guard recorder.state == .recording || recorder.state == .interrupted else { throw RecapIntentError.notRecording }
         recorder.pause()
-        return .result(dialog: "已暫停，說「繼續錄音」就會接著錄。")
+        return .result(dialog: "已暫停，說「繼續錄音」就會接著錄。", snippetIntent: RecordingSnippetIntent())
     }
 }
 
@@ -81,7 +81,7 @@ struct ResumeRecordingIntent: AudioRecordingIntent {
     static let description = IntentDescription("接著錄剛才暫停或被打斷的錄音。")
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let recorder = AppModel.shared.recorder
         guard recorder.isActive else { throw RecapIntentError.notRecording }
         guard recorder.state == .paused || recorder.state == .interrupted else { throw RecapIntentError.notPaused }
@@ -89,7 +89,7 @@ struct ResumeRecordingIntent: AudioRecordingIntent {
         guard recorder.state == .recording else {
             throw RecapIntentError.failed("麥克風還被別的 App 佔用，等一下再試。")
         }
-        return .result(dialog: "繼續錄音。")
+        return .result(dialog: "繼續錄音。", snippetIntent: RecordingSnippetIntent())
     }
 }
 
@@ -98,7 +98,7 @@ struct StopRecordingIntent: AppIntent {
     static let description = IntentDescription("停止 Recap 正在進行的錄音。")
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let recorder = AppModel.shared.recorder
         guard recorder.isActive else { throw RecapIntentError.notRecording }
         let wasLecture = recorder.mode == .lecture
@@ -106,7 +106,8 @@ struct StopRecordingIntent: AppIntent {
             try await requestConfirmation(result: .result(dialog: "要結束這堂課嗎？"))
         }
         await recorder.stop()
-        return .result(dialog: wasLecture ? "下課了，打開 Recap 時會整理重點。" : "已停止錄音，打開 Recap 時會整理成 Recap。")
+        return .result(dialog: wasLecture ? "下課了，打開 Recap 時會整理重點。" : "已停止錄音，打開 Recap 時會整理成 Recap。",
+                       snippetIntent: RecordingSnippetIntent())
     }
 }
 
@@ -117,20 +118,24 @@ struct TodayRecapIntent: AppIntent {
     static let openAppWhenRun = false
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
         let model = AppModel.shared
         let record = model.store.day(DayKey.today)
         if record.recap != nil {
             let entity = DayRecapEntity(record: record)
             var spoken = "\(entity.title)。\(entity.overview)"
             if !entity.todos.isEmpty { spoken += " 待辦：\(entity.todos.joined(separator: "、"))。" }
-            return .result(value: entity.fullText, dialog: "\(spoken)")
+            return .result(value: entity.fullText, dialog: "\(spoken)",
+                           view: RecapSnippetView(caption: "今日 Recap", title: entity.title, overview: entity.overview,
+                                                  points: entity.highlights, todos: entity.todos))
         }
         if record.segments.isEmpty {
-            return .result(value: "今天還沒有錄音。", dialog: "今天還沒有錄音。")
+            return .result(value: "今天還沒有錄音。", dialog: "今天還沒有錄音。",
+                           view: RecapSnippetView(caption: "今日 Recap", title: "今天還沒有錄音", points: []))
         }
         model.queue.regenerateRecap(DayKey.today)
-        return .result(value: "今天的 Recap 還在整理中。", dialog: "今天的 Recap 還在整理中，打開 Recap 看看。")
+        return .result(value: "今天的 Recap 還在整理中。", dialog: "今天的 Recap 還在整理中，打開 Recap 看看。",
+                       view: RecapSnippetView(caption: "今日 Recap", title: "還在整理中", overview: "已錄到 \(record.spokenSegments.count) 段，整理好會出現在 App 裡。", points: []))
     }
 }
 
@@ -144,7 +149,7 @@ struct QuickRecapIntent: AppIntent {
     var minutes: Int
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
         let model = AppModel.shared
         let quick = model.quickRecap
         let wanted = max(1, min(minutes, 240))
@@ -169,7 +174,8 @@ struct QuickRecapIntent: AppIntent {
             let spoken = "\(digest.title)。" + points.joined(separator: "。")
             let full = "最近 \(wanted) 分鐘：\(digest.title)\n" + digest.points.map { "・\($0)" }.joined(separator: "\n")
                 + (digest.todos.isEmpty ? "" : "\n待辦：\n" + digest.todos.map { "・\($0)" }.joined(separator: "\n"))
-            return .result(value: full, dialog: "\(spoken)")
+            return .result(value: full, dialog: "\(spoken)",
+                           view: RecapSnippetView(caption: "最近 \(wanted) 分鐘", title: digest.title, points: digest.points, todos: digest.todos))
         case .failed(let message):
             throw RecapIntentError.failed(message)
         default:
