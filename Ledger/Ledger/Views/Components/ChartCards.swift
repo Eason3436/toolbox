@@ -427,7 +427,7 @@ private struct CategoryBreakdown: View {
 
             VStack(spacing: 4) {
                 ForEach(shown) { e in
-                    Button { opened = e } label: { EntryRow(entry: e, hidden: hidden) }
+                    Button { opened = e } label: { EntryRow(entry: e, hidden: hidden, showsDate: true) }
                         .buttonStyle(.plain)
                     if e.id != shown.last?.id { Divider().padding(.leading, 54) }
                 }

@@ -137,10 +137,15 @@ struct MerchantDetailView: View {
     var body: some View {
         let spent = entries.filter { $0.kind == .expense }
         let total = spent.reduce(0) { $0 + $1.amount }
-        let byMonth = Dictionary(grouping: spent) { DateText.monthInterval($0.date).start }
-            .map { (month: $0.key, total: $0.value.reduce(0) { $0 + $1.amount }) }
-            .sorted { $0.month < $1.month }
-            .suffix(12)
+        // 最近 6 個月（沒花的月份補 0），用「10月」這種文字當橫軸，柱子固定寬度
+        let cal = Calendar.current
+        let thisMonth = DateText.monthInterval(.now).start
+        let sums = Dictionary(grouping: spent) { DateText.monthInterval($0.date).start }
+            .mapValues { $0.reduce(0) { $0 + $1.amount } }
+        let byMonth: [(label: String, total: Double, current: Bool)] = (0..<6).reversed().compactMap { back in
+            guard let m = cal.date(byAdding: .month, value: -back, to: thisMonth) else { return nil }
+            return ("\(cal.component(.month, from: m))月", sums[m] ?? 0, back == 0)
+        }
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
@@ -150,14 +155,28 @@ struct MerchantDetailView: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
-                if byMonth.count > 1 {
-                    Chart(Array(byMonth), id: \.month) { m in
-                        BarMark(x: .value("月份", m.month, unit: .month), y: .value("金額", m.total))
-                            .foregroundStyle(Color.accentColor.gradient)
-                            .cornerRadius(4)
+                if !spent.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("最近 6 個月").font(.caption).foregroundStyle(.secondary)
+                        Chart(byMonth, id: \.label) { m in
+                            BarMark(x: .value("月份", m.label), y: .value("金額", m.total), width: .fixed(22))
+                                .foregroundStyle(m.current ? Color.accentColor : Color.accentColor.opacity(0.35))
+                                .cornerRadius(6)
+                                .annotation(position: .top, spacing: 4) {
+                                    if m.total > 0 {
+                                        Text(Money.format(m.total, hidden: hidden))
+                                            .font(.caption2.weight(.semibold)).monospacedDigit()
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                        }
+                        .chartYAxis(.hidden)
+                        .chartXAxis {
+                            AxisMarks { _ in AxisValueLabel().font(.caption2) }
+                        }
+                        .frame(height: 120)
                     }
-                    .chartYAxis(.hidden)
-                    .frame(height: 140)
+                    .padding(.vertical, 6)
                 }
             }
             Section {
@@ -168,11 +187,7 @@ struct MerchantDetailView: View {
             Section("紀錄") {
                 ForEach(entries) { e in
                     Button { opened = e } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            EntryRow(entry: e, hidden: hidden)
-                            Text(e.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption).foregroundStyle(.secondary).padding(.leading, 54)
-                        }
+                        EntryRow(entry: e, hidden: hidden, showsDate: true)
                     }
                     .buttonStyle(.plain)
                 }
