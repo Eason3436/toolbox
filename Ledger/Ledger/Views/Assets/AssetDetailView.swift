@@ -85,10 +85,10 @@ struct AssetDetailView: View {
                         priceCard.appearEffect(delay: 0.15)
                         NavigationLink { PortfolioInsightView(focus: asset) } label: {
                             HStack(spacing: 14) {
-                                Image(systemName: "sparkles").font(.title2).foregroundStyle(Color.accentColor)
+                                Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundStyle(Color.accentColor)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("AI 分析").font(.headline)
-                                    Text("用 Apple Intelligence 解讀這檔和你的整體配置").font(.subheadline).foregroundStyle(.secondary)
+                                    Text("分析").font(.headline)
+                                    Text("解讀這檔和你的整體配置").font(.subheadline).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").foregroundStyle(.secondary)

@@ -138,7 +138,7 @@ struct EntryDetailView: View {
                 Text(entry.note).frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.secondary)
             }
             if let categoryNote {
-                Label(categoryNote, systemImage: "sparkles")
+                Label(categoryNote, systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(Color.accentColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -172,7 +172,7 @@ struct EntryDetailView: View {
                 HStack(spacing: 10) {
                     if analyzing {
                         ProgressView()
-                        Text("Apple Intelligence 正在讀發票…")
+                        Text("正在讀發票…")
                     } else {
                         Image(systemName: receipt == nil ? "doc.text.viewfinder" : "arrow.triangle.2.circlepath")
                         Text(receipt == nil ? "匯入發票照片" : "重新匯入發票")
@@ -284,7 +284,7 @@ struct SourceBadge: View {
     var body: some View {
         let (text, symbol): (String, String) = switch source {
         case .manual: ("手動記帳", "hand.point.up.left")
-        case .shortcut: ("捷徑自動記帳", "sparkles")
+        case .shortcut: ("捷徑自動記帳", "bolt.fill")
         case .cashew: ("Cashew 匯入", "square.and.arrow.down")
         case .bill: ("帳單", "bolt.fill")
         }

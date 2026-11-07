@@ -191,7 +191,7 @@ struct ShortcutGuideView: View {
             } header: {
                 Text("銀行 App 推播通知")
             } footer: {
-                Text("之後每收到一次銀行通知，Apple Intelligence 會在 iPhone 上拆出商家、金額與分類，自動記一筆。卡號末四碼對得上的話會記到那張卡，否則記到預設帳戶。")
+                Text("之後每收到一次銀行通知，App 會在 iPhone 上拆出商家、金額與分類，自動記一筆。卡號末四碼對得上的話會記到那張卡，否則記到預設帳戶。")
             }
 
             Section {
@@ -209,7 +209,7 @@ struct ShortcutGuideView: View {
             }
 
             Section {
-                Text("在記一筆畫面可以按「貼上通知，用 Apple Intelligence 辨識」先試試看你的銀行通知能不能正確辨識。")
+                Text("可以先在捷徑裡手動執行一次「從通知記帳」，確認你的銀行通知能正確辨識。")
                     .foregroundStyle(.secondary)
             } header: {
                 Text("先測試")

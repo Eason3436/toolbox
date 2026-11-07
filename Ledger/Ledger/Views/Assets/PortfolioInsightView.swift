@@ -59,7 +59,7 @@ struct PortfolioInsightView: View {
                     }
                     .cardStyle(padding: 16)
                     .onChange(of: useWeb) { _, _ in Task { await runAnalysis(hs, invested: invested) } }
-                    Text("由 Apple Intelligence 在 iPhone 上產生，參考你的持股、今日大盤與 Google 新聞最近 7 天的標題（只讀標題，不讀全文）。僅供參考，不構成投資建議。")
+                    Text("在 iPhone 上產生，參考你的持股、今日大盤與 Google 新聞最近 7 天的標題（只讀標題，不讀全文）。僅供參考，不構成投資建議。")
                         .font(.footnote).foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                 }
@@ -69,7 +69,7 @@ struct PortfolioInsightView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(focus.map { "\($0.name) 分析" } ?? "AI 投資分析")
+        .navigationTitle(focus.map { "\($0.name) 分析" } ?? "投資分析")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -123,7 +123,7 @@ struct PortfolioInsightView: View {
         } else if ai.running {
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Apple Intelligence 分析中…").foregroundStyle(.secondary)
+                Text("分析中…").foregroundStyle(.secondary)
             }
             .font(.subheadline)
         }
@@ -131,7 +131,7 @@ struct PortfolioInsightView: View {
 
     private func aiCard(_ part: Part) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("AI 摘要", systemImage: "sparkles").font(.headline)
+            Text("摘要").font(.headline)
             aiText(.performance)
             questionsList
         }
@@ -358,7 +358,7 @@ struct PortfolioInsightView: View {
             }
             HStack(spacing: 10) {
                 Image(systemName: "sparkle.magnifyingglass").foregroundStyle(.secondary)
-                TextField("問 AI 關於你的投資", text: $question, axis: .vertical)
+                TextField("問問關於你的投資", text: $question, axis: .vertical)
                     .focused($asking)
                     .submitLabel(.send)
                     .onSubmit(send)

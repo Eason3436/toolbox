@@ -63,12 +63,12 @@ struct AutoCategoryModifier: ViewModifier {
                 if working {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("Apple Intelligence 正在判斷分類…")
+                        Text("正在判斷分類…")
                     }
                     .transition(.blurReplace)
                 } else if let lastSource, let c = selected, c.id == autoPickedID {
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
+                        Image(systemName: "checkmark.circle")
                         Text("\(lastSource)自動選了「\(c.name)」，點其他分類即可更改")
                     }
                     .transition(.blurReplace)
@@ -94,7 +94,7 @@ struct AutoCategoryModifier: ViewModifier {
             guard !Task.isCancelled, !userPicked, let r = result else { return }
             let c = r.0
             autoPickedID = c.id
-            lastSource = r.fromAI ? "Apple Intelligence " : "依照以前的紀錄"
+            lastSource = r.fromAI ? "" : "依照以前的紀錄"
             withAnimation(.snappy) { selected = c }
         }
     }

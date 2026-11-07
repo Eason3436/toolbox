@@ -54,7 +54,7 @@ struct AssetGroupDetailView: View {
                 if group == .finance {
                     Section {
                         NavigationLink { PortfolioInsightView() } label: {
-                            Label("AI 投資分析", systemImage: "sparkles")
+                            Label("投資分析", systemImage: "chart.line.uptrend.xyaxis")
                                 .font(.headline)
                                 .foregroundStyle(Color.accentColor)
                         }
@@ -266,7 +266,7 @@ struct PortfolioView: View {
             }
             Section {
                 NavigationLink { PortfolioInsightView() } label: {
-                    Label("AI 投資分析", systemImage: "sparkles").font(.headline).foregroundStyle(Color.accentColor)
+                    Label("投資分析", systemImage: "chart.line.uptrend.xyaxis").font(.headline).foregroundStyle(Color.accentColor)
                 }
             }
             Section("持股") {
