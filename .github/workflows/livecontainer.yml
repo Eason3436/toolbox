@@ -48,7 +48,11 @@ jobs:
         run: |
           # 專案用 Xcode 的資料夾同步群組，放進資料夾就會自動編進對應的 target
           cp -R toolbox/LiveContainer/overlay/. src/
-          ls src/LaunchAppExtension
+          for p in toolbox/LiveContainer/patches/*.patch; do
+            echo "apply $p"
+            git -C src apply "$GITHUB_WORKSPACE/$p"
+          done
+          git -C src status --short
 
       - name: Show Xcode
         run: |
@@ -73,7 +77,9 @@ jobs:
           [ -d "$EXT" ] || EXT=$(find "$archive_path.xcarchive" -name "LaunchAppExtension.appex" -type d | head -1)
           echo "$EXT"
           ls "$EXT/Metadata.appintents"
-          grep -a -o "LedgerQuickAddIntent\|LedgerLogNotificationIntent\|SendToGuestAppIntent\|OpenGuestAppIntent" "$EXT/Metadata.appintents/extract.actionsdata" | sort -u
+          for i in OpenGuestAppIntent SendToGuestAppIntent LedgerLogNotificationIntent LedgerQuickAddIntent; do
+            grep -a -q "$i" "$EXT/Metadata.appintents/extract.actionsdata" && echo "found $i" || { echo "missing $i"; exit 1; }
+          done
 
       - name: Create IPA
         working-directory: src
