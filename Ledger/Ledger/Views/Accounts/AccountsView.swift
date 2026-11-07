@@ -169,21 +169,20 @@ struct AccountsView: View {
 
     private func statTile(_ title: String, _ value: Double, _ symbol: String, _ color: Color, _ cur: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(color)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             MoneyText(value: value, currency: cur, hidden: hidden, font: .subheadline.weight(.bold))
                 .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(color.opacity(0.1), in: .rect(cornerRadius: 14, style: .continuous))
+        .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
     private func section(_ s: HomeSection, account: Account, monthEntries: [Entry]) -> some View {
         switch s {
-        case .quickActions: QuickAddRow()
         case .insights: InsightLinkCard(entries: monthEntries.filter { $0.kind == .expense }, hidden: hidden)
         case .upcomingBills: UpcomingBillsCard(hidden: hidden)
         case .transactions: transactions(account, monthEntries: monthEntries)
@@ -636,32 +635,6 @@ struct AccountCarousel: View {
     }
 }
 
-/// 快速記帳：一句話、掃發票、一般記帳
-struct QuickAddRow: View {
-    @Environment(\.openAddEntry) private var openAdd
-
-    var body: some View {
-        HStack(spacing: 10) {
-            item("一句話記帳", "text.bubble.fill", .accentColor) { openAdd(.sentence) }
-            item("掃發票", "doc.text.viewfinder", .orange) { openAdd(.scan) }
-            item("記一筆", "plus.circle.fill", .green) { openAdd(.normal) }
-        }
-    }
-
-    private func item(_ title: String, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: symbol).font(.title3).foregroundStyle(color)
-                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18, style: .continuous))
-            .contentShape(.rect)
-        }
-        .buttonStyle(ChipPressStyle())
-    }
-}
 
 /// 7 天內要付（或要收）的帳單
 struct UpcomingBillsCard: View {
@@ -719,7 +692,7 @@ struct UpcomingBillsCard: View {
     }
 }
 
-/// 首頁的「AI 消費分析」入口：小小的分類色條預覽
+/// 首頁的「消費分析」入口：小小的分類色條預覽
 struct InsightLinkCard: View {
     var entries: [Entry]
     var hidden: Bool
@@ -730,7 +703,7 @@ struct InsightLinkCard: View {
         NavigationLink { SpendingInsightView() } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Label("AI 消費分析", systemImage: "sparkles").font(.headline)
+                    Text("消費分析").font(.headline)
                     Spacer()
                     Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                 }
@@ -745,7 +718,7 @@ struct InsightLinkCard: View {
                     .clipShape(Capsule())
                 }
                 .frame(height: 10)
-                Text(total > 0 ? "看本月和上月的分類比較、每日花費、常去商家" : "記幾筆之後就能分析")
+                Text(total > 0 ? "本月花費 \(Money.format(total, hidden: hidden))" : "記幾筆之後就能分析")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .cardStyle()

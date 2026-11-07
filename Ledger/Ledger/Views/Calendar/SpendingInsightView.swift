@@ -63,7 +63,7 @@ struct SpendingInsightView: View {
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
                 aiCard(cats: cats, merchants: merchants, total: total, prevTotal: prevTotal)
                 CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
-                                  title: "分類比例（可點選）", income: $pieIncome)
+                                  title: "分類比例", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
                 if !days.isEmpty { dailyCard(days, avg: avg) }
                 if !weekdays.isEmpty { weekdayCard(weekdays) }
@@ -132,22 +132,19 @@ struct SpendingInsightView: View {
     private func aiCard(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], total: Double, prevTotal: Double) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI 重點", systemImage: "sparkles").font(.headline)
+                Text("本月重點").font(.headline)
                 Spacer()
                 if loadingAI { ProgressView().controlSize(.small) }
             }
             if let insight {
-                Text(insight.headline).font(.title3.weight(.bold))
+                Text(insight.headline).font(.subheadline).foregroundStyle(.secondary)
                 ForEach(Array(insight.highlights.enumerated()), id: \.offset) { _, h in
                     highlightRow(h, cat: cats.first { $0.name == h.subject })
                 }
                 if !insight.tip.isEmpty {
-                    Label(insight.tip, systemImage: "lightbulb.fill")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.orange)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 12, style: .continuous))
+                    Text(insight.tip)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             } else if let aiError {
                 Text(aiError).font(.footnote).foregroundStyle(.secondary)
@@ -163,9 +160,8 @@ struct SpendingInsightView: View {
         let color: Color = h.tone == "good" ? .green : (h.tone == "bad" ? .red : .blue)
         return HStack(spacing: 12) {
             Image(systemName: cat?.symbol ?? (h.tone == "good" ? "arrow.down.right" : h.tone == "bad" ? "arrow.up.right" : "equal"))
-                .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background((cat?.color ?? color).gradient, in: .rect(cornerRadius: 10, style: .continuous))
+                .font(.subheadline.weight(.semibold)).foregroundStyle(cat?.color ?? color)
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(h.title).font(.subheadline.weight(.semibold))
                 Text(h.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -196,35 +192,47 @@ struct SpendingInsightView: View {
     // MARK: 分類：本月 vs 上月
 
     private func categoryCompareCard(_ cats: [Cat]) -> some View {
-        let top = Array(cats.prefix(6))
-        return VStack(alignment: .leading, spacing: 10) {
+        let top: [Cat] = Array(cats.prefix(6))
+        let maxV: Double = top.reduce(1.0) { max($0, $1.now, $1.prev) }
+        return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("分類比較").font(.headline)
                 Spacer()
-                legendDot(.secondary.opacity(0.4), "上月")
-                legendDot(.accentColor, "本月")
+                legendDot(Color.secondary.opacity(0.4), "上月")
+                legendDot(Color.primary, "本月")
             }
-            Chart {
-                ForEach(top) { c in
-                    BarMark(x: .value("金額", c.prev), y: .value("分類", c.name))
-                        .position(by: .value("月", "上月"))
-                        .foregroundStyle(Color.secondary.opacity(0.35))
-                        .cornerRadius(4)
-                    BarMark(x: .value("金額", c.now), y: .value("分類", c.name))
-                        .position(by: .value("月", "本月"))
-                        .foregroundStyle(c.color)
-                        .cornerRadius(4)
-                        .annotation(position: .trailing, spacing: 4) {
-                            Text(c.delta >= 0 ? "▲\(Money.format(c.delta, hidden: hidden))" : "▼\(Money.format(-c.delta, hidden: hidden))")
-                                .font(.caption2.weight(.semibold)).monospacedDigit()
-                                .foregroundStyle(c.delta > 0 ? .red : .green)
-                        }
-                }
+            ForEach(top) { c in
+                compareRow(c, maxV: maxV)
             }
-            .chartXAxis(.hidden)
-            .frame(height: CGFloat(top.count) * 46)
         }
         .cardStyle()
+    }
+
+    /// 一個分類一列：名稱和差額在上，本月、上月兩條在下
+    private func compareRow(_ c: Cat, maxV: Double) -> some View {
+        let up: Bool = c.delta > 0
+        let deltaText: String = c.delta == 0 ? "持平" : (up ? "+" : "−") + Money.format(abs(c.delta), hidden: hidden)
+        let deltaColor: Color = c.delta == 0 ? Color.secondary : (up ? Color.red : Color.green)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(c.color).frame(width: 8, height: 8)
+                Text(c.name).font(.subheadline.weight(.medium))
+                Spacer()
+                Text(Money.format(c.now, hidden: hidden)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Text(deltaText).font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(deltaColor)
+                    .frame(minWidth: 52, alignment: .trailing)
+            }
+            compareBar(c.now / maxV, c.color)
+            compareBar(c.prev / maxV, Color.secondary.opacity(0.3))
+        }
+    }
+
+    private func compareBar(_ ratio: Double, _ color: Color) -> some View {
+        GeometryReader { g in
+            Capsule().fill(color)
+                .frame(width: ratio > 0 ? max(4, g.size.width * CGFloat(ratio)) : 0)
+        }
+        .frame(height: 6)
     }
 
     private func legendDot(_ c: Color, _ t: String) -> some View {
@@ -250,7 +258,7 @@ struct SpendingInsightView: View {
             Chart {
                 ForEach(days, id: \.0) { d in
                     BarMark(x: .value("日", d.0), y: .value("金額", d.1), width: .ratio(0.7))
-                        .foregroundStyle(d.1 > avg * 1.8 ? Color.red.gradient : Color.accentColor.gradient)
+                        .foregroundStyle(d.1 > avg * 1.8 ? Color.orange : Color.accentColor)
                         .opacity(pickedDay == nil || pickedDay == d.0 ? 1 : 0.4)
                         .cornerRadius(3)
                 }
@@ -385,7 +393,7 @@ struct SpendingInsightView: View {
             let r = try await session.respond(to: prompt, generating: AISpendingInsight.self).content
             withAnimation(.snappy) { insight = r }
         } catch {
-            aiError = "AI 分析失敗：\(error.localizedDescription)"
+            aiError = "暫時無法產生重點"
         }
     }
 }
