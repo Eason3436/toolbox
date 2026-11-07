@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 struct EntryEditor: View {
     var entry: Entry?
@@ -26,80 +27,56 @@ struct EntryEditor: View {
     @State private var pasteText = ""
     @State private var confirmDelete = false
 
+    // 智慧輸入
+    @State private var smartMode: SmartMode?
+    @State private var sentence = ""
+    @FocusState private var sentenceFocused: Bool
+    @State private var photo: PhotosPickerItem?
+    @State private var receipt: Receipt?
+    @State private var smartMessage: String?
+
+    enum SmartMode { case sentence }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: 18) {
+                    Picker("類型", selection: $kind.animation(Motion.chip)) {
+                        Text("支出").tag(EntryKind.expense)
+                        Text("收入").tag(EntryKind.income)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+
                     AmountHeader(amountText: $amountText, title: $title, titlePrompt: kind == .income ? "來源" : "商家",
                                  currency: account?.currency ?? Prefs.mainCurrency, pad: $pad)
 
-                    HStack(spacing: 10) {
-                        Menu {
-                            Picker("類型", selection: $kind) {
-                                Label("支出", systemImage: "arrow.up.right").tag(EntryKind.expense)
-                                Label("收入", systemImage: "arrow.down.left").tag(EntryKind.income)
-                            }
-                        } label: {
-                            Chip(title: kind.label, symbol: kind == .income ? "arrow.down.left" : "arrow.up.right",
-                                 symbolColor: kind == .income ? .green : .orange, showsChevron: true)
-                        }
-                        .buttonStyle(.plain)
+                    if entry == nil { smartCard }
 
-                        DatePicker("", selection: $date)
-                            .labelsHidden()
-                            .datePickerStyle(.compact)
+                    if let receipt {
+                        ReceiptPaperView(receipt: receipt, entryAmount: Money.parse(amountText) ?? 0)
+                            .frame(maxWidth: 260)
+                            .overlay(alignment: .topTrailing) {
+                                Button {
+                                    withAnimation(Motion.layout) { self.receipt = nil }
+                                } label: {
+                                    Image(systemName: "xmark").font(.caption.weight(.bold)).frame(width: 26, height: 26)
+                                }
+                                .buttonStyle(.glass).buttonBorderShape(.circle)
+                                .offset(x: 10, y: -8)
+                            }
+                            .transition(.scale(scale: 0.9, anchor: .top).combined(with: .opacity))
                     }
 
-                    CategoryChips(income: kind == .income, selected: $category)
-                        .autoCategory(from: title, income: kind == .income, selected: $category, enabled: entry == nil, date: date)
-
-                    FlowLayout(spacing: 10) {
-                        AccountMenuChip(account: $account)
-                        if !goals.filter({ !$0.archived }).isEmpty {
-                            Menu {
-                                ForEach(goals.filter { !$0.archived }) { g in
-                                    Button { goal = g } label: { Label(g.name, systemImage: goal?.id == g.id ? "checkmark" : g.symbol) }
-                                }
-                                if goal != nil {
-                                    Divider()
-                                    Button("不歸入目標", systemImage: "xmark") { goal = nil }
-                                }
-                            } label: {
-                                if let goal {
-                                    Chip(title: goal.name, symbol: goal.symbol, symbolColor: goal.color, showsChevron: true)
-                                } else {
-                                    DashedChip(title: "目標")
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        if kind == .expense {
-                            Button {
-                                excludeFromBudget.toggle()
-                            } label: {
-                                Chip(title: "不計入預算", symbol: "chart.pie", selected: excludeFromBudget, tint: .purple, removable: true)
-                            }
-                            .buttonStyle(ChipPressStyle())
-                        }
-                        NoteChip(note: $note)
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionTitle("分類")
+                        CategoryChips(income: kind == .income, selected: $category)
+                            .autoCategory(from: title, income: kind == .income, selected: $category, enabled: entry == nil, date: date)
                     }
 
-                    if entry == nil {
-                        Button {
-                            pasteText = UIPasteboard.general.string ?? ""
-                            showPasteSheet = true
-                        } label: {
-                            Label("貼上通知，用 Apple Intelligence 辨識", systemImage: "sparkles")
-                                .font(.body.weight(.medium))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.glass)
-                        .disabled(parsing)
-                    }
-                    if parsing { ProgressView("辨識中…") }
-                    if let parseMessage {
-                        Text(parseMessage).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionTitle("細節")
+                        detailsCard
                     }
 
                     if let entry, let raw = entry.rawText {
@@ -117,6 +94,8 @@ struct EntryEditor: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 30)
+                .animation(Motion.layout, value: receipt)
+                .animation(Motion.layout, value: smartMode)
             }
             .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
@@ -134,6 +113,10 @@ struct EntryEditor: View {
             .onChange(of: kind) { _, newKind in
                 if let c = category, c.isIncome != (newKind == .income) { category = nil }
             }
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                Task { await scanReceipt(item) }
+            }
             .confirmationDialog("確定刪除？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
                     if let entry { context.delete(entry); try? context.save() }
@@ -142,6 +125,217 @@ struct EntryEditor: View {
             }
             .sheet(isPresented: $showPasteSheet) { pasteSheet }
             .onAppear(perform: load)
+        }
+    }
+
+    private func sectionTitle(_ t: String) -> some View {
+        Text(t).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            .padding(.leading, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: 智慧輸入：一句話／掃發票／貼通知
+
+    private var smartCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                smartButton("一句話", "text.bubble.fill", active: smartMode == .sentence) {
+                    withAnimation(Motion.layout) { smartMode = smartMode == .sentence ? nil : .sentence }
+                    if smartMode == .sentence {
+                        pad.visible = false
+                        sentenceFocused = true
+                    }
+                }
+                PhotosPicker(selection: $photo, matching: .images) {
+                    smartLabel("掃發票", "doc.text.viewfinder", active: false)
+                }
+                .buttonStyle(ChipPressStyle())
+                smartButton("貼通知", "doc.on.clipboard.fill", active: false) {
+                    pasteText = UIPasteboard.general.string ?? ""
+                    showPasteSheet = true
+                }
+            }
+
+            if smartMode == .sentence {
+                HStack(spacing: 8) {
+                    TextField("例如：昨天中午麥當勞 150 用台新", text: $sentence, axis: .vertical)
+                        .lineLimit(1...3)
+                        .focused($sentenceFocused)
+                        .submitLabel(.send)
+                        .onSubmit { Task { await parseSentence() } }
+                    Button {
+                        Task { await parseSentence() }
+                    } label: {
+                        Image(systemName: "arrow.up").font(.body.weight(.bold)).frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.glassProminent).buttonBorderShape(.circle)
+                    .disabled(sentence.trimmingCharacters(in: .whitespaces).isEmpty || parsing)
+                }
+                .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
+                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22, style: .continuous))
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            }
+
+            if parsing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Apple Intelligence 正在幫你填…")
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+                .transition(.blurReplace)
+            } else if let msg = smartMessage ?? parseMessage {
+                Label(msg, systemImage: "sparkles")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .transition(.blurReplace)
+            }
+        }
+        .animation(Motion.layout, value: parsing)
+    }
+
+    private func smartButton(_ title: String, _ symbol: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) { smartLabel(title, symbol, active: active) }
+            .buttonStyle(ChipPressStyle())
+    }
+
+    private func smartLabel(_ title: String, _ symbol: String, active: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.title3)
+                .foregroundStyle(active ? Color.white : Color.accentColor)
+            Text(title).font(.caption.weight(.semibold))
+                .foregroundStyle(active ? Color.white : Color.primary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(active ? Color.accentColor : Color(.secondarySystemGroupedBackground),
+                    in: .rect(cornerRadius: 18, style: .continuous))
+        .contentShape(.rect)
+    }
+
+    // MARK: 細節（帳戶、時間、目標、預算、備註）
+
+    private var detailsCard: some View {
+        VStack(spacing: 0) {
+            detailRow("creditcard.fill", account?.color ?? .gray, "帳戶") {
+                Menu {
+                    ForEach(Store.accounts().filter { !$0.archived }) { a in
+                        Button { account = a } label: {
+                            Label(a.name, systemImage: account?.id == a.id ? "checkmark" : a.kind.symbol)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(account?.name ?? "選擇").foregroundStyle(account == nil ? .secondary : .primary)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Divider().padding(.leading, 52)
+            detailRow("clock.fill", .blue, "時間") {
+                DatePicker("", selection: $date).labelsHidden()
+            }
+            if !goals.filter({ !$0.archived }).isEmpty {
+                Divider().padding(.leading, 52)
+                detailRow("target", .pink, "儲蓄目標") {
+                    Menu {
+                        Button("不歸入目標") { goal = nil }
+                        ForEach(goals.filter { !$0.archived }) { g in
+                            Button { goal = g } label: { Label(g.name, systemImage: goal?.id == g.id ? "checkmark" : g.symbol) }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(goal?.name ?? "無").foregroundStyle(goal == nil ? .secondary : .primary)
+                            Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            if kind == .expense {
+                Divider().padding(.leading, 52)
+                detailRow("chart.pie.fill", .purple, "不計入預算") {
+                    Toggle("", isOn: $excludeFromBudget.animation(Motion.chip)).labelsHidden()
+                }
+            }
+            Divider().padding(.leading, 52)
+            HStack(alignment: .top, spacing: 12) {
+                detailIcon("text.alignleft", .orange)
+                TextField("備註", text: $note, axis: .vertical)
+                    .lineLimit(1...4)
+                    .padding(.top, 5)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+        }
+        .font(.subheadline)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20, style: .continuous))
+    }
+
+    private func detailIcon(_ symbol: String, _ color: Color) -> some View {
+        Image(systemName: symbol)
+            .font(.footnote.weight(.semibold)).foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background(color.gradient, in: .rect(cornerRadius: 8, style: .continuous))
+    }
+
+    private func detailRow<V: View>(_ symbol: String, _ color: Color, _ title: String, @ViewBuilder trailing: () -> V) -> some View {
+        HStack(spacing: 12) {
+            detailIcon(symbol, color)
+            Text(title)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 50)
+    }
+
+    // MARK: 智慧輸入的動作
+
+    private func parseSentence() async {
+        let text = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        sentenceFocused = false
+        parsing = true
+        defer { parsing = false }
+        do {
+            let r = try await QuickEntryParser.parse(text)
+            withAnimation(Motion.layout) {
+                kind = r.isIncome ? .income : .expense
+                if r.amount > 0 { amountText = Money.format(r.amount, currency: account?.currency ?? Prefs.mainCurrency).replacingOccurrences(of: ",", with: "") }
+                if !r.merchant.isEmpty { title = r.merchant }
+                if let c = r.category { category = c }
+                date = r.date
+                if let a = r.account { account = a }
+                if !r.note.isEmpty { note = r.note }
+                smartMode = nil
+            }
+            sentence = ""
+            smartMessage = "已依照「\(text)」填好，看一下再按 ✓"
+        } catch {
+            smartMessage = error.localizedDescription
+        }
+    }
+
+    private func scanReceipt(_ item: PhotosPickerItem) async {
+        parsing = true
+        smartMessage = nil
+        defer { parsing = false; photo = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            smartMessage = "讀不到這張照片"
+            return
+        }
+        do {
+            let (r, catName) = try await ReceiptService.analyze(imageData: data, income: false)
+            withAnimation(Motion.layout) {
+                kind = .expense
+                receipt = r
+                if r.total > 0 { amountText = Money.format(r.total, currency: account?.currency ?? Prefs.mainCurrency).replacingOccurrences(of: ",", with: "") }
+                if !r.store.isEmpty { title = r.store }
+                if let c = Store.categories(income: false).first(where: { $0.name == catName }) { category = c }
+                if let d = r.parsedDate { date = d }
+                pad.visible = false
+            }
+            smartMessage = "已從發票填好金額、商家和分類（照片不會存）"
+        } catch {
+            smartMessage = error.localizedDescription
         }
     }
 
@@ -221,6 +415,7 @@ struct EntryEditor: View {
         } else {
             let e = Entry(title: finalTitle, amount: amount, kind: kind, date: date, category: category, account: account, note: note)
             e.goal = goal
+            e.receiptJSON = receipt?.json
             e.excludeFromBudget = excludeFromBudget
             context.insert(e)
         }

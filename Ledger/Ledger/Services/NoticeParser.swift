@@ -238,6 +238,13 @@ enum NoticeRecorder {
             account = accounts.first { !$0.cardLast4.isEmpty && $0.cardLast4 == parsed.cardLast4 }
         }
         if account == nil {
+            // 捷徑傳來的卡片名稱（例如「台新 VISA 金融卡」）裡有帳戶名稱
+            let flat = text.replacingOccurrences(of: " ", with: "").lowercased()
+            account = accounts
+                .filter { !$0.archived && $0.name.count >= 2 && flat.contains($0.name.replacingOccurrences(of: " ", with: "").lowercased()) }
+                .max { $0.name.count < $1.name.count }
+        }
+        if account == nil {
             account = Store.account(id: Prefs.defaultAccountID) ?? accounts.first
         }
 
