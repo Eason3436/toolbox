@@ -85,9 +85,6 @@ struct ValueLineCard: View {
                 }
                 if let s = selected {
                     RuleMark(x: .value("選取", s.date)).foregroundStyle(.secondary.opacity(0.5))
-                    PointMark(x: .value("日期", s.date), y: .value("值", s.value)).foregroundStyle(color).symbolSize(80)
-                } else if let l = points.last {
-                    PointMark(x: .value("日期", l.date), y: .value("值", l.value)).foregroundStyle(color).symbolSize(60)
                 }
             }
             .chartYScale(domain: (lo - pad)...(hi + pad))
@@ -98,14 +95,31 @@ struct ValueLineCard: View {
                 }
             }
             .chartOverlay { proxy in
-                Rectangle().fill(.clear).contentShape(.rect)
-                    .gesture(DragGesture(minimumDistance: 0)
-                        .onChanged { g in
-                            if let d = proxy.value(atX: g.location.x, as: Date.self) {
-                                selected = points.min { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) }
-                            }
+                GeometryReader { geo in
+                    let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
+                    ZStack(alignment: .topLeading) {
+                        Rectangle().fill(.clear).contentShape(.rect)
+                            .gesture(DragGesture(minimumDistance: 0)
+                                .onChanged { g in
+                                    let x = g.location.x - plot.minX
+                                    if let d = proxy.value(atX: x, as: Date.self) {
+                                        selected = points.min { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) }
+                                    }
+                                }
+                                .onEnded { _ in withAnimation(.easeOut(duration: 0.2)) { selected = nil } })
+                        // 圓點畫在圖表外層：放手時在原地縮小消失，最後一點的圓點原地出現，不會飛來飛去
+                        if let s = selected, let pos = chartPoint(of: s, proxy: proxy, plot: plot) {
+                            ChartDot(color: color, size: 13).position(pos)
+                                .transition(.scale(scale: 0.3).combined(with: .opacity))
+                                .id("sel")
+                        } else if let l = points.last, let pos = chartPoint(of: l, proxy: proxy, plot: plot) {
+                            ChartDot(color: color, size: 10).position(pos)
+                                .transition(.scale(scale: 0.3).combined(with: .opacity))
+                                .id("last")
                         }
-                        .onEnded { _ in withAnimation(.snappy) { selected = nil } })
+                    }
+                    .allowsHitTesting(true)
+                }
             }
             .frame(height: 170)
             .opacity(points.count > 1 ? 1 : 0.3)
@@ -115,6 +129,24 @@ struct ValueLineCard: View {
             RangeButtons(range: $range)
         }
         .cardStyle()
+    }
+}
+
+private func chartPoint(of p: ValuePoint, proxy: ChartProxy, plot: CGRect) -> CGPoint? {
+    guard let x = proxy.position(forX: p.date), let y = proxy.position(forY: p.value) else { return nil }
+    return CGPoint(x: plot.minX + x, y: plot.minY + y)
+}
+
+/// 折線圖上的小圓點（白邊）
+struct ChartDot: View {
+    var color: Color
+    var size: CGFloat
+    var body: some View {
+        Circle().fill(color)
+            .frame(width: size, height: size)
+            .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+            .shadow(color: color.opacity(0.4), radius: 4)
+            .allowsHitTesting(false)
     }
 }
 

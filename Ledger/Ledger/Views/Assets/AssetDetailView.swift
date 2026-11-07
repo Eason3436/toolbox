@@ -296,11 +296,6 @@ struct AssetDetailView: View {
                     }
                     if let sp = selectedPoint {
                         RuleMark(x: .value("選取", sp.date)).foregroundStyle(.secondary.opacity(0.5))
-                        PointMark(x: .value("日期", sp.date), y: .value("價格", sp.price))
-                            .foregroundStyle(lineColor).symbolSize(90)
-                    } else if let lp = points.last {
-                        PointMark(x: .value("日期", lp.date), y: .value("價格", lp.price))
-                            .foregroundStyle(lineColor).symbolSize(80)
                     }
                 }
                 .chartYScale(domain: (lo - pad)...(hi + pad))
@@ -311,15 +306,32 @@ struct AssetDetailView: View {
                     }
                 }
                 .chartOverlay { proxy in
-                    GeometryReader { _ in
-                        Rectangle().fill(.clear).contentShape(.rect)
-                            .gesture(DragGesture(minimumDistance: 0)
-                                .onChanged { g in
-                                    if let d = proxy.value(atX: g.location.x, as: Date.self) {
-                                        selectedPoint = points.min { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) }
+                    GeometryReader { geo in
+                        let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
+                        let dot: (Date, Double) -> CGPoint? = { d, v in
+                            guard let x = proxy.position(forX: d), let y = proxy.position(forY: v) else { return nil }
+                            return CGPoint(x: plot.minX + x, y: plot.minY + y)
+                        }
+                        ZStack(alignment: .topLeading) {
+                            Rectangle().fill(.clear).contentShape(.rect)
+                                .gesture(DragGesture(minimumDistance: 0)
+                                    .onChanged { g in
+                                        if let d = proxy.value(atX: g.location.x - plot.minX, as: Date.self) {
+                                            selectedPoint = points.min { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) }
+                                        }
                                     }
-                                }
-                                .onEnded { _ in withAnimation(.snappy) { selectedPoint = nil } })
+                                    .onEnded { _ in withAnimation(.easeOut(duration: 0.2)) { selectedPoint = nil } })
+                            // 圓點在原地出現／消失，不會在放手時飛到最後一點
+                            if let sp = selectedPoint, let pos = dot(sp.date, sp.price) {
+                                ChartDot(color: lineColor, size: 14).position(pos)
+                                    .transition(.scale(scale: 0.3).combined(with: .opacity))
+                                    .id("sel")
+                            } else if let lp = points.last, let pos = dot(lp.date, lp.price) {
+                                ChartDot(color: lineColor, size: 11).position(pos)
+                                    .transition(.scale(scale: 0.3).combined(with: .opacity))
+                                    .id("last")
+                            }
+                        }
                     }
                 }
                 .opacity(points.isEmpty ? 0 : 1)
