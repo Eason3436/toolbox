@@ -225,6 +225,7 @@ struct BudgetEditor: View {
     @State private var name = ""
     @State private var amountText = ""
     @State private var period: BudgetPeriod = .monthly
+    @State private var pad = AmountPad()
     @State private var selected: Set<UUID> = []
     @State private var color = Color(hex: "#5E1F3C")
     @State private var pinned = true
@@ -234,7 +235,7 @@ struct BudgetEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "預算名稱，例如 生活費")
+                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "預算名稱，例如 生活費", pad: $pad)
                     Picker("週期", selection: $period) {
                         ForEach(BudgetPeriod.allCases) { Text($0.label).tag($0) }
                     }
@@ -279,6 +280,7 @@ struct BudgetEditor: View {
                 }
                 .padding()
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(budget == nil ? "新增預算" : "編輯預算")
             .navigationBarTitleDisplayMode(.inline)

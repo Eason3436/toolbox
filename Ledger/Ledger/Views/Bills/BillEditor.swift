@@ -8,6 +8,7 @@ struct BillEditor: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var amountText = ""
+    @State private var pad = AmountPad()
     @State private var name = ""
     @State private var currency = Prefs.mainCurrency
     @State private var recurrence: Recurrence = .monthly
@@ -18,6 +19,7 @@ struct BillEditor: View {
     @State private var platform = ""
     @State private var note = ""
     @State private var isSubscription = true
+    @State private var isIncome = false
     @State private var showDate = false
     @State private var editingPlatform = false
     @State private var confirmDelete = false
@@ -26,7 +28,19 @@ struct BillEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "名稱，例如 Apple", currency: currency)
+                    Picker("類型", selection: $isIncome) {
+                        Text("固定支出").tag(false)
+                        Text("固定收入").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 40)
+                    .onChange(of: isIncome) { _, income in
+                        if category?.isIncome != income { category = nil }
+                    }
+
+                    AmountHeader(amountText: $amountText, title: $name,
+                                 titlePrompt: isIncome ? "名稱，例如 零用錢、薪水" : "名稱，例如 Apple",
+                                 currency: currency, pad: $pad)
 
                     FlowLayout(spacing: 10) {
                         Menu {
@@ -49,12 +63,12 @@ struct BillEditor: View {
                     }
                     .buttonStyle(.plain)
 
-                    CategoryChips(income: false, selected: $category)
+                    CategoryChips(income: isIncome, selected: $category, tint: isIncome ? .green : .orange)
 
                     Button {
                         withAnimation(.snappy) { autoPay.toggle() }
                     } label: {
-                        Chip(title: "自動扣繳", symbol: "bolt.fill", symbolColor: autoPay ? .accentColor : .secondary,
+                        Chip(title: isIncome ? "自動入帳" : "自動扣繳", symbol: "bolt.fill", symbolColor: autoPay ? .accentColor : .secondary,
                              selected: autoPay, tint: .accentColor, removable: autoPay)
                     }
                     .buttonStyle(.plain)
@@ -74,12 +88,14 @@ struct BillEditor: View {
                         NoteChip(note: $note)
                     }
 
-                    Picker("種類", selection: $isSubscription) {
-                        Text("訂閱").tag(true)
-                        Text("一般帳單").tag(false)
+                    if !isIncome {
+                        Picker("種類", selection: $isSubscription) {
+                            Text("訂閱").tag(true)
+                            Text("一般帳單").tag(false)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 40)
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 40)
 
                     if bill != nil {
                         Button("刪除帳單", role: .destructive) { confirmDelete = true }
@@ -88,6 +104,7 @@ struct BillEditor: View {
                 .padding(.horizontal)
                 .padding(.bottom, 30)
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(bill == nil ? "新增帳單" : "編輯帳單")
@@ -148,6 +165,7 @@ struct BillEditor: View {
         platform = bill.platform
         note = bill.note
         isSubscription = bill.isSubscription
+        isIncome = bill.receives
     }
 
     private func save() {
@@ -166,7 +184,8 @@ struct BillEditor: View {
         target.account = account
         target.platform = platform
         target.note = note
-        target.isSubscription = isSubscription
+        target.isSubscription = isIncome ? false : isSubscription
+        target.isIncome = isIncome
         try? context.save()
         if autoPay { BillService.processAutoPay(context: context) }
         dismiss()

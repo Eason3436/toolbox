@@ -2,14 +2,15 @@ import SwiftUI
 import SwiftData
 
 enum BillFilter: String, CaseIterable, Identifiable {
-    case all, subscription, bill, unpaid
+    case all, subscription, bill, income, unpaid
     var id: String { rawValue }
     var label: String {
         switch self {
         case .all: "帳單"
         case .subscription: "訂閱"
         case .bill: "一般帳單"
-        case .unpaid: "未繳"
+        case .income: "固定收入"
+        case .unpaid: "未完成"
         }
     }
 }
@@ -31,8 +32,9 @@ struct BillsView: View {
         var list = BillService.occurrences(bills, in: DateText.monthInterval(month))
         switch filter {
         case .all: break
-        case .subscription: list = list.filter { $0.bill.isSubscription }
-        case .bill: list = list.filter { !$0.bill.isSubscription }
+        case .subscription: list = list.filter { $0.bill.isSubscription && !$0.bill.receives }
+        case .bill: list = list.filter { !$0.bill.isSubscription && !$0.bill.receives }
+        case .income: list = list.filter { $0.bill.receives }
         case .unpaid: list = list.filter { !$0.paid }
         }
         if sortByAmount { list.sort { $0.bill.amount > $1.bill.amount } }
@@ -61,7 +63,8 @@ struct BillsView: View {
                         Text("全部").tag(BillFilter.all)
                         Text("訂閱").tag(BillFilter.subscription)
                         Text("一般帳單").tag(BillFilter.bill)
-                        Text("未繳").tag(BillFilter.unpaid)
+                        Text("固定收入").tag(BillFilter.income)
+                        Text("未完成").tag(BillFilter.unpaid)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -87,19 +90,19 @@ struct BillsView: View {
                         .padding(.horizontal, 6)
                     }
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("排序", selection: $sortByAmount) {
                             Label("依到期日", systemImage: "calendar").tag(false)
                             Label("依金額", systemImage: "dollarsign").tag(true)
                         }
-                    } label: { Image(systemName: "arrow.up.arrow.down") }
-                    Button {
-                        withAnimation(.snappy) { stackMode.toggle() }
-                    } label: {
-                        Image(systemName: stackMode ? "square.stack" : "list.bullet")
-                    }
-                    Button { showCalendar = true } label: { Image(systemName: "calendar") }
+                        Picker("顯示方式", selection: $stackMode) {
+                            Label("堆疊卡片", systemImage: "square.stack").tag(true)
+                            Label("列表", systemImage: "list.bullet").tag(false)
+                        }
+                        Divider()
+                        Button("帳單月曆", systemImage: "calendar") { showCalendar = true }
+                    } label: { Image(systemName: "ellipsis") }
                 }
             }
             .sheet(item: $editing) { BillEditor(bill: $0) }
@@ -111,9 +114,13 @@ struct BillsView: View {
     }
 
     private var summary: some View {
-        let all = BillService.occurrences(bills, in: DateText.monthInterval(month))
+        let occs = BillService.occurrences(bills, in: DateText.monthInterval(month))
+        let all = occs.filter { !$0.bill.receives }
+        let incomes = occs.filter { $0.bill.receives }
         let total = all.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
         let paid = all.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let incomeTotal = incomes.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let received = incomes.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
         let ratio = total > 0 ? paid / total : 1
         return VStack(alignment: .leading, spacing: 14) {
             Text("待支付").foregroundStyle(.secondary).font(.title3)
@@ -127,6 +134,11 @@ struct BillsView: View {
             Divider()
             SummaryRow(title: "總計", amount: total, hidden: hidden)
             SummaryRow(title: "已繳", amount: paid, hidden: hidden)
+            if !incomes.isEmpty {
+                Divider()
+                SummaryRow(title: "固定收入", amount: incomeTotal, hidden: hidden)
+                SummaryRow(title: "已收到", amount: received, hidden: hidden)
+            }
         }
         .cardStyle()
     }
@@ -190,10 +202,10 @@ struct BillCard: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 6) {
-                        Text(Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
+                        Text((occ.bill.receives ? "+" : "") + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
                             .font(.title3.weight(.semibold))
                             .monospacedDigit()
-                        DarkPill(text: occ.paid ? "已繳" : "未繳")
+                        DarkPill(text: occ.paid ? occ.bill.doneLabel : occ.bill.pendingLabel)
                     }
                 }
                 .foregroundStyle(.white)
@@ -201,7 +213,7 @@ struct BillCard: View {
                 if expanded {
                     Spacer(minLength: 12)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("到期").foregroundStyle(.white.opacity(0.6))
+                        Text(occ.bill.receives ? "入帳日" : "到期").foregroundStyle(.white.opacity(0.6))
                         Text(DateText.dueText(occ.due)).font(.title2.weight(.bold))
                         Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " · \(occ.bill.platform)"))
                             .foregroundStyle(.white.opacity(0.6))
@@ -211,7 +223,7 @@ struct BillCard: View {
 
                     HStack(spacing: 12) {
                         Button(action: onToggle) {
-                            Text(occ.paid ? "改為未繳" : "標記已繳")
+                            Text(occ.paid ? "改為\(occ.bill.pendingLabel)" : "標記\(occ.bill.doneLabel)")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)

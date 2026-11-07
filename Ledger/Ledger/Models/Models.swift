@@ -247,6 +247,8 @@ final class Bill {
     var platform: String = ""
     var note: String = ""
     var isSubscription: Bool = true
+    /// 固定收入（例如零用錢、薪水）：標記「已收到」並記成收入
+    var isIncome: Bool = false
     /// 已繳的期別（yyyy-MM-dd）
     var paidKeys: [String] = []
     var active: Bool = true
@@ -274,6 +276,11 @@ final class Bill {
     }
 
     var dayOfMonth: Int { Calendar.current.component(.day, from: anchorDate) }
+
+    /// 收入型帳單（自己勾選，或分類本身是收入分類）
+    var receives: Bool { isIncome || (category?.isIncome ?? false) }
+    var doneLabel: String { receives ? "已收到" : "已繳" }
+    var pendingLabel: String { receives ? "未收到" : "未繳" }
 
     var recurrenceText: String {
         let cal = Calendar.current

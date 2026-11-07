@@ -64,6 +64,9 @@ struct SettingsView: View {
                 }
 
                 Section("其他") {
+                    NavigationLink { HomeLayoutView() } label: {
+                        Label("自訂主頁", systemImage: "square.grid.2x2")
+                    }
                     NavigationLink { ContentView() } label: {
                         Label("數字動效示範", systemImage: "textformat.123")
                     }
@@ -267,6 +270,17 @@ struct CategoryManagerView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) { Button("新增", systemImage: "plus") { adding = true } }
             ToolbarItem(placement: .primaryAction) { EditButton() }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                withAnimation(.snappy) { CategoryStyle.applyAll(context: context) }
+            } label: {
+                Label("依名稱自動配圖示和顏色", systemImage: "wand.and.stars")
+                    .font(.headline)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.glassProminent)
+            .padding(.bottom, 8)
         }
         .sheet(item: $editing) { CategoryEditor(category: $0, income: $0.isIncome) }
         .sheet(isPresented: $adding) { CategoryEditor(category: nil, income: showIncome) }
