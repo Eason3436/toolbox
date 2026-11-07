@@ -274,7 +274,7 @@ struct AccountsView: View {
     private func merchantsSection(_ account: Account, monthEntries: [Entry]) -> some View {
         let spends = monthEntries.filter { $0.kind == .expense && $0.account?.id == account.id }
         let groups = Dictionary(grouping: spends) { $0.title.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.key.isEmpty }
+            .filter { !$0.key.isEmpty && !PayMethod.isPayMethod($0.key) && $0.key != "未命名" }
             .map { (name: $0.key, total: $0.value.reduce(0) { $0 + $1.amount }, count: $0.value.count,
                     symbol: $0.value.first?.category?.symbol ?? "bag.fill",
                     color: $0.value.first?.category?.color ?? Color.accentColor) }

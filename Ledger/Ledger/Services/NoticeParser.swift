@@ -103,6 +103,7 @@ enum NoticeParser {
         let session = LanguageModelSession(instructions: """
         你是記帳助理。使用者會給你一則銀行、信用卡或電子支付的通知全文，請擷取出這筆交易的商家、金額、收支、幣別與卡號末四碼，並從分類清單中挑選最適合的分類。
         金額只取本次交易的金額，不要取可用餘額、額度或回饋點數。
+        Apple Pay、LINE Pay、Google Pay、街口支付等是付款方式，不是商家，商家要填實際消費的店家。
         使用者可能在文字裡另外附上目前位置（地址、地名或經緯度），那是位置，不是商家名稱，請放在 place。
         \(MealTime.hint)
         """)
@@ -226,6 +227,9 @@ enum NoticeRecorder {
             parsed = p
             if let m = merchantOverride, !m.isEmpty { parsed.merchant = m }
         }
+        // Apple Pay、LINE Pay 是付款方式，不是商家
+        let cleaned = PayMethod.strip(from: parsed.merchant)
+        if cleaned.count >= 1 { parsed.merchant = cleaned } else if PayMethod.isPayMethod(parsed.merchant) { parsed.merchant = "" }
         if parsed.merchant.isEmpty { parsed.merchant = "未命名" }
 
         // 帳戶：指定名稱 → 卡號末四碼 → 預設帳戶 → 第一個帳戶

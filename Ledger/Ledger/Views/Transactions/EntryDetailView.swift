@@ -32,7 +32,8 @@ struct EntryDetailView: View {
                         header.appearEffect()
                         receiptSection.appearEffect(delay: 0.05)
                         infoCard.appearEffect(delay: 0.1)
-                        if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty {
+                        if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty
+                            && !PayMethod.isPayMethod(entry.title) {
                             MerchantMapCard(merchant: receipt?.store.isEmpty == false ? receipt!.store : entry.title,
                                             address: receipt?.address,
                                             coordinate: entry.latitude.flatMap { lat in

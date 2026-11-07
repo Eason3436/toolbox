@@ -37,6 +37,7 @@ struct StatsView: View {
             .sorted { $0.total > $1.total }
         let selectedCat = selectedCategory(cats)
         let merchants = Dictionary(grouping: expenses) { $0.title }
+            .filter { !PayMethod.isPayMethod($0.key) && $0.key != "未命名" }
             .map { (name: $0.key, total: $0.value.reduce(0) { $0 + $1.amount }, count: $0.value.count) }
             .sorted { $0.total > $1.total }
             .prefix(8)
