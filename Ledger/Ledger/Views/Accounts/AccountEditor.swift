@@ -144,10 +144,9 @@ struct TransferEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("0", text: $amountText)
-                        .font(.system(size: 52, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .keyboardType(.decimalPad)
+                    AnimatedAmountInput(text: $amountText,
+                                        currencyCode: accounts.first(where: { $0.id == fromID })?.currency ?? Prefs.mainCurrency)
+                        .padding(.vertical, 6)
                         .listRowBackground(Color.clear)
                 }
                 Section {

@@ -220,16 +220,15 @@ struct CalendarView: View {
                 Image(systemName: "sum").foregroundStyle(Color.accentColor)
                 Text(mode == .income ? "總收入" : "總支出").font(.headline)
                 Spacer()
-                Text(Money.format(mode == .income ? income : expense, hidden: hidden))
-                    .font(.headline).monospacedDigit().foregroundStyle(.secondary)
-                    .contentTransition(.numericText(value: expense))
+                MoneyText(value: mode == .income ? income : expense, hidden: hidden, font: .headline)
+                    .foregroundStyle(.secondary)
             }
             .cardStyle(padding: 16)
 
             HStack(alignment: .top) {
-                statCell("今天", Money.format(today, hidden: hidden))
+                statCell("今天", today)
                 Divider().frame(height: 40)
-                statCell("平均", Money.format(avg.rounded(), hidden: hidden))
+                statCell("平均", avg.rounded())
                 Divider().frame(height: 40)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("與上個月相比").font(.subheadline).foregroundStyle(.secondary)
@@ -251,10 +250,11 @@ struct CalendarView: View {
         }
     }
 
-    private func statCell(_ title: String, _ value: String) -> some View {
+    private func statCell(_ title: String, _ value: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.subheadline).foregroundStyle(.secondary)
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit().contentTransition(.numericText())
+            MoneyText(value: value, hidden: hidden, font: .title3.weight(.semibold))
+                .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -2,29 +2,81 @@ import SwiftUI
 import SwiftData
 
 /// 編輯畫面上方：大大的金額＋名稱
+/// 編輯畫面上方的金額＋名稱。
+/// 金額用自訂數字鍵盤輸入（AnimatedAmountInput 的 A 做法），每按一下數字就滾動；點金額可以收合／展開鍵盤。
 struct AmountHeader: View {
     @Binding var amountText: String
     @Binding var title: String
     var titlePrompt: String = "名稱"
-    @FocusState private var focus: Field?
-    enum Field { case amount, title }
+    var currency: String = Prefs.mainCurrency
+
+    @FocusState private var titleFocused: Bool
+    @State private var keypadVisible = false
+    @State private var errorCount = 0
+
+    private var logic: AmountInputLogic { AmountInputLogic(text: amountText) }
 
     var body: some View {
-        VStack(spacing: 6) {
-            TextField("0", text: $amountText)
-                .font(.system(size: 64, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .multilineTextAlignment(.center)
-                .keyboardType(.decimalPad)
-                .focused($focus, equals: .amount)
-                .minimumScaleFactor(0.4)
+        VStack(spacing: 10) {
+            Button {
+                titleFocused = false
+                withAnimation(.snappy(duration: 0.3)) { keypadVisible.toggle() }
+            } label: {
+                AmountDisplay(logic: logic, currencyCode: currency,
+                              font: .system(size: 64, weight: .semibold, design: .rounded),
+                              errorCount: errorCount)
+                    .foregroundStyle(amountText.isEmpty ? .secondary : .primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(keypadVisible ? "收合數字鍵盤" : "展開數字鍵盤")
+
             TextField(titlePrompt, text: $title)
                 .font(.title2)
                 .multilineTextAlignment(.center)
-                .focused($focus, equals: .title)
+                .focused($titleFocused)
                 .submitLabel(.done)
+
+            if keypadVisible {
+                VStack(spacing: 8) {
+                    AmountKeypad(onKey: press)
+                    Button {
+                        withAnimation(.snappy(duration: 0.3)) { keypadVisible = false }
+                    } label: {
+                        Image(systemName: "chevron.compact.down")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 30)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("收合鍵盤")
+                }
+                .padding(.top, 6)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .padding(.top, 8)
+        .sensoryFeedback(.selection, trigger: amountText)
+        .sensoryFeedback(.error, trigger: errorCount)
+        .onChange(of: titleFocused) { _, focused in
+            if focused { withAnimation(.snappy(duration: 0.3)) { keypadVisible = false } }
+        }
+        .onAppear {
+            // 新增時直接打開鍵盤
+            if amountText.isEmpty { keypadVisible = true }
+        }
+    }
+
+    private func press(_ key: AmountInputLogic.Key) {
+        var l = logic
+        if l.press(key) {
+            withAnimation(.snappy(duration: 0.3)) { amountText = l.text }
+        } else {
+            errorCount += 1
+        }
     }
 }
 

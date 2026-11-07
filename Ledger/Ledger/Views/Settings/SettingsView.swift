@@ -63,6 +63,12 @@ struct SettingsView: View {
                     NavigationLink("管理分類") { CategoryManagerView() }
                 }
 
+                Section("其他") {
+                    NavigationLink { ContentView() } label: {
+                        Label("數字動效示範", systemImage: "textformat.123")
+                    }
+                }
+
                 Section {
                     Picker("主要幣別", selection: $mainCurrency) {
                         ForEach(Money.commonCurrencies, id: \.self) { Text($0).tag($0) }

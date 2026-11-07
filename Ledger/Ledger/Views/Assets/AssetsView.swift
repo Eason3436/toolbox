@@ -107,10 +107,7 @@ struct AssetsView: View {
                 Spacer()
                 EyeButton(hidden: $hidden).scaleEffect(0.8).frame(height: 30)
             }
-            Text(Money.format(total, hidden: hidden))
-                .font(.system(size: 48, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
+            MoneyText(value: total, hidden: hidden, font: .system(size: 48, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 

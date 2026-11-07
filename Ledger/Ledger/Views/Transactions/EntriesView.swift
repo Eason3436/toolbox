@@ -151,8 +151,8 @@ struct EntriesView: View {
                 }
             }
             Divider()
-            SummaryRow(title: "收入", value: Money.format(income, hidden: hidden))
-            SummaryRow(title: "支出", value: Money.format(expense, hidden: hidden))
+            SummaryRow(title: "收入", amount: income, hidden: hidden)
+            SummaryRow(title: "支出", amount: expense, hidden: hidden)
         }
         .cardStyle()
     }

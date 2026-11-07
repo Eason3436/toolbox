@@ -148,7 +148,7 @@ struct GlassTabBar: View {
                     }
                 }
                 .padding(5)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffect(.regular, in: .capsule)
 
                 Button {
                     addBounce += 1

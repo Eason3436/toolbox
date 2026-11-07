@@ -87,7 +87,7 @@ struct GoalsView: View {
         }
         .sheet(isPresented: $adding) { GoalEditor(goal: nil) }
         .sheet(item: $editing) { GoalEditor(goal: $0) }
-        .sheet(item: $depositing) { GoalDepositSheet(goal: $0).presentationDetents([.medium]) }
+        .sheet(item: $depositing) { GoalDepositSheet(goal: $0).presentationDetents([.large]) }
     }
 }
 
@@ -101,12 +101,9 @@ struct GoalDepositSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                TextField("0", text: $amountText)
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
-                    .multilineTextAlignment(.center)
-                    .keyboardType(.decimalPad)
                 AccountMenuChip(account: $account, placeholder: "從哪個帳戶")
-                Spacer()
+                Spacer(minLength: 0)
+                AnimatedAmountInput(text: $amountText, currencyCode: account?.currency ?? Prefs.mainCurrency)
             }
             .padding()
             .navigationTitle("存入「\(goal.name)」")
@@ -312,10 +309,8 @@ struct LoanEditor: View {
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
-                    TextField("0", text: $amountText)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .keyboardType(.decimalPad)
+                    AnimatedAmountInput(text: $amountText, currencyCode: loan?.currency ?? Prefs.mainCurrency)
+                        .padding(.vertical, 6)
                         .listRowBackground(Color.clear)
                 }
                 Section {

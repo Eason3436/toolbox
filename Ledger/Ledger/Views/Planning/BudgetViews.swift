@@ -22,10 +22,8 @@ struct BudgetCard: View {
                 Text(budget.period.label).font(.subheadline).foregroundStyle(.secondary)
             }
             HStack(alignment: .firstTextBaseline) {
-                Text(Money.format(max(remain, 0), hidden: hidden))
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: remain))
+                MoneyText(value: max(remain, 0), hidden: hidden, font: .system(size: 30, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Text(remain >= 0 ? "可用" : "超支 \(Money.format(-remain, hidden: hidden))")
                     .foregroundStyle(remain >= 0 ? Color.secondary : Color.red)
             }

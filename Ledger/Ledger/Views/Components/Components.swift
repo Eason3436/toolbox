@@ -212,12 +212,33 @@ struct FlowLayout: Layout {
 
 struct SummaryRow: View {
     var title: String
-    var value: String
+    var value: String = ""
+    var amount: Double? = nil
+    var currency: String = Prefs.mainCurrency
+    var hidden: Bool = false
+
+    init(title: String, value: String) {
+        self.title = title
+        self.value = value
+    }
+
+    /// 金額版：數字會滾動
+    init(title: String, amount: Double, currency: String = Prefs.mainCurrency, hidden: Bool = false) {
+        self.title = title
+        self.amount = amount
+        self.currency = currency
+        self.hidden = hidden
+    }
+
     var body: some View {
         HStack {
             Text(title).foregroundStyle(.secondary)
             Spacer()
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
+            if let amount {
+                MoneyText(value: amount, currency: currency, hidden: hidden, font: .title3.weight(.semibold))
+            } else {
+                Text(value).font(.title3.weight(.semibold)).monospacedDigit()
+            }
         }
         .font(.title3)
     }

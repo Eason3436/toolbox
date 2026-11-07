@@ -26,7 +26,7 @@ struct BillEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "名稱，例如 Apple")
+                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "名稱，例如 Apple", currency: currency)
 
                     FlowLayout(spacing: 10) {
                         Menu {

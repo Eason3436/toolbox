@@ -65,8 +65,25 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
+  LedgerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Ledger
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.ledger.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Ledger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Ledger
+        BUNDLE_LOADER: $(TEST_HOST)
+
 schemes:
   Ledger:
     build:
       targets:
         Ledger: all
+    test:
+      targets:
+        - LedgerTests
