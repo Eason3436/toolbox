@@ -79,7 +79,7 @@ struct EntriesView: View {
                         payFilter = payFilter == m ? nil : m
                     } label: {
                         Chip(title: m, symbol: m == "Apple Pay" ? "apple.logo" : "l.circle.fill",
-                             selected: payFilter == m, tint: m == "Apple Pay" ? .primary : Color(hex: "#06C755"))
+                             selected: payFilter == m, tint: m == "Apple Pay" ? Color.primary : Color(hex: "#06C755"))
                     }
                     .buttonStyle(ChipPressStyle())
                 }
