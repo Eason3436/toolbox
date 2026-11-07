@@ -59,22 +59,26 @@ struct EntriesView: View {
         try? context.save()
     }
 
-    private var hasFilters: Bool { accountFilter != nil || payFilter != nil || receiptOnly }
+    private var hasFilters: Bool { accountFilter != nil || payFilter != nil || receiptOnly || filter != .all }
+
+    /// 左上角標題：目前看的帳戶
+    private var accountTitle: String {
+        accounts.first { $0.id == accountFilter }?.name ?? "全部帳戶"
+    }
 
     /// 篩選膠囊：帳戶、付款方式、有發票
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Menu {
-                    Button("全部帳戶") { accountFilter = nil }
-                    ForEach(accounts.filter { !$0.archived }) { a in
-                        Button { accountFilter = a.id } label: {
-                            Label(a.name, systemImage: accountFilter == a.id ? "checkmark" : a.kind.symbol)
-                        }
+                    Picker("顯示", selection: $filter) {
+                        Text("支出和收入").tag(EntryFilter.all)
+                        Text("支出").tag(EntryFilter.expense)
+                        Text("收入").tag(EntryFilter.income)
                     }
                 } label: {
-                    Chip(title: accounts.first { $0.id == accountFilter }?.name ?? "帳戶", symbol: "creditcard",
-                         selected: accountFilter != nil, showsChevron: true)
+                    Chip(title: filter == .all ? "支出和收入" : filter.label, symbol: "arrow.up.arrow.down",
+                         selected: filter != .all, showsChevron: true)
                 }
                 ForEach(["Apple Pay", "LINE Pay"], id: \.self) { m in
                     Button {
@@ -89,9 +93,9 @@ struct EntriesView: View {
                     Chip(title: "有發票", symbol: "doc.text", selected: receiptOnly)
                 }
                 .buttonStyle(ChipPressStyle())
-                if hasFilters {
+                if payFilter != nil || receiptOnly || filter != .all {
                     Button("清除") {
-                        withAnimation(.snappy) { accountFilter = nil; payFilter = nil; receiptOnly = false }
+                        withAnimation(.snappy) { filter = .all; payFilter = nil; receiptOnly = false }
                     }
                     .font(.subheadline.weight(.semibold))
                 }
@@ -185,13 +189,14 @@ struct EntriesView: View {
             .listSectionSpacing(14)
             .scrollContentBackground(.hidden)
             .background(Color(.systemGroupedBackground))
-            .ledgerNavigation(filter.label)
+            .ledgerNavigation(accountTitle)
             .toolbar {
-                HeaderTitle(title: filter.label) {
-                    Picker("顯示", selection: $filter) {
-                        Text("全部").tag(EntryFilter.all)
-                        Text("支出").tag(EntryFilter.expense)
-                        Text("收入").tag(EntryFilter.income)
+                HeaderTitle(title: accountTitle) {
+                    Picker("帳戶", selection: $accountFilter) {
+                        Text("全部帳戶").tag(UUID?.none)
+                        ForEach(accounts.filter { !$0.archived }) { a in
+                            Label(a.name, systemImage: a.kind.symbol).tag(Optional(a.id))
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) { LedgerModeToggle() }
