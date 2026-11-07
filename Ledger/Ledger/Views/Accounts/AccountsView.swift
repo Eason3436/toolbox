@@ -120,25 +120,60 @@ struct AccountsView: View {
         let base = startBalance + inflow
         let usedRatio = base > 0 ? spent / base : (spent > 0 ? 1 : 0)
         let cur = account.currency
-        return VStack(alignment: .leading, spacing: 14) {
-            Text("剩餘").foregroundStyle(.secondary).font(.title3)
-            HStack(spacing: 12) {
-                MoneyText(value: account.balance, currency: cur, hidden: hidden,
-                          font: .system(size: 44, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                Pill(text: "已使用 \(Money.percent(min(usedRatio, 9.99)))", tint: usedRatio > 0.9 ? .red : .green)
+        let today = Calendar.current.startOfDay(for: .now)
+        let todaySpent = abs(monthEntries.filter { $0.date >= today }.map { $0.signedAmount(for: account) }.filter { $0 < 0 }.reduce(0, +))
+        let tint: Color = usedRatio > 0.9 ? .red : (usedRatio > 0.7 ? .orange : .green)
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("目前餘額").font(.subheadline).foregroundStyle(.secondary)
+                    MoneyText(value: account.balance, currency: cur, hidden: hidden,
+                              font: .system(size: 40, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
                 Spacer()
                 EyeButton(hidden: $hidden)
             }
-            Divider()
-            VStack(spacing: 10) {
-                SummaryRow(title: "月初餘額", amount: startBalance, currency: cur, hidden: hidden)
-                SummaryRow(title: "資金流入", amount: inflow, currency: cur, hidden: hidden)
-                SummaryRow(title: "已用", amount: spent, currency: cur, hidden: hidden)
+
+            // 本月用掉多少的進度條
+            VStack(alignment: .leading, spacing: 6) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color(.tertiarySystemFill))
+                        Capsule().fill(tint.gradient)
+                            .frame(width: max(8, g.size.width * min(usedRatio, 1)))
+                    }
+                }
+                .frame(height: 8)
+                HStack {
+                    Text("本月已用 \(Money.percent(min(usedRatio, 9.99)))")
+                    Spacer()
+                    Text("今天花了 \(Money.format(todaySpent, currency: cur, hidden: hidden))")
+                }
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 10) {
+                statTile("月初", startBalance, "calendar", .blue, cur)
+                statTile("流入", inflow, "arrow.down.left", .green, cur)
+                statTile("支出", spent, "arrow.up.right", .orange, cur)
             }
         }
         .cardStyle()
+    }
+
+    private func statTile(_ title: String, _ value: Double, _ symbol: String, _ color: Color, _ cur: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+            MoneyText(value: value, currency: cur, hidden: hidden, font: .subheadline.weight(.bold))
+                .lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(color.opacity(0.1), in: .rect(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
