@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 import SwiftData
 import PhotosUI
 
@@ -33,7 +34,11 @@ struct EntryDetailView: View {
                         infoCard.appearEffect(delay: 0.1)
                         if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty {
                             MerchantMapCard(merchant: receipt?.store.isEmpty == false ? receipt!.store : entry.title,
-                                            address: receipt?.address)
+                                            address: receipt?.address,
+                                            coordinate: entry.latitude.flatMap { lat in
+                                                entry.longitude.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) }
+                                            },
+                                            branch: entry.branch)
                                 .appearEffect(delay: 0.15)
                             MerchantSummaryCard(merchant: entry.title, currency: currency, hidden: hidden)
                                 .appearEffect(delay: 0.2)
@@ -122,6 +127,7 @@ struct EntryDetailView: View {
             } else {
                 row("分類", entry.category?.fullName ?? "未分類")
                 row("帳戶", entry.account?.name ?? "未指定帳戶")
+                if let b = entry.branch { row("分店", b) }
             }
             row("時間", entry.date.formatted(.dateTime.year().month().day().weekday().hour().minute()))
             if let g = entry.goal { row("儲蓄目標", g.name) }
