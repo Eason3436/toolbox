@@ -4,6 +4,7 @@ import PhotosUI
 
 struct EntryEditor: View {
     var entry: Entry?
+    var start: AddStart = .normal
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -34,6 +35,7 @@ struct EntryEditor: View {
     @State private var photo: PhotosPickerItem?
     @State private var receipt: Receipt?
     @State private var smartMessage: String?
+    @State private var showScanner = false
 
     enum SmartMode { case sentence }
 
@@ -124,7 +126,23 @@ struct EntryEditor: View {
                 }
             }
             .sheet(isPresented: $showPasteSheet) { pasteSheet }
+            .photosPicker(isPresented: $showScanner, selection: $photo, matching: .images)
             .onAppear(perform: load)
+            .task {
+                // 從首頁的快速按鈕進來：直接打開一句話輸入或選發票照片
+                guard entry == nil, start != .normal else { return }
+                try? await Task.sleep(for: .milliseconds(350))
+                switch start {
+                case .sentence:
+                    pad.visible = false
+                    withAnimation(Motion.layout) { smartMode = .sentence }
+                    sentenceFocused = true
+                case .scan:
+                    pad.visible = false
+                    showScanner = true
+                case .normal: break
+                }
+            }
         }
     }
 
@@ -146,10 +164,7 @@ struct EntryEditor: View {
                         sentenceFocused = true
                     }
                 }
-                PhotosPicker(selection: $photo, matching: .images) {
-                    smartLabel("掃發票", "doc.text.viewfinder", active: false)
-                }
-                .buttonStyle(ChipPressStyle())
+                smartButton("掃發票", "doc.text.viewfinder", active: false) { showScanner = true }
                 smartButton("貼通知", "doc.on.clipboard.fill", active: false) {
                     pasteText = UIPasteboard.general.string ?? ""
                     showPasteSheet = true

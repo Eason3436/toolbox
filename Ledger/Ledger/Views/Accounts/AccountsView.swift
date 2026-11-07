@@ -100,6 +100,10 @@ struct AccountsView: View {
         let items = HomeLayout.decode(layoutRaw).filter(\.visible)
 
         VStack(spacing: 16) {
+            if accounts.count > 1 {
+                AccountCarousel(accounts: accounts, selectedID: $selectedID, hidden: hidden)
+                    .appearEffect()
+            }
             summary(account, month: month, monthEntries: monthEntries)
                 .appearEffect()
             ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
@@ -179,6 +183,8 @@ struct AccountsView: View {
     @ViewBuilder
     private func section(_ s: HomeSection, account: Account, monthEntries: [Entry]) -> some View {
         switch s {
+        case .quickActions: QuickAddRow()
+        case .upcomingBills: UpcomingBillsCard(hidden: hidden)
         case .transactions: transactions(account, monthEntries: monthEntries)
         case .balanceChart:
             ValueLineCard(title: "餘額走勢", points: History.accountHistory(account, range: chartRange),
@@ -585,5 +591,129 @@ struct AccountCard: View {
             .padding(24)
         }
         .aspectRatio(1.586, contentMode: .fit)
+    }
+}
+
+
+/// 首頁最上面的帳戶列：左右滑或點一下切換帳戶
+struct AccountCarousel: View {
+    var accounts: [Account]
+    @Binding var selectedID: String
+    var hidden: Bool
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(accounts) { a in
+                    let on = a.id.uuidString == selectedID || (selectedID.isEmpty && a.id == accounts.first?.id)
+                    Button {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { selectedID = a.id.uuidString }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: a.kind.symbol)
+                                .font(.caption.weight(.bold)).foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(a.color.gradient, in: .circle)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(a.name).font(.caption.weight(.semibold)).lineLimit(1)
+                                Text(Money.format(a.balance, currency: a.currency, hidden: hidden))
+                                    .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+                        .background(on ? a.color.opacity(0.16) : Color(.secondarySystemGroupedBackground), in: .capsule)
+                        .overlay(Capsule().strokeBorder(a.color.opacity(on ? 0.9 : 0), lineWidth: 1.5))
+                    }
+                    .buttonStyle(ChipPressStyle())
+                    .id(a.id.uuidString)
+                }
+            }
+            .padding(.horizontal, 2).padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
+        .sensoryFeedback(.selection, trigger: selectedID)
+    }
+}
+
+/// 快速記帳：一句話、掃發票、一般記帳
+struct QuickAddRow: View {
+    @Environment(\.openAddEntry) private var openAdd
+
+    var body: some View {
+        HStack(spacing: 10) {
+            item("一句話記帳", "text.bubble.fill", .accentColor) { openAdd(.sentence) }
+            item("掃發票", "doc.text.viewfinder", .orange) { openAdd(.scan) }
+            item("記一筆", "plus.circle.fill", .green) { openAdd(.normal) }
+        }
+    }
+
+    private func item(_ title: String, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(color)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(ChipPressStyle())
+    }
+}
+
+/// 7 天內要付（或要收）的帳單
+struct UpcomingBillsCard: View {
+    var hidden: Bool
+    @Query private var bills: [Bill]
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let start = Calendar.current.startOfDay(for: .now)
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: start) ?? start
+        let list = BillService.occurrences(bills, in: DateInterval(start: start, end: end)).filter { !$0.paid }
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("7 天內到期").font(.headline)
+                    Text("\(list.count) 筆").font(.subheadline).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 4)
+                VStack(spacing: 10) {
+                    ForEach(list.prefix(4)) { occ in
+                        HStack(spacing: 12) {
+                            VStack(spacing: 0) {
+                                Text("\(Calendar.current.component(.month, from: occ.due))月").font(.caption2).foregroundStyle(.secondary)
+                                Text("\(Calendar.current.component(.day, from: occ.due))").font(.headline.monospacedDigit())
+                            }
+                            .frame(width: 40)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                Text(dueText(occ.due)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(Money.format(occ.bill.amount, hidden: hidden))
+                                .font(.callout.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(occ.bill.receives ? .green : .primary)
+                            Button(occ.bill.doneLabel) {
+                                withAnimation(.snappy) { BillService.markPaid(occ, context: context) }
+                            }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.glass)
+                        }
+                    }
+                }
+                .cardStyle()
+            }
+        }
+    }
+
+    private func dueText(_ d: Date) -> String {
+        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: .now), to: Calendar.current.startOfDay(for: d)).day ?? 0
+        switch days {
+        case ..<1: return "今天"
+        case 1: return "明天"
+        default: return "\(days) 天後"
+        }
     }
 }

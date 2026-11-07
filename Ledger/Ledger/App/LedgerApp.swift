@@ -61,8 +61,12 @@ struct RootView: View {
                 }
             }
         }
+        .environment(\.openAddEntry, { start in
+            addStart = start
+            showAdd = true
+        })
         .overlay(alignment: .bottomTrailing) {
-            AddFloatingButton { showAdd = true }
+            AddFloatingButton { addStart = .normal; showAdd = true }
                 .padding(.trailing, 20)
                 .padding(.bottom, 64)
                 .ignoresSafeArea(.keyboard)
@@ -139,13 +143,18 @@ struct RootView: View {
     }
 
     @State private var savedSummary: SavedEntrySummary?
+    @State private var addStart: AddStart = .normal
 
     @ViewBuilder
     private var addSheet: some View {
-        switch tab {
-        case .bills: BillEditor(bill: nil)
-        case .assets: AssetEditor(asset: nil)
-        default: EntryEditor(entry: nil)
+        if addStart != .normal {
+            EntryEditor(entry: nil, start: addStart)
+        } else {
+            switch tab {
+            case .bills: BillEditor(bill: nil)
+            case .assets: AssetEditor(asset: nil)
+            default: EntryEditor(entry: nil)
+            }
         }
     }
 }
