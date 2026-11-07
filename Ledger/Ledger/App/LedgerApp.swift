@@ -71,9 +71,22 @@ struct RootView: View {
         .sheet(isPresented: $showAdd) {
             // 一般的整頁卡片滑上／滑下：往下拉時整張卡片跟著手指走，不會縮成小方塊、內容也不會被裁掉
             addSheet
+                .environment(\.entrySavedHandler, { summary in
+                    // 表單直接消失（不滑下去），換成卡片吸進動態島的動畫
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) { showAdd = false }
+                    savedSummary = summary
+                })
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(38)
                 .presentationBackgroundInteraction(.disabled)
+        }
+        .overlay {
+            if let s = savedSummary {
+                IslandSuckView(summary: s) { savedSummary = nil }
+                    .id(s.id)
+            }
         }
         .overlay {
             if locked { LockView { locked = false } .transition(.opacity) }
@@ -119,6 +132,8 @@ struct RootView: View {
         case .assets: AssetsView()
         }
     }
+
+    @State private var savedSummary: SavedEntrySummary?
 
     @ViewBuilder
     private var addSheet: some View {

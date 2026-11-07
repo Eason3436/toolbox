@@ -6,6 +6,7 @@ struct EntryEditor: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.entrySavedHandler) private var savedHandler
     @Query(sort: \Category.order) private var categories: [Category]
     @Query(sort: \Goal.order) private var goals: [Goal]
     @State private var goal: Goal?
@@ -224,6 +225,15 @@ struct EntryEditor: View {
             context.insert(e)
         }
         try? context.save()
-        dismiss()
+        if entry == nil, let savedHandler {
+            savedHandler(SavedEntrySummary(
+                title: finalTitle,
+                amountText: (kind == .income ? "+" : "-") + Money.format(amount, currency: account?.currency ?? Prefs.mainCurrency),
+                symbol: category?.symbol ?? (kind == .income ? "arrow.down.left" : "tag.fill"),
+                color: category?.color ?? .gray,
+                income: kind == .income))
+        } else {
+            dismiss()
+        }
     }
 }
