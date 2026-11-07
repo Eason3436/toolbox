@@ -89,7 +89,7 @@ struct PortfolioView: View {
         let totalValue = investments.reduce(0) { $0 + $1.nativeValue * QuoteService.rate(from: $1.currency) }
         let totalCost = investments.filter { $0.costPerUnit > 0 }.reduce(0) { $0 + $1.costPerUnit * $1.quantity * QuoteService.rate(from: $1.currency) }
         let costedValue = investments.filter { $0.costPerUnit > 0 }.reduce(0) { $0 + $1.nativeValue * QuoteService.rate(from: $1.currency) }
-        let dayChange = investments.reduce(0) { r, a in
+        let dayChange = investments.reduce(0.0) { r, a in
             guard a.usesQuote, a.previousClose > 0 else { return r }
             return r + (a.lastPrice - a.previousClose) * a.quantity * QuoteService.rate(from: a.currency)
         }

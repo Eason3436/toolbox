@@ -43,7 +43,7 @@ struct CategoryChips: View {
         var list = Array(pool.prefix(6))
         if let s = selected, !list.contains(where: { $0.id == s.id }) {
             list.insert(s, at: 0)
-            list.removeLast()
+            if list.count > 6 { list.removeLast() }
         }
         return list
     }
