@@ -10,6 +10,10 @@ struct SettingsView: View {
     @AppStorage(Prefs.defaultAccountKey) private var defaultID = ""
 
     @State private var importing = false
+    @State private var restoring = false
+    @State private var exportURL: URL?
+    @State private var csvURL: URL?
+    @AppStorage("lockEnabled") private var lockEnabled = false
     @State private var importResult: String?
     @State private var importError: String?
     @State private var editingAccount: Account?
@@ -69,6 +73,7 @@ struct SettingsView: View {
 
                 Section {
                     Button {
+                        restoring = false
                         importing = true
                     } label: {
                         Label("從 Cashew 備份匯入", systemImage: "square.and.arrow.down")
@@ -82,7 +87,44 @@ struct SettingsView: View {
                 } header: {
                     Text("搬家")
                 } footer: {
-                    Text("在 Cashew 打開「設定 → 備份 → 匯出資料」，存成 cashew-…sql 檔，再從這裡選取。會匯入帳戶、分類、交易，未付款的訂閱會變成帳單。重複匯入同一份備份不會重複新增。")
+                    Text("在 Cashew 打開「設定 → 備份 → 匯出資料」，存成 cashew-…sql 檔，再從這裡選取；也可以在「檔案」App 長按那個檔案 → 分享 → 選「記帳」。會匯入帳戶、分類（含子分類）、交易、預算、目標、借貸，未付款的訂閱會變成帳單。重複匯入不會重複新增。")
+                }
+
+                Section {
+                    Button {
+                        exportURL = try? Backup.export()
+                    } label: {
+                        Label("匯出完整備份（JSON）", systemImage: "externaldrive.badge.icloud")
+                    }
+                    if let exportURL {
+                        ShareLink(item: exportURL) { Label("分享備份檔", systemImage: "square.and.arrow.up") }
+                    }
+                    Button {
+                        restoring = true
+                        importing = true
+                    } label: {
+                        Label("從備份還原", systemImage: "arrow.counterclockwise")
+                    }
+                    Button {
+                        csvURL = try? Backup.exportCSV()
+                    } label: {
+                        Label("匯出交易 CSV", systemImage: "tablecells")
+                    }
+                    if let csvURL {
+                        ShareLink(item: csvURL) { Label("分享 CSV", systemImage: "square.and.arrow.up") }
+                    }
+                } header: {
+                    Text("備份")
+                } footer: {
+                    Text("還原會把備份裡的資料合併進來，不會刪除現有資料。")
+                }
+
+                Section {
+                    Toggle(isOn: $lockEnabled) {
+                        Label("Face ID 鎖定", systemImage: "faceid")
+                    }
+                } footer: {
+                    Text("離開 App 後再回來需要 Face ID 解鎖。")
                 }
 
                 Section {
@@ -94,12 +136,17 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(role: .close) { dismiss() } }
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: importTypes) { result in
+            .fileImporter(isPresented: $importing, allowedContentTypes: restoring ? [.json] : [.item]) { result in
+                let isRestore = restoring
                 switch result {
                 case .success(let url):
                     do {
-                        let report = try CashewImporter.importBackup(at: url)
-                        importResult = report.text
+                        if isRestore {
+                            let n = try Backup.restore(from: url)
+                            importResult = "已還原 \(n) 筆資料"
+                        } else {
+                            importResult = try CashewImporter.importBackup(at: url).text
+                        }
                         importError = nil
                     } catch {
                         importError = error.localizedDescription
@@ -108,18 +155,14 @@ struct SettingsView: View {
                 case .failure(let error):
                     importError = error.localizedDescription
                 }
+                importing = false
+                restoring = false
             }
             .sheet(item: $editingAccount) { AccountEditor(account: $0) }
             .sheet(isPresented: $addingAccount) { AccountEditor(account: nil) }
         }
     }
 
-    private var importTypes: [UTType] {
-        var t: [UTType] = [.data, .database]
-        if let sql = UTType(filenameExtension: "sql") { t.insert(sql, at: 0) }
-        if let sqlite = UTType(filenameExtension: "sqlite") { t.insert(sqlite, at: 0) }
-        return t
-    }
 }
 
 struct ShortcutGuideView: View {
@@ -190,11 +233,12 @@ struct CategoryManagerView: View {
             .pickerStyle(.segmented)
             .listRowBackground(Color.clear)
 
-            let list = categories.filter { $0.isIncome == showIncome }
+            let list = categories.filter { $0.isIncome == showIncome && !$0.isSub }.flatMap { [$0] + $0.sortedChildren }
             ForEach(list) { c in
                 Button { editing = c } label: {
                     HStack(spacing: 12) {
-                        c.icon(size: 36)
+                        if c.isSub { Spacer().frame(width: 24) }
+                        c.icon(size: c.isSub ? 30 : 36)
                         Text(c.name)
                         Spacer()
                         Text("\(c.entries?.count ?? 0) 筆").foregroundStyle(.secondary).font(.footnote)
@@ -234,6 +278,7 @@ struct CategoryEditor: View {
     @State private var symbol = "tag.fill"
     @State private var emoji = ""
     @State private var color = Color.orange
+    @State private var parentID: UUID?
 
     private let symbols = ["fork.knife", "cup.and.saucer.fill", "cart.fill", "bag.fill", "basket.fill", "car.fill", "bus.fill", "tram.fill",
                            "airplane", "fuelpump.fill", "house.fill", "bolt.fill", "drop.fill", "wifi", "iphone", "tv.fill",
@@ -256,6 +301,12 @@ struct CategoryEditor: View {
                     TextField("名稱", text: $name)
                     TextField("表情符號（選填，會取代圖示）", text: $emoji)
                     ColorPicker("顏色", selection: $color, supportsOpacity: false)
+                    Picker("主分類", selection: $parentID) {
+                        Text("無（這是主分類）").tag(UUID?.none)
+                        ForEach(categories.filter { $0.isIncome == income && !$0.isSub && $0.id != category?.id }) { c in
+                            Text(c.name).tag(Optional(c.id))
+                        }
+                    }
                 }
                 Section("圖示") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 14) {
@@ -285,6 +336,7 @@ struct CategoryEditor: View {
                     symbol = category.symbol
                     emoji = category.emoji ?? ""
                     color = category.color
+                    parentID = category.parent?.id
                 }
             }
         }
@@ -300,6 +352,9 @@ struct CategoryEditor: View {
         c.symbol = symbol
         c.emoji = emoji.isEmpty ? nil : String(emoji.prefix(2))
         c.colorHex = color.hexString
+        if (c.children ?? []).isEmpty {
+            c.parent = categories.first { $0.id == parentID && $0.id != c.id }
+        }
         try? context.save()
         dismiss()
     }

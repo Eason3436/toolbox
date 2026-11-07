@@ -53,6 +53,33 @@ enum QuoteService {
         return try await fetch(s)
     }
 
+    /// 價格走勢：range 例如 1mo、3mo、6mo、1y
+    static func history(_ symbol: String, range: String) async throws -> [(Date, Double)] {
+        let s = symbol.trimmingCharacters(in: .whitespaces).uppercased()
+        let interval = range == "1y" ? "1d" : "1d"
+        guard let enc = s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(enc)?range=\(range)&interval=\(interval)")
+        else { throw QuoteError.notFound(symbol) }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)", forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let chart = root["chart"] as? [String: Any],
+              let result = (chart["result"] as? [[String: Any]])?.first,
+              let stamps = result["timestamp"] as? [NSNumber],
+              let indicators = result["indicators"] as? [String: Any],
+              let quote = (indicators["quote"] as? [[String: Any]])?.first,
+              let closes = quote["close"] as? [Any]
+        else { throw QuoteError.notFound(symbol) }
+        var points: [(Date, Double)] = []
+        for (i, t) in stamps.enumerated() where i < closes.count {
+            if let v = (closes[i] as? NSNumber)?.doubleValue {
+                points.append((Date(timeIntervalSince1970: t.doubleValue), v))
+            }
+        }
+        return points
+    }
+
     // MARK: 匯率
 
     private static let ratesKey = "fxRates"

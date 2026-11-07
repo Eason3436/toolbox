@@ -54,16 +54,16 @@ struct BillsView: View {
                 .padding(.bottom, 24)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(filter.label)
-            .toolbarTitleMenu {
-                Picker("顯示", selection: $filter) {
-                    Text("全部").tag(BillFilter.all)
-                    Text("訂閱").tag(BillFilter.subscription)
-                    Text("一般帳單").tag(BillFilter.bill)
-                    Text("未繳").tag(BillFilter.unpaid)
-                }
-            }
+            .ledgerNavigation(filter.label)
             .toolbar {
+                HeaderTitle(title: filter.label) {
+                    Picker("顯示", selection: $filter) {
+                        Text("全部").tag(BillFilter.all)
+                        Text("訂閱").tag(BillFilter.subscription)
+                        Text("一般帳單").tag(BillFilter.bill)
+                        Text("未繳").tag(BillFilter.unpaid)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("本月") { month = .now }

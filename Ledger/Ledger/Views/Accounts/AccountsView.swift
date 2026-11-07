@@ -4,6 +4,10 @@ import SwiftData
 struct AccountsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Account.order) private var allAccounts: [Account]
+    @Query(sort: \Budget.order) private var budgets: [Budget]
+    @Query(sort: \Goal.order) private var goals: [Goal]
+    @Query(sort: \Loan.date, order: .reverse) private var loans: [Loan]
+    @Query(sort: \Entry.date, order: .reverse) private var allEntries: [Entry]
     @AppStorage(Prefs.selectedAccountKey) private var selectedID: String = ""
     @AppStorage(Prefs.defaultAccountKey) private var defaultID: String = ""
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
@@ -14,6 +18,7 @@ struct AccountsView: View {
     @State private var editingAccount: Account?
     @State private var addingAccount = false
     @State private var editingEntry: Entry?
+    @State private var cardFlip = 0
 
     private var accounts: [Account] { allAccounts.filter { !$0.archived } }
 
@@ -27,26 +32,28 @@ struct AccountsView: View {
                 if let account {
                     content(account)
                 } else {
-                    EmptyHint(symbol: "creditcard", title: "還沒有帳戶", message: "點右上角的選單新增第一個帳戶")
+                    EmptyHint(symbol: "creditcard", title: "還沒有帳戶", message: "點左上角的標題新增第一個帳戶")
                 }
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle(account?.name ?? "帳戶")
-            .toolbarTitleMenu {
-                ForEach(accounts) { acc in
-                    Button {
-                        selectedID = acc.id.uuidString
-                    } label: {
-                        Label(acc.name, systemImage: acc.id == account?.id ? "checkmark" : acc.kind.symbol)
+            .ledgerNavigation(account?.name ?? "帳戶")
+            .toolbar {
+                HeaderTitle(title: account?.name ?? "帳戶") {
+                    ForEach(accounts) { acc in
+                        Button {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                                selectedID = acc.id.uuidString
+                                cardFlip += 1
+                            }
+                        } label: {
+                            Label(acc.name, systemImage: acc.id == account?.id ? "checkmark" : acc.kind.symbol)
+                        }
+                    }
+                    Divider()
+                    Button("新增帳戶", systemImage: "plus") { addingAccount = true }
+                    if let account {
+                        Button("編輯「\(account.name)」", systemImage: "pencil") { editingAccount = account }
                     }
                 }
-                Divider()
-                Button("新增帳戶", systemImage: "plus") { addingAccount = true }
-                if let account {
-                    Button("編輯「\(account.name)」", systemImage: "pencil") { editingAccount = account }
-                }
-            }
-            .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("排序", selection: $sortByAmount) {
@@ -63,6 +70,7 @@ struct AccountsView: View {
                         if let account { defaultID = account.id.uuidString }
                     } label: {
                         Image(systemName: account?.id.uuidString == defaultID ? "star.circle.fill" : "star.circle")
+                            .contentTransition(.symbolEffect(.replace))
                     }
                     .accessibilityLabel("設為捷徑預設帳戶")
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
@@ -83,7 +91,7 @@ struct AccountsView: View {
             .filter { month.contains($0.date) }
         let startBalance = account.balance(before: month.start)
         let inflow = monthEntries.map { $0.signedAmount(for: account) }.filter { $0 > 0 }.reduce(0, +)
-        let spent = -monthEntries.map { $0.signedAmount(for: account) }.filter { $0 < 0 }.reduce(0, +)
+        let spent = abs(monthEntries.map { $0.signedAmount(for: account) }.filter { $0 < 0 }.reduce(0, +))
         let base = startBalance + inflow
         let usedRatio = base > 0 ? spent / base : (spent > 0 ? 1 : 0)
         let cur = account.currency
@@ -96,7 +104,7 @@ struct AccountsView: View {
                     Text(Money.format(account.balance, currency: cur, hidden: hidden))
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .contentTransition(.numericText())
+                        .contentTransition(.numericText(value: account.balance))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                     Pill(text: "已使用 \(Money.percent(min(usedRatio, 9.99)))", tint: usedRatio > 0.9 ? .red : .green)
@@ -111,8 +119,8 @@ struct AccountsView: View {
                 }
             }
             .cardStyle()
+            .appearEffect()
 
-            // 轉帳
             Button { showTransfer = true } label: {
                 HStack(spacing: 14) {
                     Image(systemName: "arrow.left.arrow.right")
@@ -124,24 +132,98 @@ struct AccountsView: View {
                 .foregroundStyle(.primary)
                 .cardStyle(padding: 18)
             }
-            .buttonStyle(.plain)
+            .pressable()
+            .appearEffect(delay: 0.04)
 
             AccountCard(account: account, hidden: hidden)
+                .id(account.id)
+                .transition(.asymmetric(insertion: .scale(scale: 0.92).combined(with: .opacity), removal: .opacity))
                 .onTapGesture { editingAccount = account }
+                .appearEffect(delay: 0.08)
+
+            // 預算
+            let activeBudgets = budgets.filter { !$0.archived && $0.pinned }
+            SectionHeader(title: "預算", destination: { BudgetsView() })
+            if activeBudgets.isEmpty {
+                NavigationLink { BudgetsView() } label: {
+                    PlaceholderRow(symbol: "chart.pie", text: "設定每月預算，掌握花費進度")
+                }
+                .pressable()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(activeBudgets) { b in
+                            NavigationLink { BudgetDetailView(budget: b) } label: {
+                                BudgetCard(budget: b, entries: allEntries, hidden: hidden)
+                                    .frame(width: activeBudgets.count == 1 ? nil : 300)
+                            }
+                            .pressable()
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+                .scrollTargetBehavior(.viewAligned)
+            }
+
+            // 目標
+            let activeGoals = goals.filter { !$0.archived }
+            SectionHeader(title: "儲蓄目標", destination: { GoalsView() })
+            if activeGoals.isEmpty {
+                NavigationLink { GoalsView() } label: {
+                    PlaceholderRow(symbol: "target", text: "建立存錢目標，追蹤進度")
+                }
+                .pressable()
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(activeGoals.prefix(3)) { g in
+                        NavigationLink { GoalsView() } label: { GoalRow(goal: g, hidden: hidden) }
+                            .pressable()
+                    }
+                }
+            }
+
+            // 借貸
+            let open = loans.filter { !$0.closed && $0.remaining > 0 }
+            SectionHeader(title: "借貸", destination: { LoansView() })
+            if open.isEmpty {
+                NavigationLink { LoansView() } label: {
+                    PlaceholderRow(symbol: "person.2", text: "記下借出與借入，誰還沒還一目了然")
+                }
+                .pressable()
+            } else {
+                let lent = open.filter { $0.direction == .lent }.reduce(0) { $0 + $1.remaining }
+                let borrowed = open.filter { $0.direction == .borrowed }.reduce(0) { $0 + $1.remaining }
+                NavigationLink { LoansView() } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("別人欠我").font(.subheadline).foregroundStyle(.secondary)
+                            Text(Money.format(lent, hidden: hidden)).font(.title2.weight(.bold)).monospacedDigit().foregroundStyle(.green)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("我欠別人").font(.subheadline).foregroundStyle(.secondary)
+                            Text(Money.format(borrowed, hidden: hidden)).font(.title2.weight(.bold)).monospacedDigit().foregroundStyle(.red)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    .cardStyle()
+                }
+                .pressable()
+            }
 
             // 本月交易
             let sorted = sortByAmount
                 ? monthEntries.sorted { abs($0.signedAmount(for: account)) > abs($1.signedAmount(for: account)) }
                 : monthEntries.sorted { $0.date > $1.date }
             if !sorted.isEmpty {
+                SectionHeader(title: "本月交易", destination: { EmptyView() }, showsLink: false)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("本月交易").font(.headline).padding(.bottom, 6)
-                    ForEach(sorted) { e in
+                    ForEach(sorted.prefix(30)) { e in
                         Button { editingEntry = e } label: {
                             EntryRow(entry: e, perspective: account, hidden: hidden)
                         }
                         .buttonStyle(.plain)
-                        if e.id != sorted.last?.id { Divider().padding(.leading, 58) }
+                        if e.id != sorted.prefix(30).last?.id { Divider().padding(.leading, 58) }
                     }
                 }
                 .cardStyle()
@@ -149,6 +231,48 @@ struct AccountsView: View {
         }
         .padding(.horizontal)
         .padding(.bottom, 24)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: account.id)
+    }
+}
+
+struct SectionHeader<D: View>: View {
+    var title: String
+    @ViewBuilder var destination: () -> D
+    var showsLink = true
+
+    var body: some View {
+        HStack {
+            Text(title).font(.title3.weight(.bold))
+            Spacer()
+            if showsLink {
+                NavigationLink {
+                    destination()
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("全部")
+                        Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+        .padding(.top, 8)
+        .padding(.horizontal, 4)
+    }
+}
+
+struct PlaceholderRow: View {
+    var symbol: String
+    var text: String
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol).font(.title2).foregroundStyle(Color.accentColor).frame(width: 32)
+            Text(text).foregroundStyle(.secondary)
+            Spacer()
+            Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Color.accentColor)
+        }
+        .cardStyle(padding: 18)
     }
 }
 

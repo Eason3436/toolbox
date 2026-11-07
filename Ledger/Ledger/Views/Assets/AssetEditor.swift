@@ -88,7 +88,9 @@ struct AssetEditor: View {
 
                 Section("資料") {
                     TextField("名稱", text: $name)
-                    if quoteMode {
+                    if quoteMode, !(asset?.lots ?? []).isEmpty {
+                        LabeledContent("持股", value: "由買賣紀錄計算")
+                    } else if quoteMode {
                         TextField("持有數量（股數／單位）", text: $quantityText)
                             .keyboardType(.decimalPad)
                         TextField("平均成本（每股，選填）", text: $costText)
@@ -140,7 +142,7 @@ struct AssetEditor: View {
     }
 
     private var canSave: Bool {
-        if quoteMode { return !ticker.isEmpty && (Money.parse(quantityText) ?? 0) > 0 }
+        if quoteMode { return !ticker.isEmpty && ((Money.parse(quantityText) ?? 0) > 0 || !(asset?.lots ?? []).isEmpty) }
         return !name.trimmingCharacters(in: .whitespaces).isEmpty && Money.parse(valueText) != nil
     }
 
@@ -194,8 +196,17 @@ struct AssetEditor: View {
         target.note = note
         if quoteMode {
             target.ticker = ticker.uppercased()
-            target.quantity = Money.parse(quantityText) ?? 0
-            target.costPerUnit = Money.parse(costText) ?? 0
+            if (target.lots ?? []).isEmpty {
+                target.quantity = Money.parse(quantityText) ?? 0
+                target.costPerUnit = Money.parse(costText) ?? 0
+                // 新資產：把持股記成第一筆買入
+                if asset == nil, target.quantity > 0 {
+                    let lot = AssetLot(date: .now, quantity: target.quantity, price: target.costPerUnit > 0 ? target.costPerUnit : (quote?.price ?? 0))
+                    lot.asset = target
+                    context.insert(lot)
+                    if target.costPerUnit == 0 { target.costPerUnit = lot.price }
+                }
+            }
             if let q = quote {
                 target.lastPrice = q.price
                 target.previousClose = q.previousClose

@@ -7,6 +7,9 @@ struct EntryEditor: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.order) private var categories: [Category]
+    @Query(sort: \Goal.order) private var goals: [Goal]
+    @State private var goal: Goal?
+    @State private var excludeFromBudget = false
 
     @State private var amountText = ""
     @State private var title = ""
@@ -48,6 +51,32 @@ struct EntryEditor: View {
 
                     FlowLayout(spacing: 10) {
                         AccountMenuChip(account: $account)
+                        if !goals.filter({ !$0.archived }).isEmpty {
+                            Menu {
+                                ForEach(goals.filter { !$0.archived }) { g in
+                                    Button { goal = g } label: { Label(g.name, systemImage: goal?.id == g.id ? "checkmark" : g.symbol) }
+                                }
+                                if goal != nil {
+                                    Divider()
+                                    Button("不歸入目標", systemImage: "xmark") { goal = nil }
+                                }
+                            } label: {
+                                if let goal {
+                                    Chip(title: goal.name, symbol: goal.symbol, symbolColor: goal.color, showsChevron: true)
+                                } else {
+                                    DashedChip(title: "目標")
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if kind == .expense {
+                            Button {
+                                withAnimation(.snappy) { excludeFromBudget.toggle() }
+                            } label: {
+                                Chip(title: "不計入預算", symbol: "chart.pie", selected: excludeFromBudget, removable: excludeFromBudget)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         NoteChip(note: $note)
                     }
 
@@ -96,6 +125,7 @@ struct EntryEditor: View {
                         .disabled((Money.parse(amountText) ?? 0) <= 0)
                 }
             }
+            .sensoryFeedback(.selection, trigger: category?.id)
             .onChange(of: kind) { _, newKind in
                 if let c = category, c.isIncome != (newKind == .income) { category = nil }
             }
@@ -163,6 +193,8 @@ struct EntryEditor: View {
             category = entry.category
             account = entry.account
             note = entry.note
+            goal = entry.goal
+            excludeFromBudget = entry.excludeFromBudget
         } else {
             account = Store.account(id: UserDefaults.standard.string(forKey: Prefs.selectedAccountKey)) ?? Store.account(id: Prefs.defaultAccountID) ?? Store.accounts().first
         }
@@ -179,8 +211,12 @@ struct EntryEditor: View {
             entry.category = category
             entry.account = account
             entry.note = note
+            entry.goal = goal
+            entry.excludeFromBudget = excludeFromBudget
         } else {
             let e = Entry(title: finalTitle, amount: amount, kind: kind, date: date, category: category, account: account, note: note)
+            e.goal = goal
+            e.excludeFromBudget = excludeFromBudget
             context.insert(e)
         }
         try? context.save()

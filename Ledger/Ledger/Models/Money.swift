@@ -25,6 +25,8 @@ enum Money {
     /// 截圖風格：只顯示數字（千分位），不加幣別符號
     static func format(_ value: Double, currency: String = Prefs.mainCurrency, hidden: Bool = false, signed: Bool = false) -> String {
         if hidden { return "••••" }
+        var value = value
+        if abs(value) < 0.005 { value = 0 } // 避免出現 -0
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.usesGroupingSeparator = true
@@ -74,6 +76,13 @@ enum DateText {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_Hant_TW")
         f.dateFormat = "M月d日 EEEE"
+        return f.string(from: date)
+    }
+
+    static func monthDay(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_Hant_TW")
+        f.dateFormat = "M月d日"
         return f.string(from: date)
     }
 
