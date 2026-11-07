@@ -181,7 +181,7 @@ enum CashewImporter {
         while sqlite3_step(stmt) == SQLITE_ROW {
             var row: Row = [:]
             for i in 0..<n {
-                let name = String(cString: sqlite3_column_name(stmt, i))
+                let name = String(cString: sqlite3_column_name(stmt, i)!)
                 switch sqlite3_column_type(stmt, i) {
                 case SQLITE_INTEGER: row[name] = sqlite3_column_int64(stmt, i)
                 case SQLITE_FLOAT: row[name] = sqlite3_column_double(stmt, i)

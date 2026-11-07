@@ -10,7 +10,7 @@ struct LogNotificationIntent: AppIntent {
     )
     static let openAppWhenRun = false
 
-    @Parameter(title: "通知內容", description: "通知的完整文字（標題＋內文）", inputOptions: String.IntentInputOptions(multiline: true))
+    @Parameter(title: "通知內容", description: "通知的完整文字（標題＋內文）")
     var text: String
 
     @Parameter(title: "帳戶名稱", description: "留空時依卡號末四碼或預設帳戶自動選擇")
