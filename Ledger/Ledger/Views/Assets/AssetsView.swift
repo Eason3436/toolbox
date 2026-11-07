@@ -8,6 +8,7 @@ struct AssetsView: View {
     @Query(sort: \Account.order) private var accounts: [Account]
     @Query private var entries: [Entry] // 讓帳戶餘額變動時重新計算
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
+    @AppStorage(AssetGroup.namesKey) private var groupNames = "" // 改名後重畫
 
     @State private var filter: AssetGroup?
     @State private var expandedID: String?

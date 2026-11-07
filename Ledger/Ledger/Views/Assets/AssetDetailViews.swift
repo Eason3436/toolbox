@@ -6,21 +6,58 @@ struct AssetGroupDetailView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Asset.order) private var assets: [Asset]
     @Query(sort: \Account.order) private var accounts: [Account]
+    @Query private var entries: [Entry]
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
+    @AppStorage(AssetGroup.namesKey) private var groupNames = ""
     @State private var editing: Asset?
     @State private var editingAccount: Account?
     @State private var adding = false
 
+    // 折線圖
+    @State private var range: PriceRange = .m3
+    @State private var chartLine: String?          // nil = 整個分類合計
+    @State private var series: (ends: [Date], values: [String: [Double]]) = ([], [:])
+    @State private var loading = false
+
+    // 改名
+    @State private var renaming: RenameTarget?
+    @State private var newName = ""
+
+    enum RenameTarget: Identifiable {
+        case group, account(Account), asset(Asset)
+        var id: String {
+            switch self {
+            case .group: "group"
+            case .account(let a): "acc-\(a.id)"
+            case .asset(let a): "asset-\(a.id)"
+            }
+        }
+    }
+
+    private var summary: AssetGroupSummary? {
+        _ = entries.count
+        return AssetMath.groups(assets: assets, accounts: accounts.filter { !$0.archived }).first { $0.group == group }
+    }
+
     var body: some View {
-        let summary = AssetMath.groups(assets: assets, accounts: accounts.filter { !$0.archived }).first { $0.group == group }
+        let summary = summary
         List {
             if let summary {
                 Section {
                     HStack {
                         Text("合計").foregroundStyle(.secondary)
                         Spacer()
-                        Text(Money.format(summary.total, hidden: hidden)).font(.title2.weight(.bold)).monospacedDigit()
+                        MoneyText(value: summary.total, hidden: hidden, font: .title2.weight(.bold))
                     }
+                }
+                Section {
+                    VStack(spacing: 10) {
+                        linePicker(summary)
+                        ValueLineCard(title: chartTitle(summary), points: points(summary), hidden: hidden,
+                                      loading: loading, risingRed: group == .finance, range: $range)
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
                 Section {
                     ForEach(summary.lines) { line in
@@ -30,12 +67,12 @@ struct AssetGroupDetailView: View {
                             HStack(spacing: 14) {
                                 CategoryIcon(symbol: line.symbol, color: group.color, size: 40)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(line.name).font(.body.weight(.semibold))
+                                    Text(line.name).font(.body.weight(.semibold)).lineLimit(2)
                                     Text(line.detail).font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text(Money.format(line.value, hidden: hidden)).monospacedDigit().font(.body.weight(.semibold))
+                                    MoneyText(value: line.value, hidden: hidden, font: .body.weight(.semibold))
                                     if let ch = line.dayChange {
                                         Text((ch >= 0 ? "▲ " : "▼ ") + Money.percent(abs(ch), digits: 2))
                                             .font(.footnote.weight(.semibold))
@@ -45,6 +82,13 @@ struct AssetGroupDetailView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("重新命名", systemImage: "pencil") { startRename(line) }
+                            Button("看折線圖", systemImage: "chart.xyaxis.line") { withAnimation(.snappy) { chartLine = line.id } }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button("改名", systemImage: "pencil") { startRename(line) }.tint(.blue)
+                        }
                         .swipeActions {
                             if let a = line.asset {
                                 Button("刪除", systemImage: "trash", role: .destructive) {
@@ -55,9 +99,9 @@ struct AssetGroupDetailView: View {
                         }
                     }
                 } footer: {
-                    if group == .cash || group == .liability {
-                        Text("帳戶餘額會自動算進資產。")
-                    }
+                    Text(group == .cash || group == .liability
+                         ? "帳戶餘額會自動算進資產。長按或往右滑可以改名。"
+                         : "長按或往右滑可以改名。")
                 }
             } else {
                 EmptyHint(symbol: group.symbol, title: "沒有\(group.label)資產", message: "按右上角的 ＋ 新增")
@@ -66,14 +110,103 @@ struct AssetGroupDetailView: View {
         .navigationTitle(group.label)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button("改名", systemImage: "pencil") {
+                    newName = group.label
+                    renaming = .group
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("新增", systemImage: "plus") { adding = true }
             }
+        }
+        .task(id: "\(range.rawValue)-\(assets.count)-\(entries.count)") { await load() }
+        .alert(renameTitle, isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("名稱", text: $newName)
+            Button("取消", role: .cancel) { renaming = nil }
+            if case .group = renaming {
+                Button("恢復預設") { setGroupName("") }
+            }
+            Button("儲存") { applyRename() }
         }
         .sheet(item: $editing) { AssetDetailView(asset: $0) }
         .sheet(item: $editingAccount) { AccountEditor(account: $0) }
         .sheet(isPresented: $adding) {
             AssetEditor(asset: nil, initialKind: AssetKind.allCases.first { $0.group == group } ?? .other)
         }
+    }
+
+    // MARK: 折線圖
+
+    private func linePicker(_ summary: AssetGroupSummary) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                FilterChip(title: "全部\(group.label)", selected: chartLine == nil) {
+                    withAnimation(.snappy) { chartLine = nil }
+                }
+                ForEach(summary.lines) { line in
+                    FilterChip(title: line.name, selected: chartLine == line.id) {
+                        withAnimation(.snappy) { chartLine = line.id }
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+        .scrollClipDisabled()
+    }
+
+    private func chartTitle(_ summary: AssetGroupSummary) -> String {
+        guard let id = chartLine, let line = summary.lines.first(where: { $0.id == id }) else { return "\(group.label)走勢" }
+        return "\(line.name)走勢"
+    }
+
+    private func points(_ summary: AssetGroupSummary) -> [ValuePoint] {
+        let ids = chartLine.map { [$0] } ?? summary.lines.map(\.id)
+        return History.sum(ends: series.ends, values: ids.compactMap { series.values[$0] })
+    }
+
+    private func load() async {
+        guard let summary else { return }
+        loading = true
+        let r = await History.lineSeries(assets: summary.lines.compactMap(\.asset),
+                                         accounts: summary.lines.compactMap(\.account), range: range)
+        withAnimation(.easeInOut(duration: 0.35)) { series = r }
+        loading = false
+    }
+
+    // MARK: 改名
+
+    private var renameTitle: String {
+        switch renaming {
+        case .group: "分類名稱"
+        case .account: "帳戶名稱"
+        case .asset: "資產名稱"
+        case nil: ""
+        }
+    }
+
+    private func startRename(_ line: AssetLine) {
+        newName = line.name
+        if let a = line.asset { renaming = .asset(a) } else if let acc = line.account { renaming = .account(acc) }
+    }
+
+    private func applyRename() {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        switch renaming {
+        case .group: setGroupName(name == group.defaultLabel ? "" : name)
+        case .account(let a): if !name.isEmpty { a.name = name }
+        case .asset(let a): if !name.isEmpty { a.name = name }
+        case nil: break
+        }
+        try? context.save()
+        renaming = nil
+    }
+
+    private func setGroupName(_ name: String) {
+        var names = AssetGroup.customNames
+        names[group.rawValue] = name
+        AssetGroup.customNames = names
+        groupNames = UserDefaults.standard.string(forKey: AssetGroup.namesKey) ?? ""
+        renaming = nil
     }
 }
 

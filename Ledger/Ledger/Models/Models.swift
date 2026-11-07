@@ -348,7 +348,30 @@ enum AssetGroup: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    static let namesKey = "assetGroupNames"
+
+    /// 使用者自訂的名稱（存在 UserDefaults，格式 "finance=股票;cash=存款"）
+    static var customNames: [String: String] {
+        get {
+            let raw = UserDefaults.standard.string(forKey: namesKey) ?? ""
+            var d: [String: String] = [:]
+            for part in raw.split(separator: ";") {
+                let kv = part.split(separator: "=", maxSplits: 1)
+                if kv.count == 2 { d[String(kv[0])] = String(kv[1]) }
+            }
+            return d
+        }
+        set {
+            UserDefaults.standard.set(newValue.filter { !$0.value.isEmpty }.map { "\($0.key)=\($0.value)" }.joined(separator: ";"), forKey: namesKey)
+        }
+    }
+
     var label: String {
+        if let custom = Self.customNames[rawValue], !custom.isEmpty { return custom }
+        return defaultLabel
+    }
+
+    var defaultLabel: String {
         switch self {
         case .finance: "金融"
         case .cash: "現金"
