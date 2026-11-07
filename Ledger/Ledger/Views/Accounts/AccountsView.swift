@@ -19,6 +19,7 @@ struct AccountsView: View {
     @State private var addingAccount = false
     @State private var editingEntry: Entry?
     @State private var cardFlip = 0
+    @State private var showAllEntries = false
 
     private var accounts: [Account] { allAccounts.filter { !$0.archived } }
 
@@ -101,10 +102,8 @@ struct AccountsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("剩餘").foregroundStyle(.secondary).font(.title3)
                 HStack(spacing: 12) {
-                    Text(Money.format(account.balance, currency: cur, hidden: hidden))
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText(value: account.balance))
+                    MoneyText(value: account.balance, currency: cur, hidden: hidden,
+                              font: .system(size: 44, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                     Pill(text: "已使用 \(Money.percent(min(usedRatio, 9.99)))", tint: usedRatio > 0.9 ? .red : .green)
@@ -113,13 +112,63 @@ struct AccountsView: View {
                 }
                 Divider()
                 VStack(spacing: 10) {
-                    SummaryRow(title: "月初餘額", value: Money.format(startBalance, currency: cur, hidden: hidden))
-                    SummaryRow(title: "資金流入", value: Money.format(inflow, currency: cur, hidden: hidden))
-                    SummaryRow(title: "已用", value: Money.format(spent, currency: cur, hidden: hidden))
+                    SummaryRow(title: "月初餘額", amount: startBalance, currency: cur, hidden: hidden)
+                    SummaryRow(title: "資金流入", amount: inflow, currency: cur, hidden: hidden)
+                    SummaryRow(title: "已用", amount: spent, currency: cur, hidden: hidden)
                 }
             }
             .cardStyle()
             .appearEffect()
+
+            // 本月交易：打開主頁就看得到
+            let sorted = sortByAmount
+                ? monthEntries.sorted { abs($0.signedAmount(for: account)) > abs($1.signedAmount(for: account)) }
+                : monthEntries.sorted { $0.date > $1.date }
+            let shown = showAllEntries ? Array(sorted) : Array(sorted.prefix(8))
+            HStack {
+                Text("本月交易").font(.title3.weight(.bold))
+                Text("\(sorted.count) 筆").font(.subheadline).foregroundStyle(.secondary)
+                    .contentTransition(.numericText(value: Double(sorted.count)))
+                Spacer()
+            }
+            .padding(.top, 4)
+            .padding(.horizontal, 4)
+            .appearEffect(delay: 0.04)
+            if sorted.isEmpty {
+                PlaceholderRow(symbol: "list.bullet.rectangle", text: "本月還沒有交易，按右下角 ＋ 記一筆")
+                    .appearEffect(delay: 0.06)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(shown) { e in
+                        Button { editingEntry = e } label: {
+                            EntryRow(entry: e, perspective: account, hidden: hidden)
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        if e.id != shown.last?.id { Divider().padding(.leading, 58) }
+                    }
+                    if sorted.count > 8 {
+                        Divider()
+                        Button {
+                            withAnimation(.snappy) { showAllEntries.toggle() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(showAllEntries ? "收合" : "顯示全部 \(sorted.count) 筆")
+                                Image(systemName: "chevron.down")
+                                    .rotationEffect(.degrees(showAllEntries ? 180 : 0))
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .cardStyle()
+                .appearEffect(delay: 0.06)
+            }
 
             Button { showTransfer = true } label: {
                 HStack(spacing: 14) {
@@ -155,7 +204,7 @@ struct AccountsView: View {
                         ForEach(activeBudgets) { b in
                             NavigationLink { BudgetDetailView(budget: b) } label: {
                                 BudgetCard(budget: b, entries: allEntries, hidden: hidden)
-                                    .frame(width: activeBudgets.count == 1 ? nil : 300)
+                                    .containerRelativeFrame(.horizontal) { w, _ in activeBudgets.count == 1 ? w : w * 0.82 }
                             }
                             .pressable()
                         }
@@ -197,12 +246,12 @@ struct AccountsView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("別人欠我").font(.subheadline).foregroundStyle(.secondary)
-                            Text(Money.format(lent, hidden: hidden)).font(.title2.weight(.bold)).monospacedDigit().foregroundStyle(.green)
+                            MoneyText(value: lent, hidden: hidden, font: .title2.weight(.bold)).foregroundStyle(.green)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 4) {
                             Text("我欠別人").font(.subheadline).foregroundStyle(.secondary)
-                            Text(Money.format(borrowed, hidden: hidden)).font(.title2.weight(.bold)).monospacedDigit().foregroundStyle(.red)
+                            MoneyText(value: borrowed, hidden: hidden, font: .title2.weight(.bold)).foregroundStyle(.red)
                         }
                     }
                     .foregroundStyle(.primary)
@@ -211,23 +260,6 @@ struct AccountsView: View {
                 .pressable()
             }
 
-            // 本月交易
-            let sorted = sortByAmount
-                ? monthEntries.sorted { abs($0.signedAmount(for: account)) > abs($1.signedAmount(for: account)) }
-                : monthEntries.sorted { $0.date > $1.date }
-            if !sorted.isEmpty {
-                SectionHeader(title: "本月交易", destination: { EmptyView() }, showsLink: false)
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(sorted.prefix(30)) { e in
-                        Button { editingEntry = e } label: {
-                            EntryRow(entry: e, perspective: account, hidden: hidden)
-                        }
-                        .buttonStyle(.plain)
-                        if e.id != sorted.prefix(30).last?.id { Divider().padding(.leading, 58) }
-                    }
-                }
-                .cardStyle()
-            }
         }
         .padding(.horizontal)
         .padding(.bottom, 24)

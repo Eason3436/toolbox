@@ -82,3 +82,17 @@ jobs:
             --title "記帳 Ledger（${GITHUB_SHA::7}）" \
             --notes "原生 SwiftUI 記帳 App（iOS 27、Liquid Glass）。用 SideStore 安裝：在 iPhone 上下載 Ledger.ipa，然後在 SideStore 的 My Apps 按 + 選這個檔案。" \
             --prerelease
+
+      - name: Unit tests (simulator)
+        continue-on-error: true
+        run: |
+          DEST=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          echo "Simulator: $DEST"
+          xcodebuild test \
+            -project Ledger.xcodeproj \
+            -scheme Ledger \
+            -destination "id=$DEST" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
+          grep -E "Test Case|error:|Executed" test.log | tail -60 || true
+          exit ${STATUS:-0}

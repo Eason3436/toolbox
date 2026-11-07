@@ -149,7 +149,7 @@ struct AssetDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text(Money.format(value, currency: cur, hidden: hidden)).font(.title3.weight(.semibold)).monospacedDigit()
+                    MoneyText(value: value, currency: cur, hidden: hidden, font: .title3.weight(.semibold))
                     if let ratio { DarkPill(text: (ratio >= 0 ? "+" : "") + Money.percent(ratio, digits: 1)) }
                 }
             }
@@ -194,9 +194,8 @@ struct AssetDetailView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text("目前價值").foregroundStyle(.secondary).font(.title3)
             HStack(spacing: 12) {
-                Text(Money.format(value, currency: cur, hidden: hidden))
-                    .font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
-                    .contentTransition(.numericText(value: value))
+                MoneyText(value: value, currency: cur, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.5)
                 if cost > 0 {
                     Pill(text: (pl >= 0 ? "+" : "") + Money.percent(pl / cost, digits: 1), tint: pl >= 0 ? .red : .green)
                 }
@@ -333,17 +332,22 @@ struct AssetDetailView: View {
             HStack {
                 Text("更新於\(asset.priceUpdatedAt.map { RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: .now) } ?? "—") · Yahoo Finance")
                     .font(.subheadline).foregroundStyle(.secondary)
-                Spacer()
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
                 Button {
                     Task { await refresh() }
                 } label: {
+                    // 用 SF Symbols 原生旋轉，不會帶動外框位移
                     Image(systemName: "arrow.clockwise")
+                        .font(.body.weight(.semibold))
+                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: loading)
                         .frame(width: 40, height: 40)
                         .background(Color(.tertiarySystemFill), in: .circle)
-                        .rotationEffect(.degrees(loading ? 360 : 0))
-                        .animation(loading ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: loading)
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
+                .disabled(loading)
+                .fixedSize()
             }
         }
         .cardStyle()

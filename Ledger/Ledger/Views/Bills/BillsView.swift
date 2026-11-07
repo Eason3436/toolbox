@@ -118,17 +118,15 @@ struct BillsView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text("待支付").foregroundStyle(.secondary).font(.title3)
             HStack(spacing: 12) {
-                Text(Money.format(total - paid, hidden: hidden))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                MoneyText(value: total - paid, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.5)
                 Pill(text: "已付 \(Money.percent(ratio))", tint: ratio >= 1 ? .green : .orange)
                 Spacer()
                 EyeButton(hidden: $hidden)
             }
             Divider()
-            SummaryRow(title: "總計", value: Money.format(total, hidden: hidden))
-            SummaryRow(title: "已繳", value: Money.format(paid, hidden: hidden))
+            SummaryRow(title: "總計", amount: total, hidden: hidden)
+            SummaryRow(title: "已繳", amount: paid, hidden: hidden)
         }
         .cardStyle()
     }

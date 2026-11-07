@@ -190,9 +190,8 @@ struct StatsView: View {
     private func tile(_ title: String, _ v: Double, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.subheadline).foregroundStyle(.secondary)
-            Text(Money.format(v, hidden: hidden)).font(.headline).monospacedDigit().foregroundStyle(color)
+            MoneyText(value: v, hidden: hidden, font: .headline).foregroundStyle(color)
                 .lineLimit(1).minimumScaleFactor(0.6)
-                .contentTransition(.numericText(value: v))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle(padding: 14)

@@ -28,7 +28,8 @@ struct EntryEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    AmountHeader(amountText: $amountText, title: $title, titlePrompt: kind == .income ? "來源" : "商家")
+                    AmountHeader(amountText: $amountText, title: $title, titlePrompt: kind == .income ? "來源" : "商家",
+                                 currency: account?.currency ?? Prefs.mainCurrency)
 
                     HStack(spacing: 10) {
                         Menu {
