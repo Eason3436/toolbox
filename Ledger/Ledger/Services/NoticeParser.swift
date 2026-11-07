@@ -227,6 +227,7 @@ enum NoticeRecorder {
         let entry = Entry(title: parsed.merchant, amount: amount, kind: parsed.isIncome ? .income : .expense,
                           date: date, category: category, account: account, note: note, source: .shortcut)
         entry.rawText = text.isEmpty ? nil : text
+        entry.payMethod = PayMethod.detect(in: text)
         ctx.insert(entry)
         try ctx.save()
 

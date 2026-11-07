@@ -123,11 +123,13 @@ struct ValueLineCard: View {
 struct CategorySlice: Identifiable, Equatable {
     var id: String
     var name: String
+    var symbol: String = "tag.fill"
     var color: Color
     var total: Double
+    var count: Int = 0
 }
 
-/// 支出／收入的分類比例（甜甜圈圖）
+/// 支出／收入的分類比例（甜甜圈圖）。點一塊會凸出來，下面顯示子分類和交易
 struct CategoryDonutCard: View {
     var entries: [Entry]
     var currency: String = Prefs.mainCurrency
@@ -135,16 +137,24 @@ struct CategoryDonutCard: View {
     var title: String = "分類比例"
     @Binding var income: Bool
 
-    @State private var selectedAngle: Double?
+    @State private var selectedID: String?
+    @State private var showAllTx = false
+    @State private var opened: Entry?
+
+    private var kindEntries: [Entry] {
+        let kind: EntryKind = income ? .income : .expense
+        return entries.filter { $0.kind == kind }
+    }
+
+    private static func key(_ e: Entry) -> String { e.category?.main.id.uuidString ?? "none" }
 
     private var slices: [CategorySlice] {
-        let kind: EntryKind = income ? .income : .expense
-        let list = entries.filter { $0.kind == kind }
-        let grouped = Dictionary(grouping: list) { $0.category?.main.id.uuidString ?? "none" }
+        let grouped = Dictionary(grouping: kindEntries) { Self.key($0) }
         return grouped.map { key, items in
             let c = items.first?.category?.main
-            return CategorySlice(id: key, name: c?.name ?? "未分類", color: c?.color ?? .gray,
-                                 total: items.reduce(0) { $0 + $1.amount })
+            return CategorySlice(id: key, name: c?.name ?? "未分類", symbol: c?.symbol ?? "questionmark",
+                                 color: c?.color ?? .gray,
+                                 total: items.reduce(0) { $0 + $1.amount }, count: items.count)
         }
         .sorted { $0.total > $1.total }
     }
@@ -152,7 +162,7 @@ struct CategoryDonutCard: View {
     var body: some View {
         let data = slices
         let total = data.reduce(0) { $0 + $1.total }
-        let picked = pickedSlice(data)
+        let picked = data.first { $0.id == selectedID }
 
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -171,58 +181,237 @@ struct CategoryDonutCard: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                HStack(spacing: 18) {
-                    Chart(data) { s in
-                        SectorMark(angle: .value("金額", s.total), innerRadius: .ratio(0.62), angularInset: 1.5)
-                            .cornerRadius(4)
-                            .foregroundStyle(s.color)
-                            .opacity(picked == nil || picked?.id == s.id ? 1 : 0.35)
-                    }
-                    .chartAngleSelection(value: $selectedAngle)
-                    .chartBackground { _ in
-                        VStack(spacing: 2) {
-                            Text(picked?.name ?? (income ? "總收入" : "總支出"))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            MoneyText(value: picked?.total ?? total, currency: currency, hidden: hidden,
-                                      font: .subheadline.weight(.bold), rollsOnAppear: false)
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                        }
-                        .padding(.horizontal, 22)
-                    }
-                    .frame(width: 150, height: 150)
-                    .sensoryFeedback(.selection, trigger: picked?.id)
+                donut(data, total: total, picked: picked)
+                    .frame(height: 230)
+                    .frame(maxWidth: .infinity)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(data.prefix(6)) { s in
-                            HStack(spacing: 8) {
-                                Circle().fill(s.color).frame(width: 9, height: 9)
-                                Text(s.name).lineLimit(1)
-                                Spacer(minLength: 4)
-                                Text(Money.percent(total > 0 ? s.total / total : 0))
-                                    .monospacedDigit().foregroundStyle(.secondary)
-                            }
-                            .font(.subheadline)
-                            .opacity(picked == nil || picked?.id == s.id ? 1 : 0.4)
-                        }
-                        if data.count > 6 {
-                            Text("其他 \(data.count - 6) 類").font(.caption).foregroundStyle(.secondary)
-                        }
+                legend(data, total: total, picked: picked)
+
+                if let picked {
+                    CategoryBreakdown(slice: picked, share: total > 0 ? picked.total / total : 0,
+                                      entries: kindEntries.filter { Self.key($0) == picked.id },
+                                      income: income, currency: currency, hidden: hidden,
+                                      showAll: $showAllTx, opened: $opened) {
+                        select(nil)
                     }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .animation(.snappy, value: picked?.id)
             }
         }
         .cardStyle()
         .animation(.snappy, value: income)
+        .animation(.spring(duration: 0.4, bounce: 0.25), value: selectedID)
+        .sensoryFeedback(.selection, trigger: selectedID)
+        .onChange(of: income) { selectedID = nil }
+        .sheet(item: $opened) { EntryDetailView(entry: $0) }
     }
 
-    private func pickedSlice(_ data: [CategorySlice]) -> CategorySlice? {
-        guard let a = selectedAngle else { return nil }
+    private func select(_ id: String?) {
+        showAllTx = false
+        selectedID = (id == selectedID) ? nil : id
+    }
+
+    private func donut(_ data: [CategorySlice], total: Double, picked: CategorySlice?) -> some View {
+        Chart(data) { s in
+            let on = picked?.id == s.id
+            SectorMark(angle: .value("金額", s.total),
+                       innerRadius: .ratio(0.58),
+                       outerRadius: .ratio(on ? 1.0 : 0.88),
+                       angularInset: 1.5)
+                .cornerRadius(5)
+                .foregroundStyle(s.color)
+                .opacity(picked == nil || on ? 1 : 0.4)
+                .annotation(position: .overlay) {
+                    if on && total > 0 {
+                        Text(Money.percent(s.total / total))
+                            .font(.caption.weight(.bold)).monospacedDigit()
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(.white, in: .capsule)
+                            .foregroundStyle(.black)
+                            .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+                    }
+                }
+        }
+        .chartLegend(.hidden)
+        .chartBackground { _ in
+            VStack(spacing: 2) {
+                if let picked {
+                    Image(systemName: picked.symbol).font(.title3).foregroundStyle(picked.color)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                Text(picked?.name ?? (income ? "總收入" : "總支出"))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                MoneyText(value: picked?.total ?? total, currency: currency, hidden: hidden,
+                          font: .headline.weight(.bold), rollsOnAppear: false)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .padding(.horizontal, 60)
+        }
+        .chartOverlay { _ in
+            GeometryReader { geo in
+                Rectangle().fill(.clear).contentShape(.rect)
+                    .onTapGesture { loc in
+                        tap(at: loc, size: geo.size, data: data, total: total)
+                    }
+            }
+        }
+    }
+
+    /// 由點的位置算出點到哪一塊（從 12 點方向順時針）
+    private func tap(at p: CGPoint, size: CGSize, data: [CategorySlice], total: Double) {
+        let c = CGPoint(x: size.width / 2, y: size.height / 2)
+        let dx = p.x - c.x, dy = p.y - c.y
+        let r = min(size.width, size.height) / 2
+        let dist = (dx * dx + dy * dy).squareRoot()
+        guard dist <= r * 1.05, dist >= r * 0.5, total > 0 else { select(nil); return }
+        var angle = atan2(dx, -dy)
+        if angle < 0 { angle += 2 * .pi }
+        let value = angle / (2 * .pi) * total
         var acc = 0.0
         for s in data {
             acc += s.total
-            if a <= acc { return s }
+            if value <= acc { select(s.id); return }
         }
-        return nil
+    }
+
+    private func legend(_ data: [CategorySlice], total: Double, picked: CategorySlice?) -> some View {
+        let shown = picked == nil ? Array(data.prefix(6)) : data
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(shown) { s in
+                Button { select(s.id) } label: {
+                    HStack(spacing: 10) {
+                        Circle().fill(s.color).frame(width: 10, height: 10)
+                        Text(s.name).lineLimit(1)
+                        Text("\(s.count) 筆").font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        Text(Money.format(s.total, currency: currency, hidden: hidden))
+                            .monospacedDigit()
+                        Text(Money.percent(total > 0 ? s.total / total : 0))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                            .frame(minWidth: 40, alignment: .trailing)
+                    }
+                    .font(.subheadline)
+                    .padding(.vertical, 6).padding(.horizontal, 8)
+                    .background(picked?.id == s.id ? s.color.opacity(0.15) : .clear,
+                                in: .rect(cornerRadius: 10, style: .continuous))
+                    .contentShape(.rect)
+                    .opacity(picked == nil || picked?.id == s.id ? 1 : 0.45)
+                }
+                .buttonStyle(.plain)
+            }
+            if picked == nil && data.count > 6 {
+                Text("其他 \(data.count - 6) 類，點圓餅圖可查看").font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+            }
+        }
+    }
+}
+
+/// 選到某個分類時，下面顯示的子分類拆解與交易
+private struct CategoryBreakdown: View {
+    var slice: CategorySlice
+    var share: Double
+    var entries: [Entry]
+    var income: Bool
+    var currency: String
+    var hidden: Bool
+    @Binding var showAll: Bool
+    @Binding var opened: Entry?
+    var onClose: () -> Void
+
+    private struct Sub: Identifiable {
+        var id: String, name: String, symbol: String, color: Color, total: Double, count: Int
+    }
+
+    private var subs: [Sub] {
+        let grouped = Dictionary(grouping: entries) { e -> String in
+            guard let c = e.category, c.isSub else { return "main" }
+            return c.id.uuidString
+        }
+        return grouped.map { key, items in
+            let c = items.first?.category
+            let isMain = key == "main"
+            return Sub(id: key, name: isMain ? "\(slice.name)（未細分）" : (c?.name ?? "未分類"),
+                       symbol: isMain ? slice.symbol : (c?.symbol ?? slice.symbol),
+                       color: isMain ? slice.color : (c?.color ?? slice.color),
+                       total: items.reduce(0) { $0 + $1.amount }, count: items.count)
+        }
+        .sorted { $0.total > $1.total }
+    }
+
+    var body: some View {
+        let list = subs
+        let sorted = entries.sorted { $0.date > $1.date }
+        let shown = showAll ? sorted : Array(sorted.prefix(5))
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            HStack(spacing: 12) {
+                CategoryIcon(symbol: slice.symbol, color: slice.color)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(slice.name).font(.headline)
+                    Text("\(Money.percent(share)) \(income ? "流入" : "流出")・\(slice.count) 筆")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                MoneyText(value: slice.total, currency: currency, hidden: hidden,
+                          font: .headline, rollsOnAppear: false)
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+            }
+
+            if list.count > 1 || list.first?.id != "main" {
+                VStack(spacing: 10) {
+                    ForEach(list) { s in
+                        VStack(spacing: 5) {
+                            HStack(spacing: 8) {
+                                Image(systemName: s.symbol).font(.caption).foregroundStyle(s.color).frame(width: 18)
+                                Text(s.name).font(.subheadline).lineLimit(1)
+                                Text("\(s.count) 筆").font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Text(Money.format(s.total, currency: currency, hidden: hidden))
+                                    .font(.subheadline.weight(.semibold)).monospacedDigit()
+                                Text(Money.percent(slice.total > 0 ? s.total / slice.total : 0))
+                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                    .frame(minWidth: 36, alignment: .trailing)
+                            }
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.secondary.opacity(0.15))
+                                    Capsule().fill(s.color)
+                                        .frame(width: max(4, g.size.width * (slice.total > 0 ? s.total / slice.total : 0)))
+                                }
+                            }
+                            .frame(height: 5)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color(.tertiarySystemGroupedBackground), in: .rect(cornerRadius: 14, style: .continuous))
+            }
+
+            VStack(spacing: 4) {
+                ForEach(shown) { e in
+                    Button { opened = e } label: { EntryRow(entry: e, hidden: hidden) }
+                        .buttonStyle(.plain)
+                    if e.id != shown.last?.id { Divider().padding(.leading, 58) }
+                }
+                if sorted.count > 5 {
+                    Button {
+                        withAnimation(.snappy) { showAll.toggle() }
+                    } label: {
+                        Text(showAll ? "收合" : "顯示全部 \(sorted.count) 筆")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 6)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
     }
 }

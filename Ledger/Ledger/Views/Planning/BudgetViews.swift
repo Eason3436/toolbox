@@ -200,7 +200,7 @@ struct BudgetDetailView: View {
             ToolbarItem(placement: .topBarTrailing) { Button("編輯") { editing = true } }
         }
         .sheet(isPresented: $editing) { BudgetEditor(budget: budget) }
-        .sheet(item: $editingEntry) { EntryEditor(entry: $0) }
+        .sheet(item: $editingEntry) { EntryDetailView(entry: $0) }
     }
 
     private func label(_ iv: DateInterval) -> String {

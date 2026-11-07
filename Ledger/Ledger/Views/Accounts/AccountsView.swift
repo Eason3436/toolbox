@@ -88,7 +88,7 @@ struct AccountsView: View {
             .sheet(item: $editingAccount) { AccountEditor(account: $0) }
             .accountDeleteDialog($deletingAccount)
             .sheet(isPresented: $addingAccount) { AccountEditor(account: nil) }
-            .sheet(item: $editingEntry) { EntryEditor(entry: $0) }
+            .sheet(item: $editingEntry) { EntryDetailView(entry: $0) }
         }
     }
 
@@ -151,6 +151,8 @@ struct AccountsView: View {
         case .categoryPie:
             CategoryDonutCard(entries: monthEntries.filter { $0.account?.id == account.id },
                               currency: account.currency, hidden: hidden, title: "本月分類比例", income: $pieIncome)
+        case .merchants:
+            merchantsSection(account, monthEntries: monthEntries)
         case .transfer:
             Button { showTransfer = true } label: {
                 HStack(spacing: 14) {
@@ -216,6 +218,59 @@ struct AccountsView: View {
                             .foregroundStyle(Color.accentColor)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .cardStyle()
+            }
+        }
+    }
+
+    /// 本月在哪些商家花了多少，點進去看該商家的所有紀錄、地圖
+    @ViewBuilder
+    private func merchantsSection(_ account: Account, monthEntries: [Entry]) -> some View {
+        let spends = monthEntries.filter { $0.kind == .expense && $0.account?.id == account.id }
+        let groups = Dictionary(grouping: spends) { $0.title.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.key.isEmpty }
+            .map { (name: $0.key, total: $0.value.reduce(0) { $0 + $1.amount }, count: $0.value.count,
+                    symbol: $0.value.first?.category?.symbol ?? "bag.fill",
+                    color: $0.value.first?.category?.color ?? Color.accentColor) }
+            .sorted { $0.total > $1.total }
+            .prefix(5)
+        let top = groups.first?.total ?? 1
+        VStack(alignment: .leading, spacing: 10) {
+            Text("本月常去商家").font(.title3.weight(.bold)).padding(.horizontal, 4)
+            if groups.isEmpty {
+                PlaceholderRow(symbol: "storefront", text: "本月還沒有支出")
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(Array(groups), id: \.name) { m in
+                        NavigationLink {
+                            MerchantDetailView(merchant: m.name)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: m.symbol)
+                                    .font(.subheadline).foregroundStyle(.white)
+                                    .frame(width: 34, height: 34)
+                                    .background(m.color.gradient, in: .circle)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack {
+                                        Text(m.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                        Text("\(m.count) 次").font(.caption).foregroundStyle(.secondary)
+                                        Spacer()
+                                        MoneyText(value: m.total, currency: account.currency, hidden: hidden,
+                                                  font: .subheadline.weight(.semibold))
+                                    }
+                                    GeometryReader { g in
+                                        Capsule().fill(m.color.opacity(0.85))
+                                            .frame(width: max(6, g.size.width * m.total / max(top, 1)))
+                                    }
+                                    .frame(height: 5)
+                                }
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                            }
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
