@@ -152,7 +152,7 @@ struct EntryEditor: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: 智慧輸入：一句話／掃發票／貼通知
+    // MARK: 智慧輸入：一句話／掃發票（貼通知只在捷徑用）
 
     private var smartCard: some View {
         VStack(spacing: 12) {
@@ -165,10 +165,6 @@ struct EntryEditor: View {
                     }
                 }
                 smartButton("掃發票", "doc.text.viewfinder", active: false) { showScanner = true }
-                smartButton("貼通知", "doc.on.clipboard.fill", active: false) {
-                    pasteText = UIPasteboard.general.string ?? ""
-                    showPasteSheet = true
-                }
             }
 
             if smartMode == .sentence {
