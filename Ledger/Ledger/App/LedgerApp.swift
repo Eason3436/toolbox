@@ -81,6 +81,8 @@ struct RootView: View {
                     savedSummary = summary
                 })
                 .dynamicTypeSize(...DynamicTypeSize.large)
+                // 底色交給系統的卡片形狀畫（四角圓角），往下拉時底部不會露出直角
+                .presentationBackground(Color(.systemGroupedBackground))
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(38)
                 .presentationBackgroundInteraction(.disabled)

@@ -279,7 +279,9 @@ struct AmountKeypadPanel: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .background {
-            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
+            // 底部也做圓角：卡片往下拉離開螢幕底時，鍵盤底色不會是直角
+            UnevenRoundedRectangle(topLeadingRadius: 28, bottomLeadingRadius: 44,
+                                   bottomTrailingRadius: 44, topTrailingRadius: 28, style: .continuous)
                 .fill(.bar)
                 .shadow(color: .black.opacity(0.08), radius: 12, y: -2)
                 .ignoresSafeArea(edges: .bottom)
