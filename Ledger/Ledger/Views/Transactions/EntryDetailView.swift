@@ -29,8 +29,8 @@ struct EntryDetailView: View {
                 } else {
                     VStack(spacing: 16) {
                         header.appearEffect()
-                        infoCard.appearEffect(delay: 0.05)
-                        receiptSection.appearEffect(delay: 0.1)
+                        receiptSection.appearEffect(delay: 0.05)
+                        infoCard.appearEffect(delay: 0.1)
                         if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty {
                             MerchantMapCard(merchant: receipt?.store.isEmpty == false ? receipt!.store : entry.title,
                                             address: receipt?.address)
@@ -154,6 +154,8 @@ struct EntryDetailView: View {
         VStack(spacing: 12) {
             if let receipt {
                 ReceiptPaperView(receipt: receipt, entryAmount: entry.amount)
+                    .frame(maxWidth: 290)
+                    .frame(maxWidth: .infinity)
                     .contextMenu {
                         Button("移除發票", systemImage: "trash", role: .destructive) { confirmRemoveReceipt = true }
                     }

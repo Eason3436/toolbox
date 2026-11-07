@@ -62,7 +62,7 @@ struct AIReceipt {
 
 @Generable
 struct AIReceiptItem {
-    @Guide(description: "品名")
+    @Guide(description: "商品名稱，照抄發票上的品名，例如「重乳黑烏龍奶茶4C」；折扣就填「促銷折扣」等原文。不可以是「小計」「品名」「數量」")
     var name: String
     @Guide(description: "數量，沒寫就是 1")
     var quantity: Double
@@ -91,14 +91,24 @@ enum ReceiptService {
             request.recognitionLanguages = ["zh-Hant", "en-US"]
             request.usesLanguageCorrection = true
             try VNImageRequestHandler(cgImage: image).perform([request])
-            let lines = (request.results ?? [])
-                .sorted { a, b in
-                    // 由上到下、由左到右
-                    abs(a.boundingBox.midY - b.boundingBox.midY) > 0.01
-                        ? a.boundingBox.midY > b.boundingBox.midY
-                        : a.boundingBox.minX < b.boundingBox.minX
+            // 把同一列（高度相近）的文字接成一行，品名、數量、金額才不會被拆開
+            let obs = (request.results ?? []).compactMap { o -> (box: CGRect, text: String)? in
+                guard let t = o.topCandidates(1).first?.string else { return nil }
+                return (o.boundingBox, t)
+            }
+            .sorted { $0.box.midY > $1.box.midY }
+            var rows: [[(box: CGRect, text: String)]] = []
+            for o in obs {
+                if let last = rows.last?.first,
+                   abs(last.box.midY - o.box.midY) < max(last.box.height, o.box.height) * 0.55 {
+                    rows[rows.count - 1].append(o)
+                } else {
+                    rows.append([o])
                 }
-                .compactMap { $0.topCandidates(1).first?.string }
+            }
+            let lines = rows.map { row in
+                row.sorted { $0.box.minX < $1.box.minX }.map(\.text).joined(separator: "   ")
+            }
             return lines.joined(separator: "\n")
         }.value
     }
@@ -115,6 +125,8 @@ enum ReceiptService {
         你是記帳 App 的發票整理助理。使用者會給你一張台灣電子發票或收據照片辨識出來的文字（可能有錯字或順序亂掉），
         請整理出店名、發票號碼、日期、購買品項與總金額，並依照「買了什麼東西」選出最適合的分類。
         例如奶茶、咖啡是飲料或下午茶；便當是午餐或晚餐；洗衣精是日用品。只能使用文字裡出現的資訊，不要編造品項。
+        每一行通常是「品名   數量   金額」。品名要用商品的名字（例如「重乳黑烏龍奶茶4C」），
+        絕對不要把表頭或統計字樣（品名、數量、單價、小計、合計、總計、應稅、找零、載具）當成品名。
         """)
         let prompt = "分類清單：\(names.joined(separator: "、"))\n\n發票文字：\n\(text.prefix(2500))"
         do {
