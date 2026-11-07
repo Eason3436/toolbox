@@ -19,6 +19,7 @@ struct EntriesView: View {
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
 
     @State private var month = Date.now
+    @AppStorage("entriesAllTime") private var allTime = false
     @State private var filter: EntryFilter = .all
     @State private var search = ""
     @State private var editing: Entry?
@@ -29,6 +30,7 @@ struct EntriesView: View {
     @Query(sort: \Account.order) private var accounts: [Account]
 
     private var monthEntries: [Entry] {
+        if allTime { return allEntries }
         let interval = DateText.monthInterval(month)
         return allEntries.filter { interval.contains($0.date) }
     }
@@ -100,6 +102,24 @@ struct EntriesView: View {
         .animation(.snappy, value: hasFilters)
     }
 
+    /// 全部／單月切換；單月時旁邊可以換月份
+    private var periodBar: some View {
+        HStack(spacing: 10) {
+            Picker("期間", selection: $allTime.animation(.snappy)) {
+                Text("單月").tag(false)
+                Text("全部").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 130)
+            Spacer(minLength: 0)
+            if !allTime {
+                MonthStepper(month: $month)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
     private var days: [(Date, [Entry])] {
         let cal = Calendar.current
         let grouped = Dictionary(grouping: visible) { cal.startOfDay(for: $0.date) }
@@ -115,14 +135,24 @@ struct EntriesView: View {
                         .listRowBackground(Color.clear)
                 }
                 Section {
+                    periodBar
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+                Section {
                     filterChips
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
                 if days.isEmpty {
                     Section {
-                        EmptyHint(symbol: "cart", title: "這個月還沒有記帳", message: "按右下角的 ＋ 記一筆，或在捷徑設定「從通知記帳」自動化")
-                            .listRowBackground(Color.clear)
+                        if hasFilters || !search.isEmpty || filter != .all {
+                            EmptyHint(symbol: "line.3.horizontal.decrease.circle", title: "沒有符合的紀錄", message: "換個篩選條件，或按「清除」")
+                                .listRowBackground(Color.clear)
+                        } else {
+                            EmptyHint(symbol: "cart", title: allTime ? "還沒有記帳" : "這個月還沒有記帳", message: "按右下角的 ＋ 記一筆，或在捷徑設定「從通知記帳」自動化")
+                                .listRowBackground(Color.clear)
+                        }
                     }
                 }
                 ForEach(days, id: \.0) { day, entries in
@@ -164,10 +194,6 @@ struct EntriesView: View {
                         Text("收入").tag(EntryFilter.income)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    MonthStepper(month: $month)
-                }
-                .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) { LedgerModeToggle() }
             }
             .searchable(text: $search, placement: .navigationBarDrawer, prompt: "搜尋商家、備註、分類")
@@ -180,7 +206,7 @@ struct EntriesView: View {
         let income = monthEntries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
 
         return VStack(alignment: .leading, spacing: 14) {
-            Text("本月支出").foregroundStyle(.secondary).font(.title3)
+            Text(allTime ? "全部支出" : "本月支出").foregroundStyle(.secondary).font(.title3)
             HStack(spacing: 12) {
                 MoneyText(value: expense, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
                     .lineLimit(1)
@@ -221,7 +247,7 @@ struct EntryRow: View {
                     if let pm = entry.payMethod {
                         PayBadge(method: pm, compact: true)
                     } else if entry.source == .shortcut {
-                        Image(systemName: "sparkles").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
                     } else if entry.source == .bill {
                         Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
                     }

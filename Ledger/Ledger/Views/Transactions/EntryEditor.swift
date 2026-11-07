@@ -357,7 +357,7 @@ struct EntryEditor: View {
                     TextField("把銀行通知的全文貼在這裡", text: $pasteText, axis: .vertical)
                         .lineLimit(5...12)
                 } footer: {
-                    Text("Apple Intelligence：\(NoticeParser.aiStatusText)。辨識完全在 iPhone 上進行，不會上傳。")
+                    Text("辨識完全在 iPhone 上進行，不會上傳。")
                 }
             }
             .navigationTitle("辨識通知")

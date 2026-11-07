@@ -5,7 +5,7 @@ import Foundation
 struct LogNotificationIntent: AppIntent {
     static let title: LocalizedStringResource = "從通知記帳"
     static let description = IntentDescription(
-        "把銀行、信用卡或電子支付的通知全文交給 Apple Intelligence（在裝置上執行），自動拆出商家、金額與分類，記成一筆帳。",
+        "把銀行、信用卡或電子支付的通知全文交給記帳（在 iPhone 上處理），自動拆出商家、金額與分類，記成一筆帳。",
         categoryName: "記帳"
     )
     static let openAppWhenRun = false
@@ -17,7 +17,7 @@ struct LogNotificationIntent: AppIntent {
     var accountName: String?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("用 Apple Intelligence 把 \(\.$text) 記帳") {
+        Summary("把 \(\.$text) 記帳") {
             \.$accountName
         }
     }

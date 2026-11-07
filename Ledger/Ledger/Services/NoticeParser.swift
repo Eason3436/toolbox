@@ -293,7 +293,7 @@ enum NoticeRecorder {
         try ctx.save()
 
         let sign = parsed.isIncome ? "+" : "-"
-        let summary = "已記帳：\(entry.branch ?? entry.title) \(sign)\(Money.format(amount, currency: accCurrency))（\(category?.name ?? "未分類")・\(account?.name ?? "未指定帳戶")）" + (parsed.usedAI ? "" : "\n（未使用 Apple Intelligence，用規則辨識）")
+        let summary = "已記帳：\(entry.branch ?? entry.title) \(sign)\(Money.format(amount, currency: accCurrency))（\(category?.name ?? "未分類")・\(account?.name ?? "未指定帳戶")）" 
         return Result(entry: entry, duplicate: false, summary: summary)
     }
 }
