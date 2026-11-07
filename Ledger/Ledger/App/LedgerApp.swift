@@ -51,24 +51,21 @@ struct RootView: View {
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?
     @State private var shortcutResult: String?
-    private static let addTabID = "add"
 
     var body: some View {
-        // 系統原生 Liquid Glass 分頁列：按住可以左右拖曳切換；右邊獨立的圓鈕是「新增」
-        TabView(selection: Binding(
-            get: { tab.rawValue },
-            set: { v in
-                if v == Self.addTabID { showAdd = true }
-                else if let t = AppTab(rawValue: v) { tab = t }
-            })) {
+        // 系統原生 Liquid Glass 分頁列（按住可以左右拖曳切換）；新增是浮在分頁列右上方的小按鈕
+        TabView(selection: $tab) {
             ForEach(AppTab.allCases, id: \.self) { t in
-                Tab(t.label, systemImage: t.symbol, value: t.rawValue) {
+                Tab(t.label, systemImage: t.symbol, value: t) {
                     page(t)
                 }
             }
-            Tab("新增", systemImage: "plus", value: Self.addTabID, role: .search) {
-                Color.clear
-            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            AddFloatingButton { showAdd = true }
+                .padding(.trailing, 20)
+                .padding(.bottom, 64)
+                .ignoresSafeArea(.keyboard)
         }
         // 系統字級調很大時，卡片裡的字也不會跟著無限放大
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -192,3 +189,27 @@ struct LockView: View {
     }
 }
 
+
+/// 分頁列右上方的小玻璃 ＋
+struct AddFloatingButton: View {
+    var action: () -> Void
+    @State private var bounce = 0
+
+    var body: some View {
+        Button {
+            bounce += 1
+            action()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .semibold))
+                .symbolEffect(.bounce, value: bounce)
+                .foregroundStyle(.primary)
+                .frame(width: 52, height: 52)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .sensoryFeedback(.impact(weight: .medium), trigger: bounce)
+        .accessibilityLabel("新增")
+    }
+}
