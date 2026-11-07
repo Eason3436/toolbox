@@ -67,12 +67,12 @@ struct BillEditor: View {
                         .autoCategory(from: name, income: isIncome, selected: $category, enabled: bill == nil)
 
                     Button {
-                        withAnimation(.snappy) { autoPay.toggle() }
+                        autoPay.toggle()
                     } label: {
                         Chip(title: isIncome ? "自動入帳" : "自動扣繳", symbol: "bolt.fill", symbolColor: autoPay ? .accentColor : .secondary,
-                             selected: autoPay, tint: .accentColor, removable: autoPay)
+                             selected: autoPay, tint: .accentColor, removable: true)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ChipPressStyle())
 
                     FlowLayout(spacing: 10) {
                         AccountMenuChip(account: $account)

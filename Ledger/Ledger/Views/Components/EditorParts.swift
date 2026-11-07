@@ -71,18 +71,19 @@ struct CategoryChips: View {
         FlowLayout(spacing: 10) {
             ForEach(shown) { c in
                 Button {
-                    withAnimation(.snappy) { selected = (selected?.main.id == c.id) ? nil : c }
+                    withAnimation(Motion.layout) { selected = (selected?.main.id == c.id) ? nil : c }
                 } label: {
                     Chip(title: c.emoji.map { "\($0) \(c.name)" } ?? c.name, symbol: c.emoji == nil ? c.symbol : nil, symbolColor: c.color,
                          selected: selected?.main.id == c.id, tint: c.color)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChipPressStyle())
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
             Button { showAll = true } label: {
                 Chip(title: "全部", symbol: "square.grid.2x2")
                     .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 1.5))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChipPressStyle())
         }
         // 子分類
         if let main = selected?.main, !main.sortedChildren.isEmpty {
@@ -90,7 +91,7 @@ struct CategoryChips: View {
                 HStack(spacing: 8) {
                     ForEach(main.sortedChildren) { sub in
                         Button {
-                            withAnimation(.snappy) { selected = selected?.id == sub.id ? main : sub }
+                            withAnimation(Motion.chip) { selected = selected?.id == sub.id ? main : sub }
                         } label: {
                             Text(sub.emoji.map { "\($0) \(sub.name)" } ?? sub.name)
                                 .font(.subheadline.weight(.medium))
@@ -98,15 +99,22 @@ struct CategoryChips: View {
                                 .padding(.vertical, 8)
                                 .foregroundStyle(selected?.id == sub.id ? Color.white : Color.primary)
                                 .background(selected?.id == sub.id ? main.color : Color(.secondarySystemGroupedBackground), in: .capsule)
+                                .animation(Motion.chip, value: selected?.id)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ChipPressStyle())
                     }
                 }
                 .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .id(main.id)
+            // 子分類列：從分類下方淡入、輕微放大，不再整列從上面滑下來
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)).combined(with: .offset(y: -6)),
+                removal: .opacity))
         }
         }
+        .animation(Motion.layout, value: selected?.main.id)
         .sheet(isPresented: $showAll) {
             CategoryPickerSheet(income: income, selected: $selected)
                 .presentationDetents([.medium, .large])
@@ -201,8 +209,8 @@ struct NoteChip: View {
                     .padding(.vertical, 12)
                     .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
             } else {
-                Button { editing = true } label: { DashedChip(title: "備註") }
-                    .buttonStyle(.plain)
+                Button { withAnimation(Motion.layout) { editing = true } } label: { DashedChip(title: "備註") }
+                    .buttonStyle(ChipPressStyle())
             }
         }
     }

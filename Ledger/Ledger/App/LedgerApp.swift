@@ -69,8 +69,11 @@ struct RootView: View {
                 .ignoresSafeArea(.keyboard)
         }
         .sheet(isPresented: $showAdd) {
+            // 一般的整頁卡片滑上／滑下：往下拉時整張卡片跟著手指走，不會縮成小方塊、內容也不會被裁掉
             addSheet
-                .navigationTransition(.zoom(sourceID: "add", in: addNS))
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(38)
+                .presentationBackgroundInteraction(.disabled)
         }
         .overlay {
             if locked { LockView { locked = false } .transition(.opacity) }

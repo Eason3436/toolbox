@@ -88,31 +88,56 @@ struct Chip: View {
     var selected: Bool = false
     var tint: Color = .accentColor
     var showsChevron: Bool = false
+    /// 開關型膠囊：選取時圖示換成打勾（寬度不變，旁邊的膠囊不會被擠動）
     var removable: Bool = false
+
+    private var shownSymbol: String? {
+        guard let symbol else { return nil }
+        return removable && selected ? "checkmark.circle.fill" : symbol
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            if let symbol {
-                Image(systemName: symbol)
-                    .foregroundStyle(symbolColor ?? (selected ? tint : .primary))
+            if let shownSymbol {
+                Image(systemName: shownSymbol)
+                    .foregroundStyle(removable && selected ? tint : (symbolColor ?? (selected ? tint : .primary)))
+                    .contentTransition(.symbolEffect(.replace.downUp))
+                    .symbolEffect(.bounce, value: selected)
             }
             Text(title).lineLimit(1)
             if showsChevron {
                 Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            if removable {
-                Image(systemName: "xmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
             }
         }
         .font(.body.weight(.medium))
         .foregroundStyle(.primary)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(selected ? tint.opacity(0.18) : Color(.secondarySystemGroupedBackground), in: .capsule)
-        .overlay {
-            if selected { Capsule().strokeBorder(tint, lineWidth: 2) }
+        .background {
+            // 底色和外框畫在同一個形狀上，切換時一起漸變，不會有殘影
+            Capsule()
+                .fill(selected ? tint.opacity(0.18) : Color(.secondarySystemGroupedBackground))
+                .overlay(Capsule().strokeBorder(tint.opacity(selected ? 1 : 0), lineWidth: 2))
         }
         .contentShape(.capsule)
+        .animation(Motion.chip, value: selected)
+    }
+}
+
+enum Motion {
+    /// 膠囊、分類切換用的彈簧
+    static let chip: Animation = .spring(response: 0.38, dampingFraction: 0.78)
+    /// 版面展開／收合
+    static let layout: Animation = .spring(response: 0.45, dampingFraction: 0.86)
+}
+
+/// 膠囊按下去會縮一下再彈回來
+struct ChipPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .brightness(configuration.isPressed ? -0.03 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
