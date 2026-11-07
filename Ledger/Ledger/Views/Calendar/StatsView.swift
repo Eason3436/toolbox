@@ -51,6 +51,12 @@ struct StatsView: View {
 
         ScrollView {
             VStack(spacing: 16) {
+                NavigationLink { SpendingInsightView() } label: {
+                    Label("AI 消費分析（圖表）", systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                }
+                .buttonStyle(.glass)
                 Picker("", selection: $yearly.animation(.snappy)) {
                     Text("月").tag(false)
                     Text("年").tag(true)

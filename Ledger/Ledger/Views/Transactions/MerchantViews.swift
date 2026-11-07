@@ -13,6 +13,16 @@ struct MerchantMapCard: View {
 
     @State private var item: MKMapItem?
     @State private var searched = false
+    @Query private var visits: [Entry]
+
+    init(merchant: String, address: String? = nil, coordinate: CLLocationCoordinate2D? = nil, branch: String? = nil) {
+        self.merchant = merchant
+        self.address = address
+        self.coordinate = coordinate
+        self.branch = branch
+        let m = merchant
+        _visits = Query(filter: #Predicate<Entry> { $0.title == m })
+    }
 
     var body: some View {
         Group {
@@ -20,38 +30,55 @@ struct MerchantMapCard: View {
                 Button {
                     item.openInMaps()
                 } label: {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Map(initialPosition: .region(MKCoordinateRegion(center: item.location.coordinate,
-                                                                        latitudinalMeters: 600, longitudinalMeters: 600)),
+                    VStack(alignment: .leading, spacing: 10) {
+                        // 地區、店名、去過幾次
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let area = area(of: item) {
+                                Text(area).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Text(item.name ?? merchant).font(.headline).lineLimit(1)
+                            Text("\(visits.count)×").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 4)
+
+                        // 立體小地圖
+                        Map(initialPosition: .camera(MapCamera(centerCoordinate: item.location.coordinate,
+                                                               distance: 650, heading: 0, pitch: 55)),
                             interactionModes: []) {
                             Marker(item.name ?? merchant, systemImage: "bag.fill", coordinate: item.location.coordinate)
-                                .tint(Color.accentColor)
+                                .tint(Color.purple)
+                            MapCircle(center: item.location.coordinate, radius: 45)
+                                .foregroundStyle(Color.purple.opacity(0.18))
+                                .stroke(Color.purple.opacity(0.8), lineWidth: 1.5)
                         }
-                        .frame(height: 150)
+                        .mapStyle(.standard(elevation: .realistic, pointsOfInterest: .all))
+                        .frame(height: 130)
+                        .clipShape(.rect(cornerRadius: 16, style: .continuous))
                         .allowsHitTesting(false)
-                        HStack(spacing: 10) {
-                            Image(systemName: "mappin.circle.fill").font(.title2).foregroundStyle(Color.accentColor)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name ?? merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                if let addr = item.address?.shortAddress ?? item.address?.fullAddress {
-                                    Text(addr).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square").foregroundStyle(.secondary)
-                        }
-                        .foregroundStyle(.primary)
-                        .padding(14)
                     }
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(.rect(cornerRadius: 22, style: .continuous))
+                    .padding(12)
+                    .background(.regularMaterial, in: .rect(cornerRadius: 24, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(.white.opacity(0.15)))
+                    .foregroundStyle(.primary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChipPressStyle())
+                .frame(maxWidth: 340)
+                .frame(maxWidth: .infinity)
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
         .animation(.snappy, value: item != nil)
         .task(id: (address ?? "") + merchant + (branch ?? "")) { await search() }
+    }
+
+    /// 例如「彰化市」：從地址裡抓出縣市區
+    private func area(of item: MKMapItem) -> String? {
+        let addr = item.address?.fullAddress ?? item.address?.shortAddress ?? address ?? ""
+        let t = addr.replacingOccurrences(of: "台灣", with: "").replacingOccurrences(of: "臺灣", with: "")
+        if let r = t.range(of: #"[\p{Han}]{1,3}[市區鄉鎮]"#, options: .regularExpression) {
+            return String(t[r])
+        }
+        return item.address?.shortAddress
     }
 
     private func search() async {

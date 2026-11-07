@@ -106,6 +106,7 @@ struct EntriesView: View {
                     MonthStepper(month: $month)
                 }
                 .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) { LedgerModeToggle() }
             }
             .searchable(text: $search, placement: .navigationBarDrawer, prompt: "搜尋商家、備註、分類")
             .sheet(item: $editing) { EntryDetailView(entry: $0) }

@@ -19,13 +19,13 @@ struct LedgerApp: App {
 }
 
 enum AppTab: String, CaseIterable, Hashable {
-    case accounts, entries, calendar, bills, assets
+    case accounts, entries, analysis, bills, assets
 
     var symbol: String {
         switch self {
-        case .accounts: "creditcard.fill"
-        case .entries: "cart.fill"
-        case .calendar: "square.grid.3x3.fill"
+        case .accounts: "house.fill"
+        case .entries: "list.bullet.rectangle.portrait.fill"
+        case .analysis: "chart.pie.fill"
         case .bills: "calendar.badge.clock"
         case .assets: "briefcase.fill"
         }
@@ -33,10 +33,10 @@ enum AppTab: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .accounts: "帳戶"
-        case .entries: "記帳"
-        case .calendar: "日曆"
-        case .bills: "帳單"
+        case .accounts: "首頁"
+        case .entries: "明細"
+        case .analysis: "分析"
+        case .bills: "規劃"
         case .assets: "資產"
         }
     }
@@ -135,8 +135,8 @@ struct RootView: View {
     private func page(_ t: AppTab) -> some View {
         switch t {
         case .accounts: AccountsView()
-        case .entries: EntriesView()
-        case .calendar: CalendarView()
+        case .entries: LedgerListView()
+        case .analysis: NavigationStack { SpendingInsightView() }
         case .bills: BillsView()
         case .assets: AssetsView()
         }

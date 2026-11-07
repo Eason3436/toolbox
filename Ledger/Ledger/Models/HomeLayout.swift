@@ -2,13 +2,14 @@ import Foundation
 
 /// 主頁的功能卡片，可以排序、顯示或隱藏
 enum HomeSection: String, CaseIterable, Identifiable {
-    case quickActions, upcomingBills, transactions, balanceChart, categoryPie, merchants, transfer, accountCard, budgets, goals, loans
+    case quickActions, insights, upcomingBills, transactions, balanceChart, categoryPie, merchants, transfer, accountCard, budgets, goals, loans
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .quickActions: "快速記帳"
+        case .insights: "AI 消費分析"
         case .upcomingBills: "即將到期"
         case .transactions: "本月交易"
         case .balanceChart: "餘額走勢"
@@ -25,6 +26,7 @@ enum HomeSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .quickActions: "bolt.fill"
+        case .insights: "sparkles"
         case .upcomingBills: "calendar.badge.exclamationmark"
         case .transactions: "list.bullet.rectangle"
         case .balanceChart: "chart.xyaxis.line"
@@ -65,7 +67,7 @@ enum HomeLayout {
         var front = 0
         for s in HomeSection.allCases where !items.contains(where: { $0.section == s }) {
             // 快速記帳、即將到期這兩個新卡片放在最上面，其餘補在最後
-            if s == .quickActions || s == .upcomingBills {
+            if s == .quickActions || s == .insights || s == .upcomingBills {
                 items.insert(HomeItem(section: s, visible: true), at: front)
                 front += 1
             } else {
