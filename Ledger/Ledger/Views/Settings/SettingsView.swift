@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("lockEnabled") private var lockEnabled = false
     @State private var importResult: String?
     @State private var importError: String?
+    @State private var deletingAccount: Account?
     @State private var editingAccount: Account?
     @State private var addingAccount = false
 
@@ -49,6 +50,9 @@ struct SettingsView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .swipeActions {
+                            Button("刪除", systemImage: "trash") { deletingAccount = a }.tint(.red)
+                        }
                     }
                     .onMove { from, to in
                         var list = accounts
@@ -168,6 +172,7 @@ struct SettingsView: View {
                 restoring = false
             }
             .sheet(item: $editingAccount) { AccountEditor(account: $0) }
+            .accountDeleteDialog($deletingAccount)
             .sheet(isPresented: $addingAccount) { AccountEditor(account: nil) }
         }
     }

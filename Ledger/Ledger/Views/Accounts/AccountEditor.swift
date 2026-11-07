@@ -65,7 +65,7 @@ struct AccountEditor: View {
                         }
                         Button("刪除帳戶", role: .destructive) { confirmDelete = true }
                     } footer: {
-                        Text("刪除帳戶不會刪除交易，交易會變成「未指定帳戶」。")
+                        Text("刪除時可以選擇保留交易（變成「未指定帳戶」）或一起刪除。")
                     }
                 }
             }
@@ -80,11 +80,17 @@ struct AccountEditor: View {
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .confirmationDialog("確定刪除這個帳戶？", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("刪除", role: .destructive) {
-                    if let account { context.delete(account); try? context.save() }
+            .confirmationDialog("刪除「\(account?.name ?? "")」？", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("只刪帳戶，保留交易", role: .destructive) {
+                    if let account { Store.delete(account, withEntries: false, context: context) }
                     dismiss()
                 }
+                Button("連同 \(account?.entries?.count ?? 0) 筆交易一起刪除", role: .destructive) {
+                    if let account { Store.delete(account, withEntries: true, context: context) }
+                    dismiss()
+                }
+            } message: {
+                Text("刪除後無法復原。")
             }
             .onAppear(perform: load)
         }
@@ -185,5 +191,34 @@ struct TransferEditor: View {
         context.insert(e)
         try? context.save()
         dismiss()
+    }
+}
+
+/// 刪除帳戶的確認對話框（主頁選單、資產頁滑動都用這個）
+struct AccountDeleteDialog: ViewModifier {
+    @Binding var account: Account?
+    @Environment(\.modelContext) private var context
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("刪除「\(account?.name ?? "")」？",
+                                   isPresented: Binding(get: { account != nil }, set: { if !$0 { account = nil } }),
+                                   titleVisibility: .visible) {
+            Button("只刪帳戶，保留交易", role: .destructive) {
+                if let account { withAnimation { Store.delete(account, withEntries: false, context: context) } }
+                account = nil
+            }
+            Button("連同 \(account?.entries?.count ?? 0) 筆交易一起刪除", role: .destructive) {
+                if let account { withAnimation { Store.delete(account, withEntries: true, context: context) } }
+                account = nil
+            }
+        } message: {
+            Text("刪除後無法復原。")
+        }
+    }
+}
+
+extension View {
+    func accountDeleteDialog(_ account: Binding<Account?>) -> some View {
+        modifier(AccountDeleteDialog(account: account))
     }
 }

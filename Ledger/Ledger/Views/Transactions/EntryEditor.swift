@@ -50,6 +50,7 @@ struct EntryEditor: View {
                     }
 
                     CategoryChips(income: kind == .income, selected: $category)
+                        .autoCategory(from: title, income: kind == .income, selected: $category, enabled: entry == nil)
 
                     FlowLayout(spacing: 10) {
                         AccountMenuChip(account: $account)
