@@ -50,6 +50,7 @@ struct RootView: View {
     @State private var showAdd = false
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?
+    @State private var shortcutResult: String?
     @Namespace private var addNS
 
     var body: some View {
@@ -79,6 +80,11 @@ struct RootView: View {
             switch phase {
             case .active:
                 BillService.processAutoPay(context: context)
+                // 裝在 LiveContainer 時，捷徑動作會把記帳請求放進收件匣
+                Task {
+                    let msgs = await LiveContainerInbox.process()
+                    if !msgs.isEmpty { shortcutResult = msgs.joined(separator: "\n") }
+                }
             case .background:
                 if lockEnabled { locked = true }
             default:
@@ -92,6 +98,11 @@ struct RootView: View {
             Button("好") { openResult = nil }
         } message: {
             Text(openResult ?? "")
+        }
+        .alert("捷徑記帳", isPresented: Binding(get: { shortcutResult != nil }, set: { if !$0 { shortcutResult = nil } })) {
+            Button("好") { shortcutResult = nil }
+        } message: {
+            Text(shortcutResult ?? "")
         }
     }
 
