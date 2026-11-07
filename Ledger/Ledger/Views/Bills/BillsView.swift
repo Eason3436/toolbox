@@ -63,7 +63,6 @@ struct BillsView: View {
                     Picker("顯示", selection: $filter) {
                         Text("全部").tag(BillFilter.all)
                         Text("訂閱").tag(BillFilter.subscription)
-                        Text("一般帳單").tag(BillFilter.bill)
                         Text("固定收入").tag(BillFilter.income)
                         Text("未完成").tag(BillFilter.unpaid)
                     }
