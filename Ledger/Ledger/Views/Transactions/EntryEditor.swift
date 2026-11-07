@@ -50,7 +50,7 @@ struct EntryEditor: View {
                     }
 
                     CategoryChips(income: kind == .income, selected: $category)
-                        .autoCategory(from: title, income: kind == .income, selected: $category, enabled: entry == nil)
+                        .autoCategory(from: title, income: kind == .income, selected: $category, enabled: entry == nil, date: date)
 
                     FlowLayout(spacing: 10) {
                         AccountMenuChip(account: $account)
@@ -173,7 +173,7 @@ struct EntryEditor: View {
     private func parse(_ text: String) async {
         parsing = true
         defer { parsing = false }
-        guard let p = await NoticeParser.parse(text, categories: categories.map(\.name)) else {
+        guard let p = await NoticeParser.parse(text, categories: categories.map(\.name), date: date) else {
             parseMessage = "看不出金額，請手動輸入。"
             return
         }

@@ -11,6 +11,36 @@ struct ParsedNotice: Sendable {
     var categoryName: String
     var cardLast4: String
     var usedAI: Bool
+    /// Apple Intelligence 依商家與時間推測買了什麼（例如「早餐」「飲料」）
+    var guess: String = ""
+}
+
+/// 用付款時間幫忙判斷買的是早餐、午餐、點心還是宵夜
+enum MealTime {
+    static func describe(_ date: Date) -> String {
+        let cal = Calendar.current
+        let h = cal.component(.hour, from: date), m = cal.component(.minute, from: date)
+        let wd = ["日", "一", "二", "三", "四", "五", "六"][cal.component(.weekday, from: date) - 1]
+        let slot: String
+        switch h {
+        case 5..<10: slot = "早餐時段"
+        case 10..<11: slot = "早午餐時段"
+        case 11..<14: slot = "午餐時段"
+        case 14..<17: slot = "下午茶／點心時段"
+        case 17..<21: slot = "晚餐時段"
+        case 21..<24, 0..<2: slot = "宵夜／零食時段"
+        default: slot = "深夜"
+        }
+        return String(format: "星期%@ %02d:%02d（%@）", wd, h, m, slot)
+    }
+
+    static let hint = """
+    同一家店在不同時間買的東西常常不同，請參考付款時間判斷買了什麼：
+    便利商店、早餐店、咖啡店、超市、麵包店、手搖飲這類可能買吃喝的商家，
+    早上 5–10 點多半是早餐，11–14 點是午餐，14–17 點是點心、下午茶或飲料，17–21 點是晚餐，21 點以後是宵夜或零食。
+    分類清單裡有對應的分類（例如早餐、午餐、晚餐、點心、零食、飲料）就選它；沒有就選最接近的餐飲類。
+    明顯不是吃喝的商家（加油站、交通、訂閱、百貨服飾）則照商家本身判斷，不要硬套時間。
+    """
 }
 
 @Generable(description: "從銀行或信用卡通知中擷取出的一筆交易")
@@ -32,6 +62,9 @@ struct AINotice {
 
     @Guide(description: "通知中出現的卡號或帳號末四碼，沒有就填空字串")
     var cardLast4: String
+
+    @Guide(description: "依商家和付款時間推測買了什麼，2 到 6 個字，例如「早餐」「午餐便當」「飲料」「零食」「加油」，猜不出來就填空字串")
+    var guess: String
 }
 
 enum NoticeParser {
@@ -54,20 +87,22 @@ enum NoticeParser {
         }
     }
 
-    static func parse(_ text: String, categories: [String]) async -> ParsedNotice? {
-        if aiAvailable, let ai = try? await parseWithAI(text, categories: categories), ai.amount > 0 {
+    static func parse(_ text: String, categories: [String], date: Date = .now) async -> ParsedNotice? {
+        if aiAvailable, let ai = try? await parseWithAI(text, categories: categories, date: date), ai.amount > 0 {
             return ai
         }
         return parseWithRules(text, categories: categories)
     }
 
-    static func parseWithAI(_ text: String, categories: [String]) async throws -> ParsedNotice {
+    static func parseWithAI(_ text: String, categories: [String], date: Date = .now) async throws -> ParsedNotice {
         let session = LanguageModelSession(instructions: """
         你是記帳助理。使用者會給你一則銀行、信用卡或電子支付的通知全文，請擷取出這筆交易的商家、金額、收支、幣別與卡號末四碼，並從分類清單中挑選最適合的分類。
         金額只取本次交易的金額，不要取可用餘額、額度或回饋點數。
+        \(MealTime.hint)
         """)
         let prompt = """
         分類清單：\(categories.joined(separator: "、"))
+        付款時間：\(MealTime.describe(date))
 
         通知全文：
         \(text)
@@ -82,7 +117,8 @@ enum NoticeParser {
             currency: r.currency.count == 3 ? r.currency.uppercased() : "TWD",
             categoryName: r.category,
             cardLast4: String(r.cardLast4.filter(\.isNumber).suffix(4)),
-            usedAI: true
+            usedAI: true,
+            guess: r.guess.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -169,15 +205,16 @@ enum NoticeRecorder {
             parsed = ParsedNotice(merchant: merchantOverride ?? "", amount: abs(amountOverride), isIncome: false,
                                   currency: Prefs.mainCurrency, categoryName: "", cardLast4: "", usedAI: false)
             if parsed.merchant.isEmpty || parsed.categoryName.isEmpty, !text.isEmpty,
-               let p = await NoticeParser.parse(text, categories: cats.map(\.name)) {
+               let p = await NoticeParser.parse(text, categories: cats.map(\.name), date: date) {
                 if parsed.merchant.isEmpty { parsed.merchant = p.merchant }
                 parsed.categoryName = p.categoryName
                 parsed.isIncome = p.isIncome
                 parsed.cardLast4 = p.cardLast4
                 parsed.usedAI = p.usedAI
+                parsed.guess = p.guess
             }
         } else {
-            guard let p = await NoticeParser.parse(text, categories: cats.map(\.name)) else { throw RecordError.cannotParse }
+            guard let p = await NoticeParser.parse(text, categories: cats.map(\.name), date: date) else { throw RecordError.cannotParse }
             parsed = p
             if let m = merchantOverride, !m.isEmpty { parsed.merchant = m }
         }
@@ -200,7 +237,7 @@ enum NoticeRecorder {
         let pool = cats.filter { $0.isIncome == parsed.isIncome }
         let category = pool.first { $0.name == parsed.categoryName }
             ?? pool.first { !parsed.categoryName.isEmpty && (parsed.categoryName.contains($0.name) || $0.name.contains(parsed.categoryName)) }
-            ?? Learned.category(for: parsed.merchant, in: pool)
+            ?? Learned.category(for: parsed.merchant, in: pool, requireConsistent: false)
             ?? pool.first { $0.name == (parsed.isIncome ? "其他收入" : "其他") }
             ?? pool.last
 
@@ -228,6 +265,9 @@ enum NoticeRecorder {
                           date: date, category: category, account: account, note: note, source: .shortcut)
         entry.rawText = text.isEmpty ? nil : text
         entry.payMethod = PayMethod.detect(in: text)
+        if !parsed.guess.isEmpty {
+            entry.note = entry.note.isEmpty ? "推測：\(parsed.guess)" : "推測：\(parsed.guess)\n\(entry.note)"
+        }
         ctx.insert(entry)
         try ctx.save()
 
@@ -237,15 +277,20 @@ enum NoticeRecorder {
     }
 }
 
-/// 用過去的紀錄猜分類：同商家上次用的分類
+/// 用過去的紀錄猜分類：同商家上次用的分類。
+/// requireConsistent：同一家店以前分過不同類（例如全家有時早餐有時零食）就不直接套用，交給 Apple Intelligence 看時間判斷
 @MainActor
 enum Learned {
-    static func category(for merchant: String, in pool: [Category]) -> Category? {
+    static func category(for merchant: String, in pool: [Category], requireConsistent: Bool = true) -> Category? {
         guard !merchant.isEmpty else { return nil }
         let ctx = Store.context
         var d = FetchDescriptor<Entry>(predicate: #Predicate { $0.title == merchant }, sortBy: [SortDescriptor(\.date, order: .reverse)])
         d.fetchLimit = 5
         let hits = (try? ctx.fetch(d)) ?? []
+        if requireConsistent {
+            let ids = Set(hits.compactMap { $0.category?.id })
+            if ids.count > 1 { return nil }
+        }
         for e in hits {
             if let c = e.category, pool.contains(where: { $0.id == c.id }) { return c }
         }

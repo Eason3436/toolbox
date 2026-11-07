@@ -11,7 +11,7 @@ struct AICategoryPick {
 /// 輸入商家名稱後自動挑分類：先看過去記過的同名商家，再問 Apple Intelligence
 @MainActor
 enum CategorySuggester {
-    static func suggest(merchant: String, income: Bool) async -> (Category, fromAI: Bool)? {
+    static func suggest(merchant: String, income: Bool, date: Date = .now) async -> (Category, fromAI: Bool)? {
         let name = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
         guard name.count >= 2 else { return nil }
         let pool = Store.categories(income: income)
@@ -30,8 +30,9 @@ enum CategorySuggester {
         你是記帳 App 的分類助理。使用者輸入一個商家或項目名稱，請從分類清單選出最適合的一個。
         例如：全家、7-11 買的多半是零食或餐飲；Uber、高鐵是交通；Netflix、Spotify、Apple 是訂閱；
         薪水、零用錢、獎金是收入。有子分類（格式「主分類／子分類」）而且符合時，優先選子分類。
+        \(MealTime.hint)
         """)
-        let prompt = "\(income ? "收入" : "支出")分類清單：\(names.joined(separator: "、"))\n\n商家或項目：\(name)"
+        let prompt = "\(income ? "收入" : "支出")分類清單：\(names.joined(separator: "、"))\n\n商家或項目：\(name)\n付款時間：\(MealTime.describe(date))"
         guard let r = try? await session.respond(to: prompt, generating: AICategoryPick.self) else { return nil }
         let picked = r.content.category.trimmingCharacters(in: .whitespaces)
         if let i = names.firstIndex(of: picked) { return (pool[i], true) }
@@ -47,6 +48,7 @@ struct AutoCategoryModifier: ViewModifier {
     var income: Bool
     @Binding var selected: Category?
     var enabled: Bool = true
+    var date: Date = .now
 
     @State private var autoPickedID: UUID?
     @State private var userPicked = false
@@ -78,12 +80,12 @@ struct AutoCategoryModifier: ViewModifier {
             // 不是自動選的變動，就當作使用者自己選的
             if new != autoPickedID { userPicked = new != nil }
         }
-        .task(id: "\(merchant)|\(income)") {
+        .task(id: "\(merchant)|\(income)|\(Calendar.current.component(.hour, from: date))") {
             guard enabled, !userPicked else { return }
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled, !userPicked else { return }
             working = true
-            let result = await CategorySuggester.suggest(merchant: merchant, income: income)
+            let result = await CategorySuggester.suggest(merchant: merchant, income: income, date: date)
             working = false
             guard !Task.isCancelled, !userPicked, let r = result else { return }
             let c = r.0
@@ -95,7 +97,7 @@ struct AutoCategoryModifier: ViewModifier {
 }
 
 extension View {
-    func autoCategory(from merchant: String, income: Bool, selected: Binding<Category?>, enabled: Bool = true) -> some View {
-        modifier(AutoCategoryModifier(merchant: merchant, income: income, selected: selected, enabled: enabled))
+    func autoCategory(from merchant: String, income: Bool, selected: Binding<Category?>, enabled: Bool = true, date: Date = .now) -> some View {
+        modifier(AutoCategoryModifier(merchant: merchant, income: income, selected: selected, enabled: enabled, date: date))
     }
 }
