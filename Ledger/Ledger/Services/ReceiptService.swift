@@ -5,6 +5,23 @@ import FoundationModels
 
 /// 付款方式：從捷徑送來的文字判斷（使用者會在文字裡標註）
 enum PayMethod {
+    static let names = ["LINE Pay", "Apple Pay", "Google Pay", "街口支付", "街口", "全支付", "悠遊付", "Samsung Pay", "台灣Pay", "Pi 錢包"]
+
+    /// 商家名稱裡的付款方式字樣去掉（付款方式不是商家）；整個都是付款方式就回傳空字串
+    static func strip(from merchant: String) -> String {
+        var m = merchant
+        for n in names {
+            m = m.replacingOccurrences(of: n, with: "", options: .caseInsensitive)
+        }
+        m = m.replacingOccurrences(of: "付款", with: "").replacingOccurrences(of: "消費", with: "")
+        return m.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    static func isPayMethod(_ title: String) -> Bool {
+        let t = title.replacingOccurrences(of: " ", with: "").lowercased()
+        return !t.isEmpty && names.contains { $0.replacingOccurrences(of: " ", with: "").lowercased() == t }
+    }
+
     static func detect(in text: String) -> String? {
         let t = text.lowercased().replacingOccurrences(of: " ", with: "")
         if t.contains("linepay") { return "LINE Pay" }
