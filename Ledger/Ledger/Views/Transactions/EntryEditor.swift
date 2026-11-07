@@ -194,12 +194,12 @@ struct EntryEditor: View {
             if parsing {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Apple Intelligence 正在幫你填…")
+                    Text("辨識中…")
                 }
                 .font(.footnote).foregroundStyle(.secondary)
                 .transition(.blurReplace)
             } else if let msg = smartMessage ?? parseMessage {
-                Label(msg, systemImage: "sparkles")
+                Label(msg, systemImage: "checkmark.circle")
                     .font(.footnote).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .transition(.blurReplace)
@@ -395,7 +395,7 @@ struct EntryEditor: View {
         if !p.cardLast4.isEmpty, let acc = Store.accounts().first(where: { $0.cardLast4 == p.cardLast4 }) {
             account = acc
         }
-        parseMessage = (p.usedAI ? "已用 Apple Intelligence 辨識" : "已用規則辨識（Apple Intelligence 無法使用）") + (p.currency != Prefs.mainCurrency ? "，幣別 \(p.currency)" : "")
+        parseMessage = "已自動填好" + (p.currency != Prefs.mainCurrency ? "，幣別 \(p.currency)" : "")
     }
 
     private func load() {

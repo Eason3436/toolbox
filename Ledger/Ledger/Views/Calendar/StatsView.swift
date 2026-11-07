@@ -52,7 +52,7 @@ struct StatsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 NavigationLink { SpendingInsightView() } label: {
-                    Label("AI 消費分析（圖表）", systemImage: "sparkles")
+                    Label("消費分析", systemImage: "chart.bar.fill")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                 }

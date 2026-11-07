@@ -66,7 +66,7 @@ struct RootView: View {
             showAdd = true
         })
         .overlay(alignment: .bottomTrailing) {
-            AddFloatingButton { addStart = .normal; showAdd = true }
+            AddFloatingButton { start in addStart = start; showAdd = true }
                 .padding(.trailing, 20)
                 .padding(.bottom, 64)
                 .ignoresSafeArea(.keyboard)
@@ -199,15 +199,16 @@ struct LockView: View {
 }
 
 
-/// 分頁列右上方的小玻璃 ＋
+/// 分頁列右上方的小玻璃 ＋：點開再選要怎麼記
 struct AddFloatingButton: View {
-    var action: () -> Void
+    var action: (AddStart) -> Void
     @State private var bounce = 0
 
     var body: some View {
-        Button {
-            bounce += 1
-            action()
+        Menu {
+            Button("記一筆", systemImage: "square.and.pencil") { pick(.normal) }
+            Button("一句話記帳", systemImage: "text.bubble") { pick(.sentence) }
+            Button("掃發票", systemImage: "doc.viewfinder") { pick(.scan) }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 22, weight: .semibold))
@@ -216,9 +217,15 @@ struct AddFloatingButton: View {
                 .frame(width: 52, height: 52)
                 .contentShape(.circle)
         }
+        .menuOrder(.fixed)
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
         .sensoryFeedback(.impact(weight: .medium), trigger: bounce)
         .accessibilityLabel("新增")
+    }
+
+    private func pick(_ start: AddStart) {
+        bounce += 1
+        action(start)
     }
 }
