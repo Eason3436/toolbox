@@ -37,6 +37,27 @@ targets:
           - UIInterfaceOrientationPortrait
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false
+        NSFaceIDUsageDescription: 用 Face ID 解鎖記帳。
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.eason3436.ledger.cashew-backup
+            UTTypeDescription: Cashew 備份
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - sql
+                - sqlite
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Cashew 備份
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.eason3436.ledger.cashew-backup
+          - CFBundleTypeName: 記帳備份
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.json
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.ledger

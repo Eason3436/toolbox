@@ -85,15 +85,15 @@ struct EntriesView: View {
             .listSectionSpacing(14)
             .scrollContentBackground(.hidden)
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(filter.label)
-            .toolbarTitleMenu {
-                Picker("顯示", selection: $filter) {
-                    Text("全部").tag(EntryFilter.all)
-                    Text("支出").tag(EntryFilter.expense)
-                    Text("收入").tag(EntryFilter.income)
-                }
-            }
+            .ledgerNavigation(filter.label)
             .toolbar {
+                HeaderTitle(title: filter.label) {
+                    Picker("顯示", selection: $filter) {
+                        Text("全部").tag(EntryFilter.all)
+                        Text("支出").tag(EntryFilter.expense)
+                        Text("收入").tag(EntryFilter.income)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     MonthStepper(month: $month)
                 }
@@ -107,8 +107,8 @@ struct EntriesView: View {
     private var summary: some View {
         let expense = monthEntries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
         let income = monthEntries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
-        let byCategory = Dictionary(grouping: monthEntries.filter { $0.kind == .expense }) { $0.category?.id }
-            .map { (cat: $0.value.first?.category, total: $0.value.reduce(0) { $0 + $1.amount }) }
+        let byCategory = Dictionary(grouping: monthEntries.filter { $0.kind == .expense }) { $0.category?.main.id }
+            .map { (cat: $0.value.first?.category?.main, total: $0.value.reduce(0) { $0 + $1.amount }) }
             .sorted { $0.total > $1.total }
 
         return VStack(alignment: .leading, spacing: 14) {

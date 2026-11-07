@@ -69,7 +69,7 @@ struct AssetGroupDetailView: View {
                 Button("新增", systemImage: "plus") { adding = true }
             }
         }
-        .sheet(item: $editing) { AssetEditor(asset: $0) }
+        .sheet(item: $editing) { AssetDetailView(asset: $0) }
         .sheet(item: $editingAccount) { AccountEditor(account: $0) }
         .sheet(isPresented: $adding) {
             AssetEditor(asset: nil, initialKind: AssetKind.allCases.first { $0.group == group } ?? .other)
@@ -159,6 +159,6 @@ struct PortfolioView: View {
         }
         .navigationTitle("投資組合")
         .refreshable { _ = await QuoteService.refreshAll(context: context) }
-        .sheet(item: $editing) { AssetEditor(asset: $0) }
+        .sheet(item: $editing) { AssetDetailView(asset: $0) }
     }
 }

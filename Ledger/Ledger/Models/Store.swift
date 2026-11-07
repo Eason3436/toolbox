@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 enum Store {
     static let container: ModelContainer = {
-        let schema = Schema([Account.self, Category.self, Entry.self, Bill.self, Asset.self])
+        let schema = Schema([Account.self, Category.self, Entry.self, Bill.self, Asset.self, AssetLot.self, Budget.self, Goal.self, Loan.self])
         let config = ModelConfiguration("Ledger", schema: schema)
         do {
             return try ModelContainer(for: schema, configurations: [config])

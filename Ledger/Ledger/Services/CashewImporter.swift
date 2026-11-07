@@ -10,10 +10,17 @@ enum CashewImporter {
         var categories = 0
         var entries = 0
         var bills = 0
+        var budgets = 0
+        var goals = 0
+        var loans = 0
         var skipped = 0
 
         var text: String {
-            "匯入 \(accounts) 個帳戶、\(categories) 個分類、\(entries) 筆交易、\(bills) 個帳單／訂閱" + (skipped > 0 ? "（略過 \(skipped) 筆已存在的資料）" : "")
+            var parts = ["\(accounts) 個帳戶", "\(categories) 個分類", "\(entries) 筆交易", "\(bills) 個帳單／訂閱"]
+            if budgets > 0 { parts.append("\(budgets) 個預算") }
+            if goals > 0 { parts.append("\(goals) 個目標") }
+            if loans > 0 { parts.append("\(loans) 筆借貸") }
+            return "匯入 " + parts.joined(separator: "、") + (skipped > 0 ? "（略過 \(skipped) 筆已存在的資料）" : "")
         }
     }
 
@@ -110,11 +117,93 @@ enum CashewImporter {
                 report.categories += 1
             }
         }
+        // 子分類
+        if tables.contains("categories") {
+            for c in query(db, "SELECT * FROM categories WHERE main_category_pk IS NOT NULL ORDER BY \"order\"") {
+                let pk = str(c["category_pk"])
+                guard categoryMap[pk] == nil, let main = categoryMap[str(c["main_category_pk"])] else { continue }
+                let name = str(c["name"])
+                if let same = (main.children ?? []).first(where: { $0.name == name }) {
+                    categoryMap[pk] = same
+                    continue
+                }
+                let sub = Category(name: name.isEmpty ? "未命名" : name,
+                                   symbol: symbol(forCashewIcon: str(c["icon_name"]), name: name),
+                                   colorHex: colorHex(c["colour"]) ?? main.colorHex,
+                                   isIncome: main.isIncome, order: Int(double(c["order"])))
+                if let emoji = c["emoji_icon_name"] as? String, !emoji.isEmpty { sub.emoji = emoji }
+                sub.cashewID = pk
+                sub.parent = main
+                ctx.insert(sub)
+                categoryMap[pk] = sub
+                report.categories += 1
+            }
+        }
         func category(_ pk: String, sub: String?) -> Category? {
+            if let sub, let s = categoryMap[sub] { return s }
             if let c = categoryMap[pk] { return c }
             if let main = subToMain[pk] { return categoryMap[main] }
-            if let sub, let main = subToMain[sub] { return categoryMap[main] }
             return nil
+        }
+
+        // 目標與長期借貸（objectives）
+        var goalMap: [String: Goal] = [:]
+        var loanMap: [String: Loan] = [:]
+        let existingGoals = (try? ctx.fetch(FetchDescriptor<Goal>())) ?? []
+        let existingLoans = (try? ctx.fetch(FetchDescriptor<Loan>())) ?? []
+        for g in existingGoals { if let cid = g.cashewID { goalMap[cid] = g } }
+        for l in existingLoans { if let cid = l.cashewID { loanMap[cid] = l } }
+        if tables.contains("objectives") {
+            for o in query(db, "SELECT * FROM objectives") {
+                let pk = str(o["objective_pk"])
+                let type = o["type"] as? Int64 ?? 0
+                if type == 1 {
+                    guard loanMap[pk] == nil else { continue }
+                    let l = Loan(person: str(o["name"]), amount: abs(double(o["amount"])), direction: bool(o["income"]) ? .lent : .borrowed)
+                    l.date = dateValue(o["date_created"]) ?? .now
+                    l.dueDate = dateValue(o["end_date"])
+                    l.closed = bool(o["archived"])
+                    l.cashewID = pk
+                    ctx.insert(l)
+                    loanMap[pk] = l
+                    report.loans += 1
+                } else {
+                    guard goalMap[pk] == nil else { continue }
+                    let g = Goal(name: str(o["name"]), target: abs(double(o["amount"])))
+                    g.colorHex = colorHex(o["colour"]) ?? g.colorHex
+                    g.endDate = dateValue(o["end_date"])
+                    g.archived = bool(o["archived"])
+                    g.cashewID = pk
+                    ctx.insert(g)
+                    goalMap[pk] = g
+                    report.goals += 1
+                }
+            }
+        }
+
+        // 預算
+        if tables.contains("budgets") {
+            let existingBudgetIDs = Set(((try? ctx.fetch(FetchDescriptor<Budget>())) ?? []).compactMap(\.cashewID))
+            for b in query(db, "SELECT * FROM budgets") {
+                let pk = str(b["budget_pk"])
+                if existingBudgetIDs.contains(pk) || bool(b["income"]) { continue }
+                let period: BudgetPeriod = switch b["reoccurrence"] as? Int64 ?? 3 {
+                case 2: .weekly
+                case 4: .yearly
+                default: .monthly
+                }
+                let budget = Budget(name: str(b["name"]), amount: abs(double(b["amount"])), period: period)
+                budget.colorHex = colorHex(b["colour"]) ?? budget.colorHex
+                budget.archived = bool(b["archived"])
+                budget.pinned = bool(b["pinned"])
+                budget.cashewID = pk
+                if let json = b["category_fks"] as? String, let data = json.data(using: .utf8),
+                   let ids = try? JSONSerialization.jsonObject(with: data) as? [String] {
+                    budget.categories = ids.compactMap { categoryMap[$0] }
+                }
+                ctx.insert(budget)
+                report.budgets += 1
+            }
         }
 
         // 交易與訂閱
@@ -156,12 +245,36 @@ enum CashewImporter {
             // 未付款的一次性預定交易略過
             if let type, type == 0, !paid { continue }
 
+            // 長期借貸的還款
+            if let lpk = t["objective_loan_fk"] as? String, let loan = loanMap[lpk] {
+                if !existingEntryIDs.contains(pk) && loan.cashewID != nil {
+                    var recs = loan.records
+                    if !recs.contains(where: { $0.note == pk }) {
+                        recs.append(LoanRecord(date: date, amount: abs(amountRaw), note: pk))
+                        loan.records = recs
+                    }
+                }
+                continue
+            }
+            // 單筆借出／借入
+            if let type, type == 3 || type == 4, loanMap[pk] == nil {
+                let l = Loan(person: name.isEmpty ? "未命名" : name, amount: abs(amountRaw), direction: type == 3 ? .lent : .borrowed)
+                l.date = date
+                l.note = str(t["note"])
+                l.closed = !paid
+                l.cashewID = pk
+                ctx.insert(l)
+                loanMap[pk] = l
+                report.loans += 1
+            }
+
             if existingEntryIDs.contains(pk) { report.skipped += 1; continue }
             let isIncome = amountRaw > 0
             let entry = Entry(title: name.isEmpty ? (cat?.name ?? "交易") : name,
                               amount: abs(amountRaw), kind: isIncome ? .income : .expense,
                               date: date, category: cat, account: acc, note: str(t["note"]), source: .cashew)
             entry.cashewID = pk
+            if let gpk = t["objective_fk"] as? String { entry.goal = goalMap[gpk] }
             ctx.insert(entry)
             report.entries += 1
         }

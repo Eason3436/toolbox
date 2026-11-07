@@ -37,11 +37,11 @@ struct CategoryChips: View {
     @Query(sort: \Category.order) private var categories: [Category]
     @State private var showAll = false
 
-    private var pool: [Category] { categories.filter { $0.isIncome == income } }
+    private var pool: [Category] { categories.filter { $0.isIncome == income && !$0.isSub } }
 
     private var shown: [Category] {
         var list = Array(pool.prefix(6))
-        if let s = selected, !list.contains(where: { $0.id == s.id }) {
+        if let s = selected?.main, !list.contains(where: { $0.id == s.id }) {
             list.insert(s, at: 0)
             if list.count > 6 { list.removeLast() }
         }
@@ -49,13 +49,14 @@ struct CategoryChips: View {
     }
 
     var body: some View {
+        VStack(spacing: 12) {
         FlowLayout(spacing: 10) {
             ForEach(shown) { c in
                 Button {
-                    withAnimation(.snappy) { selected = (selected?.id == c.id) ? nil : c }
+                    withAnimation(.snappy) { selected = (selected?.main.id == c.id) ? nil : c }
                 } label: {
-                    Chip(title: c.name, symbol: c.emoji == nil ? c.symbol : nil, symbolColor: c.color,
-                         selected: selected?.id == c.id, tint: c.color)
+                    Chip(title: c.emoji.map { "\($0) \(c.name)" } ?? c.name, symbol: c.emoji == nil ? c.symbol : nil, symbolColor: c.color,
+                         selected: selected?.main.id == c.id, tint: c.color)
                 }
                 .buttonStyle(.plain)
             }
@@ -64,6 +65,29 @@ struct CategoryChips: View {
                     .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 1.5))
             }
             .buttonStyle(.plain)
+        }
+        // 子分類
+        if let main = selected?.main, !main.sortedChildren.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(main.sortedChildren) { sub in
+                        Button {
+                            withAnimation(.snappy) { selected = selected?.id == sub.id ? main : sub }
+                        } label: {
+                            Text(sub.emoji.map { "\($0) \(sub.name)" } ?? sub.name)
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .foregroundStyle(selected?.id == sub.id ? Color.white : Color.primary)
+                                .background(selected?.id == sub.id ? main.color : Color(.secondarySystemGroupedBackground), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
         }
         .sheet(isPresented: $showAll) {
             CategoryPickerSheet(income: income, selected: $selected)
@@ -83,19 +107,19 @@ struct CategoryPickerSheet: View {
         NavigationStack {
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 18) {
-                    ForEach(categories.filter { $0.isIncome == income }) { c in
+                    ForEach(categories.filter { $0.isIncome == income && !$0.isSub }.flatMap { [$0] + $0.sortedChildren }) { c in
                         Button {
                             selected = c
                             dismiss()
                         } label: {
                             VStack(spacing: 6) {
-                                c.icon(size: 56)
+                                c.icon(size: c.isSub ? 44 : 56)
                                     .overlay {
                                         if selected?.id == c.id {
                                             RoundedRectangle(cornerRadius: 17, style: .continuous).strokeBorder(c.color, lineWidth: 2.5)
                                         }
                                     }
-                                Text(c.name).font(.footnote).lineLimit(1)
+                                Text(c.name).font(.footnote).lineLimit(1).foregroundStyle(c.isSub ? .secondary : .primary)
                             }
                         }
                         .buttonStyle(.plain)

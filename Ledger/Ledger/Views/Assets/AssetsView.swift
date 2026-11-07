@@ -35,14 +35,14 @@ struct AssetsView: View {
             }
             .refreshable { await refresh() }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(filter?.label ?? "資產")
-            .toolbarTitleMenu {
-                Button("全部資產") { filter = nil }
-                ForEach(groups) { g in
-                    Button(g.group.label) { filter = g.group }
-                }
-            }
+            .ledgerNavigation(filter?.label ?? "資產")
             .toolbar {
+                HeaderTitle(title: filter?.label ?? "資產") {
+                    Button("全部資產") { filter = nil }
+                    ForEach(groups) { g in
+                        Button(g.group.label) { filter = g.group }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await refresh() }
@@ -73,7 +73,7 @@ struct AssetsView: View {
                 }
             }
             .sheet(item: $addingKind) { AssetEditor(asset: nil, initialKind: $0) }
-            .sheet(item: $editing) { AssetEditor(asset: $0) }
+            .sheet(item: $editing) { AssetDetailView(asset: $0) }
         }
     }
 

@@ -103,6 +103,15 @@ final class Category {
     @Relationship(deleteRule: .nullify, inverse: \Bill.category)
     var bills: [Bill]? = []
 
+    /// 子分類的主分類
+    var parent: Category?
+
+    @Relationship(deleteRule: .cascade, inverse: \Category.parent)
+    var children: [Category]? = []
+
+    @Relationship(deleteRule: .nullify, inverse: \Budget.categories)
+    var budgets: [Budget]? = []
+
     init(name: String, symbol: String, colorHex: String, isIncome: Bool = false, order: Int = 0) {
         self.id = UUID()
         self.name = name
@@ -113,6 +122,15 @@ final class Category {
     }
 
     var color: Color { Color(hex: colorHex) }
+
+    /// 統計用的主分類
+    var main: Category { parent ?? self }
+
+    var isSub: Bool { parent != nil }
+
+    var sortedChildren: [Category] { (children ?? []).sorted { $0.order < $1.order } }
+
+    var fullName: String { parent.map { "\($0.name) › \(name)" } ?? name }
 }
 
 // MARK: - 交易
@@ -149,10 +167,13 @@ final class Entry {
     var cashewID: String?
     var createdAt: Date = Date.now
 
+    var excludeFromBudget: Bool = false
+
     var category: Category?
     var account: Account?
     var toAccount: Account?
     var bill: Bill?
+    var goal: Goal?
 
     init(title: String, amount: Double, kind: EntryKind, date: Date = .now, category: Category? = nil, account: Account? = nil, note: String = "", source: EntrySource = .manual) {
         self.id = UUID()
@@ -419,6 +440,9 @@ final class Asset {
     var order: Int = 0
     var createdAt: Date = Date.now
 
+    @Relationship(deleteRule: .cascade, inverse: \AssetLot.asset)
+    var lots: [AssetLot]? = []
+
     init(name: String, kind: AssetKind, ticker: String = "", quantity: Double = 0, manualValue: Double = 0, currency: String = "TWD") {
         self.id = UUID()
         self.name = name
@@ -453,6 +477,51 @@ final class Asset {
         guard usesQuote, costPerUnit > 0, lastPrice > 0 else { return nil }
         return (lastPrice - costPerUnit) / costPerUnit
     }
+
+    var sortedLots: [AssetLot] { (lots ?? []).sorted { $0.date > $1.date } }
+
+    /// 依買賣紀錄重算持股數與平均成本（平均成本法）
+    func recomputeFromLots() {
+        let list = (lots ?? []).sorted { $0.date < $1.date }
+        guard !list.isEmpty else { return }
+        var qty = 0.0
+        var cost = 0.0
+        for lot in list {
+            if lot.quantity >= 0 {
+                cost += lot.quantity * lot.price + lot.fee
+                qty += lot.quantity
+            } else {
+                let sell = min(-lot.quantity, qty)
+                let avg = qty > 0 ? cost / qty : 0
+                cost -= avg * sell
+                qty -= sell
+            }
+        }
+        quantity = qty
+        costPerUnit = qty > 0 ? cost / qty : 0
+    }
+}
+
+/// 一筆買入或賣出（數量為負代表賣出）
+@Model
+final class AssetLot {
+    var id: UUID = UUID()
+    var date: Date = Date.now
+    var quantity: Double = 0
+    var price: Double = 0
+    var fee: Double = 0
+    var note: String = ""
+    var asset: Asset?
+
+    init(date: Date, quantity: Double, price: Double, fee: Double = 0) {
+        self.id = UUID()
+        self.date = date
+        self.quantity = quantity
+        self.price = price
+        self.fee = fee
+    }
+
+    var isBuy: Bool { quantity >= 0 }
 }
 
 // MARK: - 顏色
