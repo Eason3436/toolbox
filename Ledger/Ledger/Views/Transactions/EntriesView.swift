@@ -140,6 +140,8 @@ struct EntryRow: View {
     var entry: Entry
     var perspective: Account? = nil
     var hidden: Bool = false
+    /// 不在按日分組的清單裡時，時間前面加上日期
+    var showsDate: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -188,7 +190,7 @@ struct EntryRow: View {
             if let a = entry.account { parts.append(a.name) }
         }
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.dateFormat = showsDate ? "M/d HH:mm" : "HH:mm"
         parts.append(f.string(from: entry.date))
         return parts.joined(separator: " · ")
     }
