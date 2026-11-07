@@ -136,16 +136,16 @@ struct AssetsView: View {
                         }
                     }
                 }
-                .frame(height: 14)
+                .frame(height: 10)
 
                 FlowLayout(spacing: 14, leading: true) {
                     ForEach(positive) { g in
                         HStack(spacing: 6) {
-                            Circle().fill(g.group.color).frame(width: 10, height: 10)
-                            Text("\(g.group.label) \(Money.percent(g.total / positiveTotal))")
-                                .foregroundStyle(.secondary)
+                            Circle().fill(g.group.color).frame(width: 8, height: 8)
+                            Text(g.group.label).foregroundStyle(.secondary)
+                            Text(Money.percent(g.total / positiveTotal)).monospacedDigit()
                         }
-                        .font(.title3)
+                        .font(.footnote)
                     }
                 }
             }
