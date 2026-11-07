@@ -83,6 +83,20 @@ struct AssetDetailView: View {
                         .pressable()
                         .appearEffect(delay: 0.1)
                         priceCard.appearEffect(delay: 0.15)
+                        NavigationLink { PortfolioInsightView(focus: asset) } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "sparkles").font(.title2).foregroundStyle(Color.accentColor)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("AI 分析").font(.headline)
+                                    Text("用 Apple Intelligence 解讀這檔和你的整體配置").font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(.primary)
+                            .cardStyle(padding: 18)
+                        }
+                        .pressable()
                         lotsSection
                     } else {
                         Button { editing = true } label: {
