@@ -52,6 +52,7 @@ struct EntryDetailView: View {
                     .padding(.bottom, 30)
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("交易詳情")
             .navigationBarTitleDisplayMode(.inline)
@@ -168,28 +169,8 @@ struct EntryDetailView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-            PhotosPicker(selection: $photo, matching: .images) {
-                HStack(spacing: 10) {
-                    if analyzing {
-                        ProgressView()
-                        Text("正在讀發票…")
-                    } else {
-                        Image(systemName: receipt == nil ? "doc.text.viewfinder" : "arrow.triangle.2.circlepath")
-                        Text(receipt == nil ? "匯入發票照片" : "重新匯入發票")
-                    }
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .foregroundStyle(Color.accentColor)
-                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20, style: .continuous))
-            }
-            .disabled(analyzing)
             if let receiptError {
                 Label(receiptError, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange)
-            } else if receipt == nil {
-                Text("可以用發票 App 的截圖或紙本發票照片。照片只用來辨識，不會存下來，只保留文字。")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
         }
         .animation(.snappy, value: entry.receiptJSON)

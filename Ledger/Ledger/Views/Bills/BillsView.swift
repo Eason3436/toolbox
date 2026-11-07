@@ -146,7 +146,7 @@ struct BillsView: View {
 
     private var cards: some View {
         let list = occurrences
-        let overlap: CGFloat = 36
+        let overlap: CGFloat = 28
         let defaultExpanded = list.first(where: { !$0.paid })?.id ?? list.last?.id
         let current = list.contains(where: { $0.id == expandedID }) ? expandedID : defaultExpanded
         return VStack(spacing: stackMode ? -overlap : 14) {
@@ -161,7 +161,7 @@ struct BillsView: View {
                              }
                          },
                          onEdit: { editing = occ.bill })
-                    .frame(height: expanded ? 330 + (stackMode && !isLast ? overlap : 0) : 110 + overlap, alignment: .top)
+                    .frame(height: expanded ? 220 + (stackMode && !isLast ? overlap : 0) : 76 + overlap, alignment: .top)
                     .zIndex(Double(i))
                     .onTapGesture {
                         withAnimation(.spring(duration: 0.4, bounce: 0.2)) { expandedID = occ.id }
@@ -185,26 +185,27 @@ struct BillCard: View {
         ZStack(alignment: .top) {
             GradientCardBackground(color: Color(hex: "#2C2C2E"))
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
                     if let c = occ.bill.category {
-                        c.icon(size: 56, onDark: true)
+                        c.icon(size: 40, onDark: true)
                     } else {
-                        CategoryIcon(symbol: "arrow.triangle.2.circlepath", color: .orange, size: 56, onDark: true)
+                        CategoryIcon(symbol: "arrow.triangle.2.circlepath", color: .orange, size: 40, onDark: true)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(occ.bill.name).font(.headline).lineLimit(1)
+                            Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                             if occ.bill.autoPay {
                                 Image(systemName: "bolt.fill").font(.subheadline).foregroundStyle(.white.opacity(0.6))
                             }
                         }
                         Text(occ.bill.category?.name ?? (occ.bill.isSubscription ? "訂閱" : "帳單"))
+                            .font(.caption)
                             .foregroundStyle(.white.opacity(0.65))
                     }
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 6) {
+                    VStack(alignment: .trailing, spacing: 4) {
                         Text((occ.bill.receives ? "+" : "") + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                         DarkPill(text: occ.paid ? occ.bill.doneLabel : occ.bill.pendingLabel)
                     }
@@ -212,30 +213,31 @@ struct BillCard: View {
                 .foregroundStyle(.white)
 
                 if expanded {
-                    Spacer(minLength: 12)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(occ.bill.receives ? "入帳日" : "到期").foregroundStyle(.white.opacity(0.6))
-                        Text(DateText.dueText(occ.due)).font(.title2.weight(.bold))
+                    Spacer(minLength: 10)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(occ.bill.receives ? "入帳日" : "到期").font(.caption).foregroundStyle(.white.opacity(0.6))
+                        Text(DateText.dueText(occ.due)).font(.headline)
                         Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " · \(occ.bill.platform)"))
+                            .font(.caption)
                             .foregroundStyle(.white.opacity(0.6))
                     }
                     .foregroundStyle(.white)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 12)
 
                     HStack(spacing: 12) {
                         Button(action: onToggle) {
                             Text(occ.paid ? "改為\(occ.bill.pendingLabel)" : "標記\(occ.bill.doneLabel)")
-                                .font(.headline)
+                                .font(.subheadline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, 11)
                                 .foregroundStyle(.black)
                                 .background(.white, in: .capsule)
                         }
                         Button(action: onEdit) {
                             Text("編輯")
-                                .font(.headline)
-                                .padding(.vertical, 16)
-                                .padding(.horizontal, 32)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.vertical, 11)
+                                .padding(.horizontal, 24)
                                 .foregroundStyle(.white)
                                 .background(.black.opacity(0.5), in: .capsule)
                         }
@@ -243,10 +245,10 @@ struct BillCard: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(26)
+            .padding(18)
             .padding(.bottom, bottomInset)
         }
-        .clipShape(.rect(cornerRadius: 30, style: .continuous))
+        .clipShape(.rect(cornerRadius: 24, style: .continuous))
     }
 }
 

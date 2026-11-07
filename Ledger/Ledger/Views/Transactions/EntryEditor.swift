@@ -53,7 +53,7 @@ struct EntryEditor: View {
                     AmountHeader(amountText: $amountText, title: $title, titlePrompt: kind == .income ? "來源" : "商家",
                                  currency: account?.currency ?? Prefs.mainCurrency, pad: $pad)
 
-                    if entry == nil { smartCard }
+                    if entry == nil { smartCard } else { receiptButton }
 
                     if let receipt {
                         ReceiptPaperView(receipt: receipt, entryAmount: Money.parse(amountText) ?? 0)
@@ -99,6 +99,7 @@ struct EntryEditor: View {
                 .animation(Motion.layout, value: receipt)
                 .animation(Motion.layout, value: smartMode)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
@@ -325,6 +326,30 @@ struct EntryEditor: View {
         }
     }
 
+    /// 編輯時：匯入／重新匯入發票
+    private var receiptButton: some View {
+        VStack(spacing: 6) {
+            Button { showScanner = true } label: {
+                HStack(spacing: 8) {
+                    if parsing {
+                        ProgressView().controlSize(.small)
+                        Text("正在讀發票…")
+                    } else {
+                        Image(systemName: receipt == nil ? "doc.text.viewfinder" : "arrow.triangle.2.circlepath")
+                        Text(receipt == nil ? "匯入發票" : "重新匯入發票")
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            }
+            .buttonStyle(.glass)
+            .disabled(parsing)
+            if let msg = smartMessage {
+                Text(msg).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+        }
+    }
+
     private func scanReceipt(_ item: PhotosPickerItem) async {
         parsing = true
         smartMessage = nil
@@ -405,6 +430,7 @@ struct EntryEditor: View {
             note = entry.note
             goal = entry.goal
             excludeFromBudget = entry.excludeFromBudget
+            receipt = Receipt.from(entry.receiptJSON)
         } else {
             account = Store.account(id: UserDefaults.standard.string(forKey: Prefs.selectedAccountKey)) ?? Store.account(id: Prefs.defaultAccountID) ?? Store.accounts().first
         }
@@ -423,6 +449,17 @@ struct EntryEditor: View {
             entry.note = note
             entry.goal = goal
             entry.excludeFromBudget = excludeFromBudget
+            let newJSON: String? = receipt?.json
+            if Receipt.from(newJSON) != Receipt.from(entry.receiptJSON) {
+                entry.receiptJSON = newJSON
+                if let r = receipt {
+                    let ctx = context
+                    Task { @MainActor in
+                        await BranchMatcher.apply(receipt: r, to: entry)
+                        try? ctx.save()
+                    }
+                }
+            }
         } else {
             let e = Entry(title: finalTitle, amount: amount, kind: kind, date: date, category: category, account: account, note: note)
             e.goal = goal
