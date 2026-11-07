@@ -52,12 +52,10 @@ enum History {
         return zip(ends, values).map { ValuePoint(date: $0.addingTimeInterval(-1), value: $1) }
     }
 
-    /// 總資產（主幣別）：帳戶餘額 ＋ 有報價的資產（歷史價 × 當天持股）＋ 手動資產（目前價值）
+    /// 每個帳戶／資產每天的價值（主幣別），key 是 AssetLine 的 id（"asset-…" / "account-…"）
     @MainActor
-    static func netWorthHistory(range: PriceRange) async -> [ValuePoint] {
+    static func lineSeries(assets: [Asset], accounts: [Account], range: PriceRange) async -> (ends: [Date], values: [String: [Double]]) {
         let ends = dayEnds(days(range))
-        let assets = (try? Store.context.fetch(FetchDescriptor<Asset>())) ?? []
-        let accounts = Store.accounts()
         let tickers = Array(Set(assets.filter(\.usesQuote).map { $0.ticker.uppercased() }))
 
         var prices: [String: [(Date, Double)]] = [:]
@@ -71,32 +69,47 @@ enum History {
             for await (t, h) in group { prices[t] = h }
         }
 
-        var totals = Array(repeating: 0.0, count: ends.count)
+        var out: [String: [Double]] = [:]
         for acc in accounts {
             let rate = QuoteService.rate(from: acc.currency)
-            let b = accountBalances(acc, dayEnds: ends)
-            for k in ends.indices { totals[k] += b[k] * rate }
+            out["account-\(acc.id)"] = accountBalances(acc, dayEnds: ends).map { $0 * rate }
         }
         for a in assets {
             let rate = QuoteService.rate(from: a.currency)
             guard a.usesQuote else {
-                for k in ends.indices { totals[k] += a.nativeValue * rate }
+                out["asset-\(a.id)"] = Array(repeating: a.nativeValue * rate, count: ends.count)
                 continue
             }
             let series = prices[a.ticker.uppercased()] ?? []
             let lots = a.sortedLots
             var p = 0
             var price = series.first?.1 ?? a.lastPrice
+            var values: [Double] = []
             for k in ends.indices {
                 while p < series.count, series[p].0 < ends[k] {
                     price = series[p].1
                     p += 1
                 }
-                let todayPrice = k == ends.count - 1 && a.lastPrice > 0 ? a.lastPrice : price
+                let dayPrice = k == ends.count - 1 && a.lastPrice > 0 ? a.lastPrice : price
                 let qty = lots.isEmpty ? a.quantity : lots.filter { $0.date < ends[k] }.reduce(0) { $0 + $1.quantity }
-                totals[k] += qty * todayPrice * rate
+                values.append(qty * dayPrice * rate)
             }
+            out["asset-\(a.id)"] = values
         }
-        return zip(ends, totals).map { ValuePoint(date: $0.addingTimeInterval(-1), value: $1) }
+        return (ends, out)
+    }
+
+    static func sum(ends: [Date], values: [[Double]]) -> [ValuePoint] {
+        ends.indices.map { k in
+            ValuePoint(date: ends[k].addingTimeInterval(-1), value: values.reduce(0) { $0 + ($1.indices.contains(k) ? $1[k] : 0) })
+        }
+    }
+
+    /// 總資產（主幣別）：帳戶餘額 ＋ 有報價的資產（歷史價 × 當天持股）＋ 手動資產（目前價值）
+    @MainActor
+    static func netWorthHistory(range: PriceRange) async -> [ValuePoint] {
+        let assets = (try? Store.context.fetch(FetchDescriptor<Asset>())) ?? []
+        let r = await lineSeries(assets: assets, accounts: Store.accounts(), range: range)
+        return sum(ends: r.ends, values: Array(r.values.values))
     }
 }

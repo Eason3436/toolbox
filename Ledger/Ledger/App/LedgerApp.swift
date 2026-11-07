@@ -58,11 +58,14 @@ struct RootView: View {
                 Tab(t.label, systemImage: t.symbol, value: t) {
                     page(t)
                         .toolbarVisibility(.hidden, for: .tabBar)
+                        // 預留下方玻璃分頁列的高度，捲到底時卡片和按鈕不會被蓋住
+                        .safeAreaPadding(.bottom, 78)
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottom) {
             GlassTabBar(tab: $tab, addNS: addNS) { showAdd = true }
+                .ignoresSafeArea(.keyboard)
         }
         .sheet(isPresented: $showAdd) {
             addSheet
