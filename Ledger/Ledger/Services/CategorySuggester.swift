@@ -58,21 +58,25 @@ struct AutoCategoryModifier: ViewModifier {
     func body(content: Content) -> some View {
         VStack(spacing: 8) {
             content
-            if working {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
-                    Text("Apple Intelligence 正在判斷分類…")
+            // 提示列固定佔一行高度，出現／消失時下面的按鈕不會被推來推去
+            ZStack {
+                if working {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Apple Intelligence 正在判斷分類…")
+                    }
+                    .transition(.blurReplace)
+                } else if let lastSource, let c = selected, c.id == autoPickedID {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                        Text("\(lastSource)自動選了「\(c.name)」，點其他分類即可更改")
+                    }
+                    .transition(.blurReplace)
                 }
-                .font(.footnote).foregroundStyle(.secondary)
-                .transition(.opacity)
-            } else if let lastSource, let c = selected, c.id == autoPickedID {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                    Text("\(lastSource)自動選了「\(c.name)」，點其他分類即可更改")
-                }
-                .font(.footnote).foregroundStyle(.secondary)
-                .transition(.opacity)
             }
+            .font(.footnote).foregroundStyle(.secondary)
+            .lineLimit(1).minimumScaleFactor(0.8)
+            .frame(height: enabled ? 18 : 0)
         }
         .animation(.snappy, value: working)
         .animation(.snappy, value: autoPickedID)

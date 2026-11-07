@@ -74,11 +74,11 @@ struct EntryEditor: View {
                         }
                         if kind == .expense {
                             Button {
-                                withAnimation(.snappy) { excludeFromBudget.toggle() }
+                                excludeFromBudget.toggle()
                             } label: {
-                                Chip(title: "不計入預算", symbol: "chart.pie", selected: excludeFromBudget, removable: excludeFromBudget)
+                                Chip(title: "不計入預算", symbol: "chart.pie", selected: excludeFromBudget, tint: .purple, removable: true)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(ChipPressStyle())
                         }
                         NoteChip(note: $note)
                     }
