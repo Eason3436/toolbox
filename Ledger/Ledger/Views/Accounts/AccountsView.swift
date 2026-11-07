@@ -725,10 +725,8 @@ struct InsightLinkCard: View {
     var hidden: Bool
 
     var body: some View {
-        let groups = Dictionary(grouping: entries) { $0.category?.main.id.uuidString ?? "none" }
-            .map { (color: $0.value.first?.category?.main.color ?? .gray, total: $0.value.reduce(0) { $0 + $1.amount }) }
-            .sorted { $0.total > $1.total }
-        let total = groups.reduce(0) { $0 + $1.total }
+        let groups: [Share] = Self.shares(of: entries)
+        let total: Double = groups.reduce(0.0) { $0 + $1.total }
         NavigationLink { SpendingInsightView() } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -741,7 +739,7 @@ struct InsightLinkCard: View {
                     HStack(spacing: 2) {
                         ForEach(Array(groups.prefix(8).enumerated()), id: \.offset) { _, x in
                             Rectangle().fill(x.color)
-                                .frame(width: max(3, (g.size.width - 16) * (total > 0 ? x.total / total : 0)))
+                                .frame(width: Self.width(x.total, of: total, in: g.size.width))
                         }
                     }
                     .clipShape(Capsule())
@@ -754,5 +752,28 @@ struct InsightLinkCard: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+
+    struct Share {
+        var color: Color
+        var total: Double
+    }
+
+    private static func shares(of entries: [Entry]) -> [Share] {
+        var sums: [String: Share] = [:]
+        for e in entries {
+            let key: String = e.category?.main.id.uuidString ?? "none"
+            let color: Color = e.category?.main.color ?? Color.gray
+            var s: Share = sums[key] ?? Share(color: color, total: 0)
+            s.total += e.amount
+            sums[key] = s
+        }
+        return sums.values.sorted { (a: Share, b: Share) -> Bool in a.total > b.total }
+    }
+
+    private static func width(_ part: Double, of total: Double, in full: CGFloat) -> CGFloat {
+        guard total > 0 else { return 3 }
+        let w: CGFloat = (full - 16) * CGFloat(part / total)
+        return max(3, w)
     }
 }
