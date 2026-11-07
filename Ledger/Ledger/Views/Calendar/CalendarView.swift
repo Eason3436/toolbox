@@ -149,6 +149,7 @@ struct CalendarView: View {
                             .contentTransition(.symbolEffect(.replace))
                     }
                     Button { showStats = true } label: { Image(systemName: "chart.pie") }
+                    LedgerModeToggle()
                 }
             }
             .sheet(item: $editing) { EntryDetailView(entry: $0) }

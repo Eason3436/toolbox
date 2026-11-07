@@ -184,6 +184,7 @@ struct AccountsView: View {
     private func section(_ s: HomeSection, account: Account, monthEntries: [Entry]) -> some View {
         switch s {
         case .quickActions: QuickAddRow()
+        case .insights: InsightLinkCard(entries: monthEntries.filter { $0.kind == .expense }, hidden: hidden)
         case .upcomingBills: UpcomingBillsCard(hidden: hidden)
         case .transactions: transactions(account, monthEntries: monthEntries)
         case .balanceChart:
@@ -715,5 +716,43 @@ struct UpcomingBillsCard: View {
         case 1: return "明天"
         default: return "\(days) 天後"
         }
+    }
+}
+
+/// 首頁的「AI 消費分析」入口：小小的分類色條預覽
+struct InsightLinkCard: View {
+    var entries: [Entry]
+    var hidden: Bool
+
+    var body: some View {
+        let groups = Dictionary(grouping: entries) { $0.category?.main.id.uuidString ?? "none" }
+            .map { (color: $0.value.first?.category?.main.color ?? .gray, total: $0.value.reduce(0) { $0 + $1.amount }) }
+            .sorted { $0.total > $1.total }
+        let total = groups.reduce(0) { $0 + $1.total }
+        NavigationLink { SpendingInsightView() } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("AI 消費分析", systemImage: "sparkles").font(.headline)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                }
+                // 本月各分類佔比的色條
+                GeometryReader { g in
+                    HStack(spacing: 2) {
+                        ForEach(Array(groups.prefix(8).enumerated()), id: \.offset) { _, x in
+                            Rectangle().fill(x.color)
+                                .frame(width: max(3, (g.size.width - 16) * (total > 0 ? x.total / total : 0)))
+                        }
+                    }
+                    .clipShape(Capsule())
+                }
+                .frame(height: 10)
+                Text(total > 0 ? "看本月和上月的分類比較、每日花費、常去商家" : "記幾筆之後就能分析")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .cardStyle()
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 }

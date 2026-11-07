@@ -45,6 +45,7 @@ struct BillsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
+                    PlanningLinks()
                     summary
                     if occurrences.isEmpty {
                         EmptyHint(symbol: "calendar.badge.clock", title: "這個月沒有帳單", message: "按右下角的 ＋ 新增訂閱或固定帳單")
@@ -309,5 +310,31 @@ struct BillCalendarSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } } }
         }
+    }
+}
+
+
+/// 規劃頁上方：預算、儲蓄目標、借貸
+struct PlanningLinks: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            link("預算", "gauge.with.dots.needle.33percent", .orange) { BudgetsView() }
+            link("儲蓄目標", "target", .pink) { GoalsView() }
+            link("借貸", "person.2.fill", .blue) { LoansView() }
+        }
+    }
+
+    private func link<D: View>(_ title: String, _ symbol: String, _ color: Color, @ViewBuilder dest: @escaping () -> D) -> some View {
+        NavigationLink { dest() } label: {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(color)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(ChipPressStyle())
     }
 }
