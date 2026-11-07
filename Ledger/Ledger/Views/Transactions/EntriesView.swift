@@ -23,6 +23,10 @@ struct EntriesView: View {
     @State private var search = ""
     @State private var editing: Entry?
     @State private var pieIncome = false
+    @State private var accountFilter: UUID?
+    @State private var payFilter: String?
+    @State private var receiptOnly = false
+    @Query(sort: \Account.order) private var accounts: [Account]
 
     private var monthEntries: [Entry] {
         let interval = DateText.monthInterval(month)
@@ -37,7 +41,63 @@ struct EntriesView: View {
             case .income: e.kind == .income
             }
         }
-        .filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.note.localizedCaseInsensitiveContains(search) || ($0.category?.name.contains(search) ?? false) }
+        .filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.note.localizedCaseInsensitiveContains(search) || ($0.category?.name.contains(search) ?? false) || ($0.branch?.contains(search) ?? false) }
+        .filter { e in accountFilter == nil || e.account?.id == accountFilter || e.toAccount?.id == accountFilter }
+        .filter { e in payFilter == nil || e.payMethod == payFilter }
+        .filter { e in !receiptOnly || e.receiptJSON != nil }
+    }
+
+    /// 往右滑複製：同商家、金額、分類、帳戶，時間改成現在
+    private func duplicate(_ e: Entry) {
+        let copy = Entry(title: e.title, amount: e.amount, kind: e.kind, date: .now, category: e.category,
+                         account: e.account, note: e.note)
+        copy.toAccount = e.toAccount
+        copy.payMethod = e.payMethod
+        context.insert(copy)
+        try? context.save()
+    }
+
+    private var hasFilters: Bool { accountFilter != nil || payFilter != nil || receiptOnly }
+
+    /// 篩選膠囊：帳戶、付款方式、有發票
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button("全部帳戶") { accountFilter = nil }
+                    ForEach(accounts.filter { !$0.archived }) { a in
+                        Button { accountFilter = a.id } label: {
+                            Label(a.name, systemImage: accountFilter == a.id ? "checkmark" : a.kind.symbol)
+                        }
+                    }
+                } label: {
+                    Chip(title: accounts.first { $0.id == accountFilter }?.name ?? "帳戶", symbol: "creditcard",
+                         selected: accountFilter != nil, showsChevron: true)
+                }
+                ForEach(["Apple Pay", "LINE Pay"], id: \.self) { m in
+                    Button {
+                        payFilter = payFilter == m ? nil : m
+                    } label: {
+                        Chip(title: m, symbol: m == "Apple Pay" ? "apple.logo" : "l.circle.fill",
+                             selected: payFilter == m, tint: m == "Apple Pay" ? .primary : Color(hex: "#06C755"))
+                    }
+                    .buttonStyle(ChipPressStyle())
+                }
+                Button { receiptOnly.toggle() } label: {
+                    Chip(title: "有發票", symbol: "doc.text", selected: receiptOnly)
+                }
+                .buttonStyle(ChipPressStyle())
+                if hasFilters {
+                    Button("清除") {
+                        withAnimation(.snappy) { accountFilter = nil; payFilter = nil; receiptOnly = false }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 2).padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
+        .animation(.snappy, value: hasFilters)
     }
 
     private var days: [(Date, [Entry])] {
@@ -54,12 +114,10 @@ struct EntriesView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
-                if !monthEntries.isEmpty, search.isEmpty {
-                    Section {
-                        CategoryDonutCard(entries: monthEntries, hidden: hidden, income: $pieIncome)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
+                Section {
+                    filterChips
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                 }
                 if days.isEmpty {
                     Section {
@@ -77,6 +135,10 @@ struct EntriesView: View {
                                         context.delete(e)
                                         try? context.save()
                                     }
+                                }
+                                .swipeActions(edge: .leading) {
+                                    Button("再記一筆", systemImage: "plus.square.on.square") { duplicate(e) }
+                                        .tint(.blue)
                                 }
                         }
                     } header: {

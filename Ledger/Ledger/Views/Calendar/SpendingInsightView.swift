@@ -35,6 +35,7 @@ struct SpendingInsightView: View {
     @State private var loadingAI = false
     @State private var aiError: String?
     @State private var pickedDay: Int?
+    @State private var pieIncome = false
 
     private let cal = Calendar.current
 
@@ -61,6 +62,8 @@ struct SpendingInsightView: View {
                 monthSwitcher(month)
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
                 aiCard(cats: cats, merchants: merchants, total: total, prevTotal: prevTotal)
+                CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
+                                  title: "分類比例（可點選）", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
                 if !days.isEmpty { dailyCard(days, avg: avg) }
                 if !weekdays.isEmpty { weekdayCard(weekdays) }
