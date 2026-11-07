@@ -1,0 +1,84 @@
+name: Build Ledger IPA
+
+# 原生 SwiftUI 記帳 App（Liquid Glass、捷徑 AI 記帳、股票報價、Cashew 匯入）
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "Ledger/**"
+      - ".github/workflows/ledger.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ledger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Xcode 27（iOS 27 SDK）
+    runs-on: xcode-27
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Ledger
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          STATUS=0
+          xcodebuild \
+            -project Ledger.xcodeproj \
+            -scheme Ledger \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || STATUS=$?
+          grep -E "error:" build.log | sort -u | head -150 || true
+          tail -3 build.log
+          exit $STATUS
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Ledger.app Payload/
+          zip -qry Ledger.ipa Payload
+          ls -lh Ledger.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ledger-build-log
+          path: Ledger/build.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ledger-ipa
+          path: Ledger/Ledger.ipa
+
+      - name: Publish to "ledger-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ledger-latest --yes --cleanup-tag || true
+          gh release create ledger-latest Ledger.ipa \
+            --target "$GITHUB_SHA" \
+            --title "記帳 Ledger（${GITHUB_SHA::7}）" \
+            --notes "原生 SwiftUI 記帳 App（iOS 27、Liquid Glass）。用 SideStore 安裝：在 iPhone 上下載 Ledger.ipa，然後在 SideStore 的 My Apps 按 + 選這個檔案。" \
+            --prerelease

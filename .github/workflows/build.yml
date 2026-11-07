@@ -2,6 +2,9 @@ name: Build IPA
 
 on:
   push:
+    paths-ignore:
+      - "Ledger/**"
+      - ".github/workflows/ledger.yml"
   workflow_dispatch:
 
 permissions:

@@ -4,3 +4,5 @@ Payload/
 *.ipa
 .DS_Store
 xcuserdata/
+Ledger/Ledger.xcodeproj/
+Ledger/Ledger/Info.plist

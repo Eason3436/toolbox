@@ -1,0 +1,303 @@
+import SwiftUI
+import SwiftData
+
+enum BillFilter: String, CaseIterable, Identifiable {
+    case all, subscription, bill, unpaid
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: "帳單"
+        case .subscription: "訂閱"
+        case .bill: "一般帳單"
+        case .unpaid: "未繳"
+        }
+    }
+}
+
+struct BillsView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Bill.createdAt) private var bills: [Bill]
+    @AppStorage(Prefs.hideAmountsKey) private var hidden = false
+    @AppStorage("billStackMode") private var stackMode = true
+
+    @State private var month = Date.now
+    @State private var filter: BillFilter = .all
+    @State private var sortByAmount = false
+    @State private var expandedID: String?
+    @State private var editing: Bill?
+    @State private var showCalendar = false
+
+    private var occurrences: [BillOccurrence] {
+        var list = BillService.occurrences(bills, in: DateText.monthInterval(month))
+        switch filter {
+        case .all: break
+        case .subscription: list = list.filter { $0.bill.isSubscription }
+        case .bill: list = list.filter { !$0.bill.isSubscription }
+        case .unpaid: list = list.filter { !$0.paid }
+        }
+        if sortByAmount { list.sort { $0.bill.amount > $1.bill.amount } }
+        return list
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    summary
+                    if occurrences.isEmpty {
+                        EmptyHint(symbol: "calendar.badge.clock", title: "這個月沒有帳單", message: "按右下角的 ＋ 新增訂閱或固定帳單")
+                    } else {
+                        cards
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(filter.label)
+            .toolbarTitleMenu {
+                Picker("顯示", selection: $filter) {
+                    Text("全部").tag(BillFilter.all)
+                    Text("訂閱").tag(BillFilter.subscription)
+                    Text("一般帳單").tag(BillFilter.bill)
+                    Text("未繳").tag(BillFilter.unpaid)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("本月") { month = .now }
+                        ForEach(-6..<7) { i in
+                            if i != 0 {
+                                let d = DateText.addMonths(.now, i)
+                                Button(DateText.monthTitle(d)) { month = d }
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: 0) {
+                            Text(DateText.monthTitle(month)).font(.headline).monospacedDigit()
+                            HStack(spacing: 2) {
+                                Text("每月")
+                                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .fixedSize()
+                        .padding(.horizontal, 6)
+                    }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("排序", selection: $sortByAmount) {
+                            Label("依到期日", systemImage: "calendar").tag(false)
+                            Label("依金額", systemImage: "dollarsign").tag(true)
+                        }
+                    } label: { Image(systemName: "arrow.up.arrow.down") }
+                    Button {
+                        withAnimation(.snappy) { stackMode.toggle() }
+                    } label: {
+                        Image(systemName: stackMode ? "square.stack" : "list.bullet")
+                    }
+                    Button { showCalendar = true } label: { Image(systemName: "calendar") }
+                }
+            }
+            .sheet(item: $editing) { BillEditor(bill: $0) }
+            .sheet(isPresented: $showCalendar) {
+                BillCalendarSheet(bills: bills, month: $month, hidden: hidden)
+                    .presentationDetents([.medium, .large])
+            }
+        }
+    }
+
+    private var summary: some View {
+        let all = BillService.occurrences(bills, in: DateText.monthInterval(month))
+        let total = all.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let paid = all.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let ratio = total > 0 ? paid / total : 1
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("待支付").foregroundStyle(.secondary).font(.title3)
+            HStack(spacing: 12) {
+                Text(Money.format(total - paid, hidden: hidden))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Pill(text: "已付 \(Money.percent(ratio))", tint: ratio >= 1 ? .green : .orange)
+                Spacer()
+                EyeButton(hidden: $hidden)
+            }
+            Divider()
+            SummaryRow(title: "總計", value: Money.format(total, hidden: hidden))
+            SummaryRow(title: "已繳", value: Money.format(paid, hidden: hidden))
+        }
+        .cardStyle()
+    }
+
+    private var cards: some View {
+        let list = occurrences
+        let overlap: CGFloat = 36
+        let defaultExpanded = list.first(where: { !$0.paid })?.id ?? list.last?.id
+        let current = list.contains(where: { $0.id == expandedID }) ? expandedID : defaultExpanded
+        return VStack(spacing: stackMode ? -overlap : 14) {
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, occ in
+                let expanded = !stackMode || occ.id == current
+                let isLast = i == list.count - 1
+                BillCard(occ: occ, expanded: expanded, hidden: hidden,
+                         bottomInset: stackMode && !isLast ? overlap : 0,
+                         onToggle: {
+                             withAnimation(.snappy) {
+                                 if occ.paid { BillService.markUnpaid(occ, context: context) } else { BillService.markPaid(occ, context: context) }
+                             }
+                         },
+                         onEdit: { editing = occ.bill })
+                    .frame(height: expanded ? 330 + (stackMode && !isLast ? overlap : 0) : 110 + overlap, alignment: .top)
+                    .zIndex(Double(i))
+                    .onTapGesture {
+                        withAnimation(.spring(duration: 0.4, bounce: 0.2)) { expandedID = occ.id }
+                    }
+            }
+        }
+    }
+}
+
+struct BillCard: View {
+    var occ: BillOccurrence
+    var expanded: Bool
+    var hidden: Bool
+    var bottomInset: CGFloat = 0
+    var onToggle: () -> Void
+    var onEdit: () -> Void
+
+    private var tint: Color { occ.bill.category?.color ?? .orange }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            GradientCardBackground(color: Color(hex: "#2C2C2E"))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 14) {
+                    if let c = occ.bill.category {
+                        c.icon(size: 56, onDark: true)
+                    } else {
+                        CategoryIcon(symbol: "arrow.triangle.2.circlepath", color: .orange, size: 56, onDark: true)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(occ.bill.name).font(.title3.weight(.semibold)).lineLimit(1)
+                            if occ.bill.autoPay {
+                                Image(systemName: "bolt.fill").font(.subheadline).foregroundStyle(.white.opacity(0.6))
+                            }
+                        }
+                        Text(occ.bill.category?.name ?? (occ.bill.isSubscription ? "訂閱" : "帳單"))
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
+                            .font(.title3.weight(.semibold))
+                            .monospacedDigit()
+                        DarkPill(text: occ.paid ? "已繳" : "未繳")
+                    }
+                }
+                .foregroundStyle(.white)
+
+                if expanded {
+                    Spacer(minLength: 12)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("到期").foregroundStyle(.white.opacity(0.6))
+                        Text(DateText.dueText(occ.due)).font(.title2.weight(.bold))
+                        Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " · \(occ.bill.platform)"))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.bottom, 16)
+
+                    HStack(spacing: 12) {
+                        Button(action: onToggle) {
+                            Text(occ.paid ? "改為未繳" : "標記已繳")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .foregroundStyle(.black)
+                                .background(.white, in: .capsule)
+                        }
+                        Button(action: onEdit) {
+                            Text("編輯")
+                                .font(.headline)
+                                .padding(.vertical, 16)
+                                .padding(.horizontal, 32)
+                                .foregroundStyle(.white)
+                                .background(.black.opacity(0.5), in: .capsule)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(26)
+            .padding(.bottom, bottomInset)
+        }
+        .clipShape(.rect(cornerRadius: 30, style: .continuous))
+    }
+}
+
+struct BillCalendarSheet: View {
+    var bills: [Bill]
+    @Binding var month: Date
+    var hidden: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let cal = Calendar.current
+        let interval = DateText.monthInterval(month)
+        let occs = BillService.occurrences(bills, in: interval)
+        let firstWeekday = cal.component(.weekday, from: interval.start) - 1
+        let days = cal.range(of: .day, in: .month, for: month)?.count ?? 30
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    MonthStepper(month: $month)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
+                        ForEach(["日", "一", "二", "三", "四", "五", "六"], id: \.self) {
+                            Text($0).font(.caption).foregroundStyle(.secondary)
+                        }
+                        ForEach(0..<firstWeekday, id: \.self) { _ in Color.clear.frame(height: 40) }
+                        ForEach(1...days, id: \.self) { d in
+                            let date = cal.date(byAdding: .day, value: d - 1, to: interval.start)!
+                            let due = occs.filter { cal.isDate($0.due, inSameDayAs: date) }
+                            VStack(spacing: 3) {
+                                Text("\(d)")
+                                    .font(.callout.weight(cal.isDateInToday(date) ? .bold : .regular))
+                                    .foregroundStyle(cal.isDateInToday(date) ? Color.accentColor : .primary)
+                                HStack(spacing: 2) {
+                                    ForEach(due.prefix(3)) { o in
+                                        Circle().fill(o.paid ? Color.green : (o.bill.category?.color ?? .orange)).frame(width: 6, height: 6)
+                                    }
+                                }
+                                .frame(height: 6)
+                            }
+                            .frame(height: 40)
+                        }
+                    }
+                    .cardStyle(padding: 14)
+
+                    VStack(spacing: 10) {
+                        ForEach(occs) { o in
+                            HStack {
+                                Text(cal.component(.day, from: o.due).description + "日").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
+                                Text(o.bill.name)
+                                Spacer()
+                                Text(Money.format(o.bill.amount, currency: o.bill.currency, hidden: hidden)).monospacedDigit()
+                                Image(systemName: o.paid ? "checkmark.circle.fill" : "circle").foregroundStyle(o.paid ? .green : .secondary)
+                            }
+                        }
+                    }
+                    .cardStyle(padding: 16)
+                }
+                .padding()
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("帳單行事曆")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } } }
+        }
+    }
+}

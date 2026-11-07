@@ -1,0 +1,51 @@
+name: Ledger
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Ledger:
+    type: application
+    platform: iOS
+    sources:
+      - path: Ledger
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Ledger/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: Ledger/Info.plist
+      properties:
+        CFBundleDisplayName: 記帳
+        CFBundleName: Ledger
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.ledger
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+schemes:
+  Ledger:
+    build:
+      targets:
+        Ledger: all
