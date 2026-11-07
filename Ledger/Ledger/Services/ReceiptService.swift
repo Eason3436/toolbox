@@ -154,13 +154,32 @@ enum ReceiptService {
         let prompt = "分類清單：\(names.joined(separator: "、"))\n\n發票文字：\n\(text.prefix(2500))"
         do {
             let r = try await session.respond(to: prompt, generating: AIReceipt.self).content
+            let aiAddress: String = r.address.trimmingCharacters(in: .whitespaces)
+            // AI 沒抓到時，從辨識文字裡找地址或「○○門市／○○店」
+            let place: String? = aiAddress.isEmpty ? (BranchMatcher.address(in: text) ?? Self.branchName(in: text)) : aiAddress
             let receipt = Receipt(store: r.store, invoiceNumber: r.invoiceNumber, date: r.date,
                                   items: r.items.map { .init(name: $0.name, quantity: $0.quantity, price: $0.price) },
                                   total: r.total,
-                                  address: r.address.trimmingCharacters(in: .whitespaces).isEmpty ? nil : r.address)
+                                  address: place)
             return (receipt, r.category)
         } catch {
             throw ReceiptError.failed(error.localizedDescription)
         }
     }
+
+    /// 發票上的分店名稱，例如「彰化林森門市」「信義店」
+    static func branchName(in text: String) -> String? {
+        let t = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        guard let re = try? NSRegularExpression(pattern: #"[\p{Han}A-Za-z0-9]{2,10}(?:門市|分店|分公司|店)"#) else { return nil }
+        let skip = ["便利商店", "商店", "超商", "總店", "本店"]
+        for m in re.matches(in: t, range: NSRange(t.startIndex..., in: t)) {
+            guard let r = Range(m.range, in: t) else { continue }
+            let s = String(t[r])
+            if skip.contains(where: { s.hasSuffix($0) && s.count <= $0.count + 2 }) { continue }
+            if s.hasSuffix("便利商店") || s.hasSuffix("商店") { continue }
+            return s
+        }
+        return nil
+    }
+
 }

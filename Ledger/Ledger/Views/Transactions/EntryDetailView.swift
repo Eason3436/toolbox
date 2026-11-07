@@ -33,7 +33,7 @@ struct EntryDetailView: View {
                         receiptSection.appearEffect(delay: 0.05)
                         infoCard.appearEffect(delay: 0.1)
                         if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty
-                            && !PayMethod.isPayMethod(entry.title) {
+                            && (!PayMethod.isPayMethod(entry.title) || receipt?.store.isEmpty == false || entry.latitude != nil) {
                             MerchantMapCard(merchant: receipt?.store.isEmpty == false ? receipt!.store : entry.title,
                                             address: receipt?.address,
                                             coordinate: entry.latitude.flatMap { lat in
@@ -215,6 +215,8 @@ struct EntryDetailView: View {
                 categoryNote = "依發票品項把分類從「\(old)」改成「\(c.name)」，按編輯可以改回來"
             }
             if entry.title.isEmpty || entry.title == "未命名", !r.store.isEmpty { entry.title = r.store }
+            try? context.save()
+            await BranchMatcher.apply(receipt: r, to: entry)
             try? context.save()
         } catch {
             receiptError = error.localizedDescription

@@ -433,6 +433,13 @@ struct EntryEditor: View {
             e.receiptJSON = receipt?.json
             e.excludeFromBudget = excludeFromBudget
             context.insert(e)
+            if let r = receipt {
+                let ctx = context
+                Task { @MainActor in
+                    await BranchMatcher.apply(receipt: r, to: e)
+                    try? ctx.save()
+                }
+            }
         }
         try? context.save()
         if entry == nil, let savedHandler {

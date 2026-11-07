@@ -97,7 +97,13 @@ struct MerchantMapCard: View {
         // 預設在台灣找
         req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
                                         latitudinalMeters: 450_000, longitudinalMeters: 450_000)
-        item = try? await MKLocalSearch(request: req).start().mapItems.first
+        var found: MKMapItem? = try? await MKLocalSearch(request: req).start().mapItems.first
+        // 店名＋地址找不到時，只用地址再找一次
+        if found == nil, let address, address.count >= 6 {
+            req.naturalLanguageQuery = address
+            found = try? await MKLocalSearch(request: req).start().mapItems.first
+        }
+        item = found
         searched = true
     }
 }
