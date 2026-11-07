@@ -173,30 +173,7 @@ struct GlassTabBar: View {
     var body: some View {
         GlassEffectContainer(spacing: 14) {
             HStack(spacing: 14) {
-                HStack(spacing: 0) {
-                    ForEach(AppTab.allCases, id: \.self) { t in
-                        Button {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { tab = t }
-                        } label: {
-                            Image(systemName: t.symbol)
-                                .font(.system(size: 21, weight: .semibold))
-                                .symbolEffect(.bounce.down, value: tab == t)
-                                .foregroundStyle(tab == t ? Color.accentColor : Color.primary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 54)
-                                .background {
-                                    if tab == t {
-                                        Capsule()
-                                            .fill(Color.primary.opacity(0.08))
-                                            .matchedGeometryEffect(id: "selection", in: ns)
-                                    }
-                                }
-                                .contentShape(.capsule)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(t.label)
-                    }
-                }
+                TabStrip(tab: $tab)
                 .padding(5)
                 .glassEffect(.regular, in: .capsule)
 
@@ -261,5 +238,85 @@ struct LockView: View {
                 if ok { onUnlock() } else { error = e?.localizedDescription }
             }
         }
+    }
+}
+
+
+/// 分頁膠囊：點一下切換；按住會浮起一顆液態玻璃透鏡，可以左右拖到想去的分頁再放手
+struct TabStrip: View {
+    @Binding var tab: AppTab
+
+    @State private var width: CGFloat = 0
+    @State private var dragX: CGFloat?
+    @State private var pressed = false
+
+    private let tabs = AppTab.allCases
+    private var seg: CGFloat { max(width / CGFloat(tabs.count), 1) }
+
+    private func index(at x: CGFloat) -> Int {
+        min(max(Int(x / seg), 0), tabs.count - 1)
+    }
+    private var currentIndex: Int { tabs.firstIndex(of: tab) ?? 0 }
+    private var hoverIndex: Int { dragX.map(index(at:)) ?? currentIndex }
+    private var lensCenter: CGFloat {
+        if let x = dragX { return min(max(x, seg / 2), width - seg / 2) }
+        return seg * (CGFloat(currentIndex) + 0.5)
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            // 選取塊／透鏡
+            ZStack {
+                Capsule().fill(Color.primary.opacity(0.08))
+                    .opacity(pressed ? 0 : 1)
+                Capsule().fill(Color.white.opacity(0.001))
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.55), lineWidth: 0.8))
+                    .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                    .opacity(pressed ? 1 : 0)
+            }
+            .frame(width: seg, height: 54)
+            .scaleEffect(pressed ? CGSize(width: 1.22, height: 1.16) : CGSize(width: 1, height: 1))
+            .offset(x: lensCenter - seg / 2)
+
+            HStack(spacing: 0) {
+                ForEach(Array(tabs.enumerated()), id: \.element) { i, t in
+                    Image(systemName: t.symbol)
+                        .font(.system(size: 21, weight: .semibold))
+                        .symbolEffect(.bounce.down, value: tab == t)
+                        .foregroundStyle(hoverIndex == i ? Color.accentColor : Color.primary)
+                        .scaleEffect(pressed && hoverIndex == i ? 1.18 : 1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .accessibilityElement()
+                        .accessibilityLabel(t.label)
+                        .accessibilityAddTraits(tab == t ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityAction { tab = t }
+                }
+            }
+        }
+        .frame(height: 54)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .contentShape(.capsule)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { g in
+                    if !pressed {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) { pressed = true }
+                    }
+                    withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.82)) {
+                        dragX = g.location.x
+                    }
+                }
+                .onEnded { g in
+                    let i = index(at: g.location.x)
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) {
+                        tab = tabs[i]
+                        dragX = nil
+                        pressed = false
+                    }
+                }
+        )
+        .sensoryFeedback(.selection, trigger: hoverIndex)
     }
 }
