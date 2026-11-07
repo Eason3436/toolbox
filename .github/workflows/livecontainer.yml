@@ -1,0 +1,104 @@
+name: Build LiveContainer (Shortcuts) IPA
+
+# LiveContainer（https://github.com/LiveContainer/LiveContainer，AGPL-3.0）
+# 加上捷徑動作：從清單開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳專用動作。
+# 修改內容在 LiveContainer/overlay/，原始碼見 LiveContainer/README.md。
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "LiveContainer 上游的分支 / tag / commit"
+        required: false
+        default: "9108ae624ea001f7d7696d48407f890b48fa2653"
+  push:
+    paths:
+      - "LiveContainer/**"
+      - ".github/workflows/livecontainer.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: livecontainer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      scheme: LiveContainer
+      archive_path: archive
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: toolbox
+
+      - name: Clone LiveContainer
+        run: |
+          REF="${{ github.event.inputs.ref || '9108ae624ea001f7d7696d48407f890b48fa2653' }}"
+          git clone https://github.com/LiveContainer/LiveContainer.git src
+          cd src
+          git checkout "$REF"
+          git submodule update --init --recursive
+          echo "LC_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          git log -1 --oneline
+
+      - name: Apply toolbox changes
+        run: |
+          # 專案用 Xcode 的資料夾同步群組，放進資料夾就會自動編進對應的 target
+          cp -R toolbox/LiveContainer/overlay/. src/
+          ls src/LaunchAppExtension
+
+      - name: Show Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Archive
+        working-directory: src
+        run: |
+          STATUS=0
+          xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" \
+            -project LiveContainer.xcodeproj -sdk iphoneos -arch arm64 \
+            -configuration Release > build.log 2>&1 || STATUS=$?
+          grep -E "error:" build.log | sort -u | head -150 || true
+          tail -5 build.log
+          exit $STATUS
+
+      - name: Check App Intents metadata
+        working-directory: src
+        run: |
+          EXT="$archive_path.xcarchive/Products/Applications/LiveContainer.app/Extensions/LaunchAppExtension.appex"
+          [ -d "$EXT" ] || EXT=$(find "$archive_path.xcarchive" -name "LaunchAppExtension.appex" -type d | head -1)
+          echo "$EXT"
+          ls "$EXT/Metadata.appintents"
+          grep -a -o "LedgerQuickAddIntent\|LedgerLogNotificationIntent\|SendToGuestAppIntent\|OpenGuestAppIntent" "$EXT/Metadata.appintents/extract.actionsdata" | sort -u
+
+      - name: Create IPA
+        working-directory: src
+        run: sh .github/build_github.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: livecontainer-build-log
+          path: src/build.log
+
+      - name: Publish to "livecontainer-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "src/$scheme.ipa" LiveContainer.ipa
+          FILES="LiveContainer.ipa"
+          if [ -f "src/$scheme+SideStore.ipa" ]; then
+            cp "src/$scheme+SideStore.ipa" LiveContainer+SideStore.ipa
+            FILES="$FILES LiveContainer+SideStore.ipa"
+          fi
+          ls -lh $FILES
+          gh release delete livecontainer-latest --yes --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create livecontainer-latest $FILES -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "LiveContainer 捷徑版（上游 ${LC_SHA}）" \
+            --notes "LiveContainer（AGPL-3.0，上游 commit ${LC_SHA}）加上捷徑動作：開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳：從通知記帳／快速記一筆。修改的原始碼在 toolbox repo 的 LiveContainer/ 資料夾。用 SideStore 安裝 LiveContainer.ipa 時，選「保留 App 延伸功能」。" \
+            --prerelease
