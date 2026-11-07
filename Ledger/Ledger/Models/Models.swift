@@ -172,6 +172,11 @@ final class Entry {
     var payMethod: String?
     /// 發票內容（JSON，只存文字，不存照片）
     var receiptJSON: String?
+    /// 捷徑附上的位置比對出來的分店（例如「萊爾富 彰化林森店」）與座標
+    var branch: String?
+    var branchAddress: String?
+    var latitude: Double?
+    var longitude: Double?
 
     var category: Category?
     var account: Account?

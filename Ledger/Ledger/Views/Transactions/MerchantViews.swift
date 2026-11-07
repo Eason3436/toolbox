@@ -7,6 +7,9 @@ import Charts
 struct MerchantMapCard: View {
     var merchant: String
     var address: String?
+    /// 已經知道分店位置（捷徑附上位置比對出來的）就直接用，不用再搜尋
+    var coordinate: CLLocationCoordinate2D? = nil
+    var branch: String? = nil
 
     @State private var item: MKMapItem?
     @State private var searched = false
@@ -48,10 +51,17 @@ struct MerchantMapCard: View {
             }
         }
         .animation(.snappy, value: item != nil)
-        .task(id: (address ?? "") + merchant) { await search() }
+        .task(id: (address ?? "") + merchant + (branch ?? "")) { await search() }
     }
 
     private func search() async {
+        if let coordinate {
+            let it = MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+            it.name = branch ?? merchant
+            item = it
+            searched = true
+            return
+        }
         let query = (address?.isEmpty == false ? "\(merchant) \(address!)" : merchant).trimmingCharacters(in: .whitespaces)
         guard query.count >= 2, query != "未命名" else { return }
         let req = MKLocalSearch.Request()

@@ -13,6 +13,8 @@ struct ParsedNotice: Sendable {
     var usedAI: Bool
     /// Apple Intelligence 依商家與時間推測買了什麼（例如「早餐」「飲料」）
     var guess: String = ""
+    /// 捷徑附上的位置（地址或地名）
+    var place: String = ""
 }
 
 /// 用付款時間幫忙判斷買的是早餐、午餐、點心還是宵夜
@@ -65,6 +67,9 @@ struct AINotice {
 
     @Guide(description: "依商家和付款時間推測買了什麼，2 到 6 個字，例如「早餐」「午餐便當」「飲料」「零食」「加油」，猜不出來就填空字串")
     var guess: String
+
+    @Guide(description: "使用者另外附上的目前位置（地址、地名或經緯度），不是商家名稱；沒有就填空字串")
+    var place: String
 }
 
 enum NoticeParser {
@@ -98,6 +103,7 @@ enum NoticeParser {
         let session = LanguageModelSession(instructions: """
         你是記帳助理。使用者會給你一則銀行、信用卡或電子支付的通知全文，請擷取出這筆交易的商家、金額、收支、幣別與卡號末四碼，並從分類清單中挑選最適合的分類。
         金額只取本次交易的金額，不要取可用餘額、額度或回饋點數。
+        使用者可能在文字裡另外附上目前位置（地址、地名或經緯度），那是位置，不是商家名稱，請放在 place。
         \(MealTime.hint)
         """)
         let prompt = """
@@ -118,7 +124,8 @@ enum NoticeParser {
             categoryName: r.category,
             cardLast4: String(r.cardLast4.filter(\.isNumber).suffix(4)),
             usedAI: true,
-            guess: r.guess.trimmingCharacters(in: .whitespacesAndNewlines)
+            guess: r.guess.trimmingCharacters(in: .whitespacesAndNewlines),
+            place: r.place.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -212,6 +219,7 @@ enum NoticeRecorder {
                 parsed.cardLast4 = p.cardLast4
                 parsed.usedAI = p.usedAI
                 parsed.guess = p.guess
+                parsed.place = p.place
             }
         } else {
             guard let p = await NoticeParser.parse(text, categories: cats.map(\.name), date: date) else { throw RecordError.cannotParse }
@@ -269,10 +277,12 @@ enum NoticeRecorder {
             entry.note = entry.note.isEmpty ? "推測：\(parsed.guess)" : "推測：\(parsed.guess)\n\(entry.note)"
         }
         ctx.insert(entry)
+        // 捷徑文字附了位置：找出是哪一家分店
+        await BranchMatcher.apply(to: entry, text: text, aiPlace: parsed.place)
         try ctx.save()
 
         let sign = parsed.isIncome ? "+" : "-"
-        let summary = "已記帳：\(entry.title) \(sign)\(Money.format(amount, currency: accCurrency))（\(category?.name ?? "未分類")・\(account?.name ?? "未指定帳戶")）" + (parsed.usedAI ? "" : "\n（未使用 Apple Intelligence，用規則辨識）")
+        let summary = "已記帳：\(entry.branch ?? entry.title) \(sign)\(Money.format(amount, currency: accCurrency))（\(category?.name ?? "未分類")・\(account?.name ?? "未指定帳戶")）" + (parsed.usedAI ? "" : "\n（未使用 Apple Intelligence，用規則辨識）")
         return Result(entry: entry, duplicate: false, summary: summary)
     }
 }
