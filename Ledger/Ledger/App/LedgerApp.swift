@@ -60,15 +60,27 @@ struct RootView: View {
                     page(t)
                         .toolbarVisibility(.hidden, for: .tabBar)
                         // 預留下方玻璃分頁列的高度，捲到底時卡片和按鈕不會被蓋住
-                        .safeAreaPadding(.bottom, 78)
+                        .safeAreaPadding(.bottom, 70)
                 }
             }
         }
         // 系統字級調很大時，卡片裡的字也不會跟著無限放大
         .dynamicTypeSize(...DynamicTypeSize.large)
         .overlay(alignment: .bottom) {
-            GlassTabBar(tab: $tab, addNS: addNS) { showAdd = true }
-                .ignoresSafeArea(.keyboard)
+            ZStack(alignment: .bottom) {
+                // 分頁列後面的淡出漸層：捲動時字和卡片在這裡慢慢淡掉，不會跟玻璃列疊在一起
+                LinearGradient(stops: [
+                    .init(color: Color(.systemGroupedBackground).opacity(0), location: 0),
+                    .init(color: Color(.systemGroupedBackground).opacity(0.85), location: 0.45),
+                    .init(color: Color(.systemGroupedBackground), location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+                .frame(height: 120)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+
+                GlassTabBar(tab: $tab, addNS: addNS) { showAdd = true }
+            }
+            .ignoresSafeArea(.keyboard)
         }
         .sheet(isPresented: $showAdd) {
             // 一般的整頁卡片滑上／滑下：往下拉時整張卡片跟著手指走，不會縮成小方塊、內容也不會被裁掉
@@ -206,7 +218,8 @@ struct GlassTabBar: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.bottom, 2)
+        // 往下移，靠近底部的橫條
+        .padding(.bottom, -14)
         .sensoryFeedback(.selection, trigger: tab)
         .sensoryFeedback(.impact(weight: .medium), trigger: addBounce)
     }
