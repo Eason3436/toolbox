@@ -192,7 +192,7 @@ struct BillCard: View {
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
-                            Text(occ.bill.name).font(.title3.weight(.semibold)).lineLimit(1)
+                            Text(occ.bill.name).font(.headline).lineLimit(1)
                             if occ.bill.autoPay {
                                 Image(systemName: "bolt.fill").font(.subheadline).foregroundStyle(.white.opacity(0.6))
                             }
@@ -203,7 +203,7 @@ struct BillCard: View {
                     Spacer()
                     VStack(alignment: .trailing, spacing: 6) {
                         Text((occ.bill.receives ? "+" : "") + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
-                            .font(.title3.weight(.semibold))
+                            .font(.headline)
                             .monospacedDigit()
                         DarkPill(text: occ.paid ? occ.bill.doneLabel : occ.bill.pendingLabel)
                     }

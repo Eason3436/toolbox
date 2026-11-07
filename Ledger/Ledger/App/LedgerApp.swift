@@ -64,6 +64,8 @@ struct RootView: View {
                 }
             }
         }
+        // 系統字級調很大時，卡片裡的字也不會跟著無限放大
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .overlay(alignment: .bottom) {
             GlassTabBar(tab: $tab, addNS: addNS) { showAdd = true }
                 .ignoresSafeArea(.keyboard)
@@ -78,6 +80,7 @@ struct RootView: View {
                     withTransaction(t) { showAdd = false }
                     savedSummary = summary
                 })
+                .dynamicTypeSize(...DynamicTypeSize.large)
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(38)
                 .presentationBackgroundInteraction(.disabled)

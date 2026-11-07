@@ -186,7 +186,7 @@ struct AccountsView: View {
         let shown = showAllEntries ? Array(sorted) : Array(sorted.prefix(limit))
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("本月交易").font(.title3.weight(.bold))
+                Text("本月交易").font(.headline)
                 Text("\(sorted.count) 筆").font(.subheadline).foregroundStyle(.secondary)
                     .contentTransition(.numericText(value: Double(sorted.count)))
                 Spacer()
@@ -202,7 +202,7 @@ struct AccountsView: View {
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity.combined(with: .move(edge: .top)))
-                        if e.id != shown.last?.id { Divider().padding(.leading, 58) }
+                        if e.id != shown.last?.id { Divider().padding(.leading, 54) }
                     }
                     if sorted.count > limit {
                         Divider()
@@ -241,7 +241,7 @@ struct AccountsView: View {
             .prefix(5)
         let top = groups.first?.total ?? 1
         VStack(alignment: .leading, spacing: 10) {
-            Text("本月常去商家").font(.title3.weight(.bold)).padding(.horizontal, 4)
+            Text("本月常去商家").font(.headline).padding(.horizontal, 4)
             if groups.isEmpty {
                 PlaceholderRow(symbol: "storefront", text: "本月還沒有支出")
             } else {
@@ -436,7 +436,7 @@ struct SectionHeader<D: View>: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.title3.weight(.bold))
+            Text(title).font(.headline)
             Spacer()
             if showsLink {
                 NavigationLink {
@@ -532,7 +532,7 @@ struct AccountCard: View {
                 Spacer()
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(account.name).font(.title3.weight(.semibold))
+                        Text(account.name).font(.headline)
                         Text(account.cardLast4.isEmpty ? account.kind.label : "•••• \(account.cardLast4)")
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.white.opacity(0.7))

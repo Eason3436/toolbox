@@ -290,7 +290,7 @@ struct CalendarView: View {
                             EntryRow(entry: e, hidden: hidden)
                         }
                         .buttonStyle(.plain)
-                        if e.id != items.last?.id { Divider().padding(.leading, 58) }
+                        if e.id != items.last?.id { Divider().padding(.leading, 54) }
                     }
                 }
                 .cardStyle(padding: 14)
