@@ -49,12 +49,39 @@ enum BranchMatcher {
 
     static func locate(text: String, aiPlace: String) async -> CLLocationCoordinate2D? {
         if let c = coordinate(in: text) { return c }
-        let addr = address(in: text) ?? (aiPlace.count >= 4 ? aiPlace : nil)
-        guard let addr else { return nil }
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = addr
-        req.resultTypes = [.address, .pointOfInterest]
-        return try? await MKLocalSearch(request: req).start().mapItems.first?.location.coordinate
+        // 依序試：「在 …」後面那段（捷徑的「目前位置」）、AI 抓到的位置、文字裡像地址的一段
+        var tries: [String] = []
+        if let p = leadingPlace(in: text) { tries.append(p) }
+        if aiPlace.count >= 4 { tries.append(aiPlace) }
+        if let a = address(in: text) { tries.append(a) }
+        for q in tries {
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = q
+            req.resultTypes = [.address, .pointOfInterest]
+            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                            latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+            if let c = try? await MKLocalSearch(request: req).start().mapItems.first?.location.coordinate { return c }
+        }
+        return nil
+    }
+
+    /// 捷徑文字「在 林森路200號 彰化市 彰化縣 台灣 交易, 商家, 金額, 卡片」裡的位置那段
+    static func leadingPlace(in text: String) -> String? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.hasPrefix("在") else { return nil }
+        t.removeFirst()
+        // 位置通常是多行地址，取到第一個半形／全形逗號前；地址本身的逗號（例如「彰化市, 彰化縣」）會被保留到有數字門牌的那幾段
+        let lines = t.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        var parts: [String] = []
+        for line in lines {
+            parts.append(line)
+            if line.contains("台灣") || line.contains("臺灣") || line.lowercased().contains("taiwan") { break }
+            if parts.count >= 3 { break }
+        }
+        var place = parts.joined(separator: " ")
+        if let r = place.range(of: "台灣") ?? place.range(of: "臺灣") { place = String(place[..<r.upperBound]) }
+        place = place.trimmingCharacters(in: .whitespaces)
+        return place.count >= 4 ? place : nil
     }
 
     /// 在使用者位置附近找同名商家，多家時請 Apple Intelligence 判斷

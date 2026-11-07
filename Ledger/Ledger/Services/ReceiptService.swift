@@ -11,6 +11,12 @@ enum PayMethod {
         if t.contains("applepay") { return "Apple Pay" }
         if t.contains("googlepay") { return "Google Pay" }
         if t.contains("街口") { return "街口支付" }
+        // 錢包「感應卡片時」的自動化：文字以「在 位置 …」開頭並帶有卡片名稱，就是 Apple Pay 感應
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("在"),
+           ["visa", "mastercard", "jcb", "金融卡", "信用卡", "簽帳卡", "debit", "credit"].contains(where: { t.contains($0) }) {
+            return "Apple Pay"
+        }
         return nil
     }
 }
