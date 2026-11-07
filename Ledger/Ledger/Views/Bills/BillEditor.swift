@@ -64,6 +64,7 @@ struct BillEditor: View {
                     .buttonStyle(.plain)
 
                     CategoryChips(income: isIncome, selected: $category, tint: isIncome ? .green : .orange)
+                        .autoCategory(from: name, income: isIncome, selected: $category, enabled: bill == nil)
 
                     Button {
                         withAnimation(.snappy) { autoPay.toggle() }

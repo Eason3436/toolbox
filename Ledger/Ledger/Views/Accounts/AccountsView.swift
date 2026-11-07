@@ -19,6 +19,7 @@ struct AccountsView: View {
     @State private var showSettings = false
     @State private var showLayout = false
     @State private var editingAccount: Account?
+    @State private var deletingAccount: Account?
     @State private var addingAccount = false
     @State private var editingEntry: Entry?
     @State private var showAllEntries = false
@@ -56,6 +57,7 @@ struct AccountsView: View {
                     Button("新增帳戶", systemImage: "plus") { addingAccount = true }
                     if let account {
                         Button("編輯「\(account.name)」", systemImage: "pencil") { editingAccount = account }
+                        Button("刪除「\(account.name)」", systemImage: "trash", role: .destructive) { deletingAccount = account }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -84,6 +86,7 @@ struct AccountsView: View {
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showLayout) { NavigationStack { HomeLayoutView() } }
             .sheet(item: $editingAccount) { AccountEditor(account: $0) }
+            .accountDeleteDialog($deletingAccount)
             .sheet(isPresented: $addingAccount) { AccountEditor(account: nil) }
             .sheet(item: $editingEntry) { EntryEditor(entry: $0) }
         }

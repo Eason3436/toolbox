@@ -11,6 +11,7 @@ struct AssetGroupDetailView: View {
     @AppStorage(AssetGroup.namesKey) private var groupNames = ""
     @State private var editing: Asset?
     @State private var editingAccount: Account?
+    @State private var deletingAccount: Account?
     @State private var adding = false
 
     // 折線圖
@@ -104,6 +105,8 @@ struct AssetGroupDetailView: View {
                                     context.delete(a)
                                     try? context.save()
                                 }
+                            } else if let acc = line.account {
+                                Button("刪除", systemImage: "trash") { deletingAccount = acc }.tint(.red)
                             }
                         }
                     }
@@ -139,6 +142,7 @@ struct AssetGroupDetailView: View {
         }
         .sheet(item: $editing) { AssetDetailView(asset: $0) }
         .sheet(item: $editingAccount) { AccountEditor(account: $0) }
+        .accountDeleteDialog($deletingAccount)
         .sheet(isPresented: $adding) {
             AssetEditor(asset: nil, initialKind: AssetKind.allCases.first { $0.group == group } ?? .other)
         }

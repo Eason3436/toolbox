@@ -59,6 +59,25 @@ enum Store {
         ((try? context.fetch(FetchDescriptor<Account>(sortBy: [SortDescriptor(\.order)]))) ?? []).filter { !$0.archived }
     }
 
+    /// 刪除帳戶；withEntries 為 true 時連同這個帳戶的交易一起刪掉（轉帳只解除連結）
+    static func delete(_ account: Account, withEntries: Bool, context: ModelContext) {
+        if withEntries {
+            for e in account.entries ?? [] {
+                if e.kind == .transfer, e.toAccount != nil, e.toAccount?.id != account.id {
+                    e.account = nil
+                } else {
+                    context.delete(e)
+                }
+            }
+        }
+        for b in (try? context.fetch(FetchDescriptor<Bill>())) ?? [] where b.account?.id == account.id { b.account = nil }
+        if UserDefaults.standard.string(forKey: Prefs.selectedAccountKey) == account.id.uuidString {
+            UserDefaults.standard.removeObject(forKey: Prefs.selectedAccountKey)
+        }
+        context.delete(account)
+        try? context.save()
+    }
+
     static func account(id: String?) -> Account? {
         guard let id, let uuid = UUID(uuidString: id) else { return nil }
         return accounts().first { $0.id == uuid }
