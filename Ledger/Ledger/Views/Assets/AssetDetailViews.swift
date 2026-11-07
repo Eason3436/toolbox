@@ -50,6 +50,15 @@ struct AssetGroupDetailView: View {
                         MoneyText(value: summary.total, hidden: hidden, font: .title2.weight(.bold))
                     }
                 }
+                if group == .finance {
+                    Section {
+                        NavigationLink { PortfolioInsightView() } label: {
+                            Label("AI 投資分析", systemImage: "sparkles")
+                                .font(.headline)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
                 Section {
                     VStack(spacing: 10) {
                         linePicker(summary)
@@ -250,6 +259,11 @@ struct PortfolioView: View {
                     .font(.headline)
                 }
                 .padding(.vertical, 6)
+            }
+            Section {
+                NavigationLink { PortfolioInsightView() } label: {
+                    Label("AI 投資分析", systemImage: "sparkles").font(.headline).foregroundStyle(Color.accentColor)
+                }
             }
             Section("持股") {
                 if investments.isEmpty {
