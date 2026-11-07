@@ -54,7 +54,7 @@ struct CategoryIcon: View {
     var symbol: String
     var emoji: String? = nil
     var color: Color
-    var size: CGFloat = 44
+    var size: CGFloat = 40
     var onDark: Bool = false
 
     var body: some View {
@@ -109,10 +109,10 @@ struct Chip: View {
                 Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
             }
         }
-        .font(.body.weight(.medium))
+        .font(.subheadline.weight(.medium))
         .foregroundStyle(.primary)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 10)
         .background {
             // 底色和外框畫在同一個形狀上，切換時一起漸變，不會有殘影
             Capsule()
@@ -146,10 +146,10 @@ struct DashedChip: View {
     var title: String
     var body: some View {
         Label(title, systemImage: "plus")
-            .font(.body.weight(.medium))
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 9)
             .overlay {
                 Capsule().strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])).foregroundStyle(.tertiary)
             }
@@ -260,12 +260,12 @@ struct SummaryRow: View {
             Text(title).foregroundStyle(.secondary)
             Spacer()
             if let amount {
-                MoneyText(value: amount, currency: currency, hidden: hidden, font: .title3.weight(.semibold))
+                MoneyText(value: amount, currency: currency, hidden: hidden, font: .body.weight(.semibold))
             } else {
-                Text(value).font(.title3.weight(.semibold)).monospacedDigit()
+                Text(value).font(.body.weight(.semibold)).monospacedDigit()
             }
         }
-        .font(.title3)
+        .font(.subheadline)
     }
 }
 

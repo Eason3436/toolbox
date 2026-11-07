@@ -152,7 +152,7 @@ struct EntryRow: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(entry.title).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if let pm = entry.payMethod {
                         PayBadge(method: pm, compact: true)
                     } else if entry.source == .shortcut {
@@ -164,14 +164,14 @@ struct EntryRow: View {
                         Image(systemName: "doc.text").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
             let value = perspective.map { entry.signedAmount(for: $0) } ?? entry.signedAmount
             Text(entry.kind == .transfer && perspective == nil
                  ? Money.format(entry.amount, hidden: hidden)
                  : Money.format(value, currency: entry.account?.currency ?? Prefs.mainCurrency, hidden: hidden, signed: true))
-                .font(.body.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(value > 0 ? .green : .primary)
         }

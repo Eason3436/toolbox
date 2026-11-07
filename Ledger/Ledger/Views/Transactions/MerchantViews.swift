@@ -171,7 +171,7 @@ struct MerchantDetailView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             EntryRow(entry: e, hidden: hidden)
                             Text(e.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption).foregroundStyle(.secondary).padding(.leading, 58)
+                                .font(.caption).foregroundStyle(.secondary).padding(.leading, 54)
                         }
                     }
                     .buttonStyle(.plain)

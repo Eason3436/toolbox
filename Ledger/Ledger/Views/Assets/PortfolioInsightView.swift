@@ -131,7 +131,7 @@ struct PortfolioInsightView: View {
 
     private func aiCard(_ part: Part) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("AI 摘要", systemImage: "sparkles").font(.title3.weight(.bold))
+            Label("AI 摘要", systemImage: "sparkles").font(.headline)
             aiText(.performance)
             questionsList
         }
@@ -170,7 +170,7 @@ struct PortfolioInsightView: View {
         parts.sort { $0.value > $1.value }
         let total = parts.reduce(0) { $0 + $1.value }
         return VStack(alignment: .leading, spacing: 14) {
-            Text("資產配置").font(.title3.weight(.bold))
+            Text("資產配置").font(.headline)
             FlowLayout(spacing: 12, leading: true) {
                 ForEach(parts, id: \.name) { p in
                     HStack(spacing: 6) {
@@ -211,7 +211,7 @@ struct PortfolioInsightView: View {
 
     private func concentrationCard(_ hs: [Holding], invested: Double) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("集中度風險").font(.title3.weight(.bold))
+            Text("集中度風險").font(.headline)
             ForEach(hs.prefix(8)) { h in
                 let w = invested > 0 ? h.value / invested : 0
                 HStack(spacing: 12) {
@@ -242,7 +242,7 @@ struct PortfolioInsightView: View {
 
     private func treemapCard(_ hs: [Holding], invested: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("投資視覺化").font(.title3.weight(.bold))
+            Text("投資視覺化").font(.headline)
             Text("方塊大小代表在投資組合中的權重，顏色是今天的漲跌（紅漲綠跌）。")
                 .font(.subheadline).foregroundStyle(.secondary)
             GeometryReader { geo in
@@ -294,7 +294,7 @@ struct PortfolioInsightView: View {
     private var newsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("相關新聞", systemImage: "newspaper").font(.title3.weight(.bold))
+                Label("相關新聞", systemImage: "newspaper").font(.headline)
                 Spacer()
                 if ai.fetchingNews { ProgressView() }
             }

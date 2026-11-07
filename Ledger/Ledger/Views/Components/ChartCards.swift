@@ -397,7 +397,7 @@ private struct CategoryBreakdown: View {
                 ForEach(shown) { e in
                     Button { opened = e } label: { EntryRow(entry: e, hidden: hidden) }
                         .buttonStyle(.plain)
-                    if e.id != shown.last?.id { Divider().padding(.leading, 58) }
+                    if e.id != shown.last?.id { Divider().padding(.leading, 54) }
                 }
                 if sorted.count > 5 {
                     Button {
