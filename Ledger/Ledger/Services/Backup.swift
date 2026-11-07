@@ -26,7 +26,7 @@ enum Backup {
     struct AccountDTO: Codable { var id: UUID; var name: String; var kind: String; var currency: String; var color: String; var initial: Double; var last4: String; var order: Int; var archived: Bool }
     struct CategoryDTO: Codable { var id: UUID; var name: String; var symbol: String; var emoji: String?; var color: String; var income: Bool; var order: Int; var parent: UUID? }
     struct EntryDTO: Codable { var id: UUID; var title: String; var amount: Double; var kind: String; var date: Date; var note: String; var source: String; var raw: String?; var billKey: String?; var exclude: Bool; var category: UUID?; var account: UUID?; var toAccount: UUID?; var bill: UUID?; var goal: UUID? }
-    struct BillDTO: Codable { var id: UUID; var name: String; var amount: Double; var currency: String; var recurrence: String; var anchor: Date; var end: Date?; var autoPay: Bool; var platform: String; var note: String; var subscription: Bool; var paid: [String]; var active: Bool; var category: UUID?; var account: UUID? }
+    struct BillDTO: Codable { var id: UUID; var name: String; var amount: Double; var currency: String; var recurrence: String; var anchor: Date; var end: Date?; var autoPay: Bool; var platform: String; var note: String; var subscription: Bool; var income: Bool?; var paid: [String]; var active: Bool; var category: UUID?; var account: UUID? }
     struct AssetDTO: Codable { var id: UUID; var name: String; var kind: String; var ticker: String; var quantity: Double; var cost: Double; var manual: Double; var currency: String; var auto: Bool; var price: Double; var prev: Double; var note: String; var order: Int; var lots: [LotDTO] }
     struct LotDTO: Codable { var id: UUID; var date: Date; var quantity: Double; var price: Double; var fee: Double; var note: String }
     struct BudgetDTO: Codable { var id: UUID; var name: String; var amount: Double; var period: String; var color: String; var pinned: Bool; var archived: Bool; var order: Int; var categories: [UUID] }
@@ -60,7 +60,7 @@ enum Backup {
                      category: $0.category?.id, account: $0.account?.id, toAccount: $0.toAccount?.id, bill: $0.bill?.id, goal: $0.goal?.id)
         }
         f.bills = ((try? ctx.fetch(FetchDescriptor<Bill>())) ?? []).map {
-            BillDTO(id: $0.id, name: $0.name, amount: $0.amount, currency: $0.currency, recurrence: $0.recurrenceRaw, anchor: $0.anchorDate, end: $0.endDate, autoPay: $0.autoPay, platform: $0.platform, note: $0.note, subscription: $0.isSubscription, paid: $0.paidKeys, active: $0.active, category: $0.category?.id, account: $0.account?.id)
+            BillDTO(id: $0.id, name: $0.name, amount: $0.amount, currency: $0.currency, recurrence: $0.recurrenceRaw, anchor: $0.anchorDate, end: $0.endDate, autoPay: $0.autoPay, platform: $0.platform, note: $0.note, subscription: $0.isSubscription, income: $0.isIncome, paid: $0.paidKeys, active: $0.active, category: $0.category?.id, account: $0.account?.id)
         }
         f.assets = ((try? ctx.fetch(FetchDescriptor<Asset>())) ?? []).map { a in
             AssetDTO(id: a.id, name: a.name, kind: a.kindRaw, ticker: a.ticker, quantity: a.quantity, cost: a.costPerUnit, manual: a.manualValue, currency: a.currency, auto: a.autoQuote, price: a.lastPrice, prev: a.previousClose, note: a.note, order: a.order,
@@ -115,7 +115,7 @@ enum Backup {
         for d in f.bills where bills[d.id] == nil {
             let b = Bill(name: d.name, amount: d.amount, recurrence: Recurrence(rawValue: d.recurrence) ?? .monthly, anchorDate: d.anchor)
             b.id = d.id; b.currency = d.currency; b.endDate = d.end; b.autoPay = d.autoPay; b.platform = d.platform; b.note = d.note
-            b.isSubscription = d.subscription; b.paidKeys = d.paid; b.active = d.active
+            b.isSubscription = d.subscription; b.isIncome = d.income ?? false; b.paidKeys = d.paid; b.active = d.active
             b.category = d.category.flatMap { cats[$0] }; b.account = d.account.flatMap { accounts[$0] }
             ctx.insert(b); bills[d.id] = b; count += 1
         }

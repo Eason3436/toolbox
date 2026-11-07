@@ -16,6 +16,9 @@ struct AssetsView: View {
     @State private var failed: [String] = []
     @State private var addingKind: AssetKind?
     @State private var editing: Asset?
+    @State private var netRange: PriceRange = .m3
+    @State private var netPoints: [ValuePoint] = []
+    @State private var netLoading = false
 
     private var groups: [AssetGroupSummary] {
         _ = entries.count
@@ -27,6 +30,11 @@ struct AssetsView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     summary
+                    if filter == nil {
+                        ValueLineCard(title: "總資產走勢", points: netPoints, hidden: hidden,
+                                      loading: netLoading, risingRed: true, range: $netRange)
+                            .task(id: "\(netRange.rawValue)-\(assets.count)-\(entries.count)") { await loadNetWorth() }
+                    }
                     chips
                     groupCards
                 }
@@ -75,6 +83,13 @@ struct AssetsView: View {
             .sheet(item: $addingKind) { AssetEditor(asset: nil, initialKind: $0) }
             .sheet(item: $editing) { AssetDetailView(asset: $0) }
         }
+    }
+
+    private func loadNetWorth() async {
+        netLoading = true
+        let pts = await History.netWorthHistory(range: netRange)
+        withAnimation(.easeInOut(duration: 0.35)) { netPoints = pts }
+        netLoading = false
     }
 
     private func refresh() async {

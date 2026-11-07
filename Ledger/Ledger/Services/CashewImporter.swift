@@ -110,7 +110,11 @@ enum CashewImporter {
                                    symbol: symbol(forCashewIcon: str(c["icon_name"]), name: name),
                                    colorHex: colorHex(c["colour"]) ?? "#8E8E93",
                                    isIncome: income, order: catOrder + 1 + i)
-                if let emoji = c["emoji_icon_name"] as? String, !emoji.isEmpty { cat.emoji = emoji }
+                if let st = CategoryStyle.suggestion(for: name) {
+                    cat.colorHex = st.hex
+                } else if let emoji = c["emoji_icon_name"] as? String, !emoji.isEmpty {
+                    cat.emoji = emoji
+                }
                 cat.cashewID = pk
                 ctx.insert(cat)
                 categoryMap[pk] = cat
@@ -131,7 +135,12 @@ enum CashewImporter {
                                    symbol: symbol(forCashewIcon: str(c["icon_name"]), name: name),
                                    colorHex: colorHex(c["colour"]) ?? main.colorHex,
                                    isIncome: main.isIncome, order: Int(double(c["order"])))
-                if let emoji = c["emoji_icon_name"] as? String, !emoji.isEmpty { sub.emoji = emoji }
+                if let st = CategoryStyle.suggestion(for: name) {
+                    sub.colorHex = st.hex
+                } else {
+                    sub.colorHex = main.colorHex
+                    if sub.symbol == "tag.fill" { sub.symbol = main.symbol }
+                }
                 sub.cashewID = pk
                 sub.parent = main
                 ctx.insert(sub)
@@ -233,6 +242,7 @@ enum CashewImporter {
                 }
                 let bill = Bill(name: name.isEmpty ? "訂閱" : name, amount: abs(amountRaw), recurrence: recurrence, anchorDate: date)
                 bill.isSubscription = type == 1
+                bill.isIncome = amountRaw > 0
                 bill.category = cat
                 bill.account = acc
                 bill.currency = acc?.currency ?? Prefs.mainCurrency
@@ -367,6 +377,7 @@ enum CashewImporter {
     }
 
     private static func symbol(forCashewIcon icon: String, name: String) -> String {
+        if let s = CategoryStyle.suggestion(for: name) { return s.symbol }
         let key = icon.replacingOccurrences(of: ".png", with: "").lowercased()
         let map: [String: String] = [
             "cutlery": "fork.knife", "restaurant": "fork.knife", "food": "fork.knife", "coffee": "cup.and.saucer.fill",

@@ -72,12 +72,15 @@ struct MoneyText: View {
     var font: Font = .body
     var rollsOnAppear: Bool = true
 
+    /// 設定裡可以關掉「進頁面時數字從 0 滾上來」
+    @AppStorage(HomeLayout.rollNumbersKey) private var rollPref = true
+
     var body: some View {
         if hidden {
             Text("••••").font(font).contentTransition(.opacity)
         } else {
             AnimatedNumberText(value: value, format: MoneyFormatStyle(currency: currency, signed: signed),
-                               font: font, rollsOnAppear: rollsOnAppear)
+                               font: font, rollsOnAppear: rollsOnAppear && rollPref)
         }
     }
 }

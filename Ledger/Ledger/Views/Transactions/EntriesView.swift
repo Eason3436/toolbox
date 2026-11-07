@@ -22,6 +22,7 @@ struct EntriesView: View {
     @State private var filter: EntryFilter = .all
     @State private var search = ""
     @State private var editing: Entry?
+    @State private var pieIncome = false
 
     private var monthEntries: [Entry] {
         let interval = DateText.monthInterval(month)
@@ -52,6 +53,13 @@ struct EntriesView: View {
                     summary
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
+                }
+                if !monthEntries.isEmpty, search.isEmpty {
+                    Section {
+                        CategoryDonutCard(entries: monthEntries, hidden: hidden, income: $pieIncome)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
                 }
                 if days.isEmpty {
                     Section {
@@ -107,16 +115,11 @@ struct EntriesView: View {
     private var summary: some View {
         let expense = monthEntries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
         let income = monthEntries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
-        let byCategory = Dictionary(grouping: monthEntries.filter { $0.kind == .expense }) { $0.category?.main.id }
-            .map { (cat: $0.value.first?.category?.main, total: $0.value.reduce(0) { $0 + $1.amount }) }
-            .sorted { $0.total > $1.total }
 
         return VStack(alignment: .leading, spacing: 14) {
             Text("本月支出").foregroundStyle(.secondary).font(.title3)
             HStack(spacing: 12) {
-                Text(Money.format(expense, hidden: hidden))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .monospacedDigit()
+                MoneyText(value: expense, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                 if income > 0 {
@@ -124,31 +127,6 @@ struct EntriesView: View {
                 }
                 Spacer()
                 EyeButton(hidden: $hidden)
-            }
-            if expense > 0 {
-                // 分類比例條
-                GeometryReader { geo in
-                    HStack(spacing: 2) {
-                        ForEach(Array(byCategory.prefix(6).enumerated()), id: \.offset) { _, item in
-                            Rectangle()
-                                .fill(item.cat?.color ?? .gray)
-                                .frame(width: max(4, geo.size.width * item.total / expense))
-                        }
-                        Rectangle().fill(Color(.tertiarySystemFill))
-                    }
-                    .clipShape(.capsule)
-                }
-                .frame(height: 12)
-                FlowLayout(spacing: 12, leading: true) {
-                    ForEach(Array(byCategory.prefix(6).enumerated()), id: \.offset) { _, item in
-                        HStack(spacing: 6) {
-                            Circle().fill(item.cat?.color ?? .gray).frame(width: 9, height: 9)
-                            Text("\(item.cat?.name ?? "未分類") \(Money.percent(item.total / expense))")
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline)
-                    }
-                }
             }
             Divider()
             SummaryRow(title: "收入", amount: income, hidden: hidden)

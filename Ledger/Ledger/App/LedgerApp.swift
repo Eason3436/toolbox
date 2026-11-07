@@ -6,6 +6,7 @@ import LocalAuthentication
 struct LedgerApp: App {
     init() {
         Store.seedIfNeeded()
+        CategoryStyle.migrateIfNeeded()
         LedgerShortcuts.updateAppShortcutParameters()
     }
 
@@ -45,7 +46,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("lockEnabled") private var lockEnabled = false
-    @State private var tab: AppTab = .accounts
+    @State private var tab: AppTab = AppTab(rawValue: UserDefaults.standard.string(forKey: HomeLayout.startTabKey) ?? "") ?? .accounts
     @State private var showAdd = false
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?

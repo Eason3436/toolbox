@@ -12,6 +12,7 @@ struct EntryEditor: View {
     @State private var excludeFromBudget = false
 
     @State private var amountText = ""
+    @State private var pad = AmountPad()
     @State private var title = ""
     @State private var kind: EntryKind = .expense
     @State private var date = Date.now
@@ -29,7 +30,7 @@ struct EntryEditor: View {
             ScrollView {
                 VStack(spacing: 22) {
                     AmountHeader(amountText: $amountText, title: $title, titlePrompt: kind == .income ? "來源" : "商家",
-                                 currency: account?.currency ?? Prefs.mainCurrency)
+                                 currency: account?.currency ?? Prefs.mainCurrency, pad: $pad)
 
                     HStack(spacing: 10) {
                         Menu {
@@ -115,6 +116,7 @@ struct EntryEditor: View {
                 .padding(.horizontal)
                 .padding(.bottom, 30)
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(entry == nil ? "記一筆" : "編輯記帳")

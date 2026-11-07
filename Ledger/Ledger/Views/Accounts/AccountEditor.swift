@@ -137,6 +137,7 @@ struct TransferEditor: View {
     @State private var fromID: UUID?
     @State private var toID: UUID?
     @State private var amountText = ""
+    @State private var pad = AmountPad()
     @State private var date = Date.now
     @State private var note = ""
 
@@ -144,9 +145,8 @@ struct TransferEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    AnimatedAmountInput(text: $amountText,
-                                        currencyCode: accounts.first(where: { $0.id == fromID })?.currency ?? Prefs.mainCurrency)
-                        .padding(.vertical, 6)
+                    AmountField(text: $amountText, pad: $pad,
+                                currencyCode: accounts.first(where: { $0.id == fromID })?.currency ?? Prefs.mainCurrency)
                         .listRowBackground(Color.clear)
                 }
                 Section {
@@ -160,6 +160,7 @@ struct TransferEditor: View {
                     TextField("備註", text: $note)
                 }
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .navigationTitle("轉帳")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

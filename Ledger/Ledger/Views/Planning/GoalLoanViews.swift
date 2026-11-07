@@ -134,6 +134,7 @@ struct GoalEditor: View {
     @State private var name = ""
     @State private var amountText = ""
     @State private var hasEnd = false
+    @State private var pad = AmountPad()
     @State private var end = Calendar.current.date(byAdding: .month, value: 6, to: .now)!
     @State private var color = Color(hex: "#2D5DA0")
     @State private var symbol = "star.fill"
@@ -145,7 +146,7 @@ struct GoalEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "目標名稱")
+                    AmountHeader(amountText: $amountText, title: $name, titlePrompt: "目標名稱", pad: $pad)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
                         ForEach(symbols, id: \.self) { s in
                             Image(systemName: s)
@@ -168,6 +169,7 @@ struct GoalEditor: View {
                 }
                 .padding()
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(goal == nil ? "新增目標" : "編輯目標")
             .navigationBarTitleDisplayMode(.inline)
@@ -294,6 +296,7 @@ struct LoanEditor: View {
     @State private var person = ""
     @State private var amountText = ""
     @State private var direction: LoanDirection = .lent
+    @State private var pad = AmountPad()
     @State private var date = Date.now
     @State private var note = ""
     @State private var records: [LoanRecord] = []
@@ -309,8 +312,7 @@ struct LoanEditor: View {
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
-                    AnimatedAmountInput(text: $amountText, currencyCode: loan?.currency ?? Prefs.mainCurrency)
-                        .padding(.vertical, 6)
+                    AmountField(text: $amountText, pad: $pad, currencyCode: loan?.currency ?? Prefs.mainCurrency)
                         .listRowBackground(Color.clear)
                 }
                 Section {
@@ -344,6 +346,7 @@ struct LoanEditor: View {
                     }
                 }
             }
+            .amountKeypad(text: $amountText, pad: $pad)
             .navigationTitle(loan == nil ? "新增借貸" : "借貸")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

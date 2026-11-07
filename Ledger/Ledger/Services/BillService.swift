@@ -22,7 +22,7 @@ enum BillService {
         guard !bill.paidKeys.contains(key) else { return }
         bill.paidKeys.append(key)
         let payDate = min(Date.now, Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: occ.due) ?? occ.due)
-        let entry = Entry(title: bill.name, amount: bill.amount, kind: .expense, date: payDate,
+        let entry = Entry(title: bill.name, amount: bill.amount, kind: bill.receives ? .income : .expense, date: payDate,
                           category: bill.category, account: bill.account,
                           note: bill.platform.isEmpty ? "" : "平台：\(bill.platform)", source: .bill)
         entry.bill = bill
