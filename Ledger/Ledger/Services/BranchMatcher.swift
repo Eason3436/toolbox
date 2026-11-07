@@ -152,4 +152,37 @@ enum BranchMatcher {
             entry.longitude = m.coordinate.longitude
         }
     }
+
+    /// 發票上的店名＋地址／分店名 → 找到那一家店，存到這筆記帳（已經有位置就不動）
+    static func apply(receipt: Receipt, to entry: Entry) async {
+        guard entry.latitude == nil else { return }
+        let store: String = searchName(receipt.store.isEmpty ? entry.title : receipt.store)
+        let place: String = receipt.address?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !place.isEmpty else { return }
+        var tries: [String] = ["\(store) \(place)"]
+        if place.count >= 6 { tries.append(place) }
+        for q in tries {
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = q
+            req.resultTypes = [.pointOfInterest, .address]
+            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                            latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+            guard let item = try? await MKLocalSearch(request: req).start().mapItems.first else { continue }
+            let c = item.location.coordinate
+            entry.latitude = c.latitude
+            entry.longitude = c.longitude
+            // 只有地址的話，再找附近同名的店當分店
+            if let m = await match(merchant: store, near: c) {
+                entry.branch = m.name
+                entry.branchAddress = m.address
+                entry.latitude = m.coordinate.latitude
+                entry.longitude = m.coordinate.longitude
+            } else if let name = item.name, item.pointOfInterestCategory != nil {
+                entry.branch = name
+                entry.branchAddress = item.address?.shortAddress
+            }
+            return
+        }
+    }
+
 }
