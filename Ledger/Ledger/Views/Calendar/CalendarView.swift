@@ -151,7 +151,7 @@ struct CalendarView: View {
                     Button { showStats = true } label: { Image(systemName: "chart.pie") }
                 }
             }
-            .sheet(item: $editing) { EntryEditor(entry: $0) }
+            .sheet(item: $editing) { EntryDetailView(entry: $0) }
             .sheet(isPresented: $showStats) { NavigationStack { StatsView() } }
             .sensoryFeedback(.selection, trigger: selectedDay)
         }

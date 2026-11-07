@@ -168,6 +168,10 @@ final class Entry {
     var createdAt: Date = Date.now
 
     var excludeFromBudget: Bool = false
+    /// 付款方式（捷徑文字裡標註的 Apple Pay / LINE Pay）
+    var payMethod: String?
+    /// 發票內容（JSON，只存文字，不存照片）
+    var receiptJSON: String?
 
     var category: Category?
     var account: Account?

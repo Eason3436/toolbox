@@ -108,7 +108,7 @@ struct EntriesView: View {
                 .sharedBackgroundVisibility(.hidden)
             }
             .searchable(text: $search, placement: .navigationBarDrawer, prompt: "搜尋商家、備註、分類")
-            .sheet(item: $editing) { EntryEditor(entry: $0) }
+            .sheet(item: $editing) { EntryDetailView(entry: $0) }
         }
     }
 
@@ -153,10 +153,15 @@ struct EntryRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(entry.title).font(.body.weight(.semibold)).lineLimit(1)
-                    if entry.source == .shortcut {
+                    if let pm = entry.payMethod {
+                        PayBadge(method: pm, compact: true)
+                    } else if entry.source == .shortcut {
                         Image(systemName: "sparkles").font(.caption).foregroundStyle(.secondary)
                     } else if entry.source == .bill {
                         Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if entry.receiptJSON != nil {
+                        Image(systemName: "doc.text").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
