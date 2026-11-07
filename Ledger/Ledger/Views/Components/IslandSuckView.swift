@@ -49,7 +49,8 @@ struct IslandSuckView: View {
                 case .card: return (W - 24, min(300, H * 0.38), H * 0.42, 40)
                 case .flying: return (islandW * 1.3, islandH * 1.3, islandY + 30, islandH * 0.65)
                 case .island: return (islandW, islandH, islandY, islandH / 2)
-                case .expanded: return (min(W - 40, 330), islandH + 8, islandY + 4, (islandH + 8) / 2)
+                // 只比島大一點，不會蓋到兩側的狀態列
+                case .expanded: return (islandW + 24, islandH + 6, islandY + 3, (islandH + 6) / 2)
                 case .gone: return (islandW, islandH, islandY, islandH / 2)
                 }
             }()
@@ -74,23 +75,13 @@ struct IslandSuckView: View {
                 .opacity(stage == .card ? 1 : 0)
                 .blur(radius: stage == .card ? 0 : 8)
 
-                // 島上展開的內容
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.green)
-                        .symbolEffect(.bounce, value: bump)
-                    Text("已記帳").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                    Spacer(minLength: 6)
-                    Text(summary.amountText)
-                        .font(.subheadline.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(summary.income ? .green : .orange)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 16)
-                .frame(width: frame.w)
-                .opacity(stage == .expanded ? 1 : 0)
-                .blur(radius: stage == .expanded ? 0 : 6)
+                // 島上展開時：只有一個綠色小勾
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white, .green)
+                    .symbolEffect(.bounce, value: bump)
+                    .opacity(stage == .expanded ? 1 : 0)
+                    .scaleEffect(stage == .expanded ? 1 : 0.4)
             }
             .frame(width: frame.w, height: frame.h)
             .clipShape(RoundedRectangle(cornerRadius: frame.r, style: .continuous))
@@ -114,7 +105,7 @@ struct IslandSuckView: View {
         // 島展開顯示「已記帳」
         bump += 1
         withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { stage = .expanded }
-        try? await Task.sleep(for: .milliseconds(1400))
+        try? await Task.sleep(for: .milliseconds(1000))
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { stage = .gone }
         try? await Task.sleep(for: .milliseconds(400))
         onFinish()
