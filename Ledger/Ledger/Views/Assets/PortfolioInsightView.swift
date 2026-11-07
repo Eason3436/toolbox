@@ -11,6 +11,8 @@ struct PortfolioInsightView: View {
     @Query(sort: \Account.order) private var accounts: [Account]
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
     @StateObject private var ai = PortfolioAI()
+    @AppStorage("aiUseWeb") private var useWeb = true
+    @Environment(\.openURL) private var openURL
     @State private var question = ""
     @FocusState private var asking: Bool
 
@@ -50,8 +52,14 @@ struct PortfolioInsightView: View {
                     allocationCard(hs, invested: invested)
                     concentrationCard(hs, invested: invested)
                     treemapCard(hs, invested: invested)
+                    if useWeb { newsCard }
                     askCard
-                    Text("由 Apple Intelligence 在 iPhone 上產生，只根據你的持股資料，不含即時新聞。僅供參考，不構成投資建議。")
+                    Toggle(isOn: $useWeb) {
+                        Label("分析時讀取網路新聞", systemImage: "globe")
+                    }
+                    .cardStyle(padding: 16)
+                    .onChange(of: useWeb) { _, _ in Task { await runAnalysis(hs, invested: invested) } }
+                    Text("由 Apple Intelligence 在 iPhone 上產生，參考你的持股、今日大盤與 Google 新聞最近 7 天的標題（只讀標題，不讀全文）。僅供參考，不構成投資建議。")
                         .font(.footnote).foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                 }
@@ -66,7 +74,7 @@ struct PortfolioInsightView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    Task { await ai.analyze(context: contextText(hs, invested: invested)) }
+                    Task { await runAnalysis(hs, invested: invested) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .symbolEffect(.rotate, options: .repeat(.continuous), isActive: ai.running)
@@ -76,7 +84,7 @@ struct PortfolioInsightView: View {
         }
         .task {
             if ai.insight == nil, !hs.isEmpty {
-                await ai.analyze(context: contextText(hs, invested: invested))
+                await runAnalysis(hs, invested: invested)
             }
         }
     }
@@ -273,6 +281,64 @@ struct PortfolioInsightView: View {
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(base.opacity(0.18 + 0.62 * strength), in: .rect(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: 新聞
+
+    private func runAnalysis(_ hs: [Holding], invested: Double) async {
+        let targets: [(ticker: String, name: String)] = (focus.map { [($0.ticker, $0.name)] } ?? [])
+            + hs.filter { !$0.ticker.isEmpty && $0.ticker != focus?.ticker.uppercased() }.map { ($0.ticker, $0.name) }
+        await ai.analyze(context: contextText(hs, invested: invested), targets: targets, useWeb: useWeb)
+    }
+
+    private var newsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("相關新聞", systemImage: "newspaper").font(.title3.weight(.bold))
+                Spacer()
+                if ai.fetchingNews { ProgressView() }
+            }
+            if !ai.markets.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(ai.markets, id: \.name) { m in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text((m.change >= 0 ? "+" : "") + Money.percent(m.change, digits: 2))
+                                .font(.subheadline.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(m.change >= 0 ? HeatColor.red : HeatColor.green)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
+                    }
+                }
+            }
+            if ai.news.isEmpty, !ai.fetchingNews {
+                Text("沒有抓到最近 7 天的相關新聞。").font(.subheadline).foregroundStyle(.secondary)
+            }
+            ForEach(ai.news.prefix(8)) { n in
+                Button {
+                    if let url = n.link { openURL(url) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(n.title).font(.subheadline.weight(.semibold)).multilineTextAlignment(.leading)
+                            .foregroundStyle(.primary)
+                        HStack(spacing: 6) {
+                            Text(n.topic).foregroundStyle(Color.accentColor)
+                            Text(n.source)
+                            if let d = n.date { Text(d, format: .relative(presentation: .named)) }
+                        }
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                if n.id != ai.news.prefix(8).last?.id { Divider() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
     }
 
     // MARK: 提問
