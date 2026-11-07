@@ -65,7 +65,7 @@ struct SpendingInsightView: View {
                 CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
                                   title: "分類比例", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
-                if !days.isEmpty { dailyCard(days, avg: avg) }
+                if !days.isEmpty { dailyCard(days, avg: avg, monthDays: cal.range(of: .day, in: .month, for: month.start)?.count ?? 31) }
                 if !weekdays.isEmpty { weekdayCard(weekdays) }
                 if !merchants.isEmpty { merchantCard(merchants) }
             }
@@ -244,8 +244,11 @@ struct SpendingInsightView: View {
 
     // MARK: 每日支出
 
-    private func dailyCard(_ days: [(Int, Double)], avg: Double) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func dailyCard(_ days: [(Int, Double)], avg: Double, monthDays: Int) -> some View {
+        let peak: Double = days.map { $0.1 }.max() ?? 0
+        let yTop: Double = max(peak, avg, 1) * 1.1
+        let xRange: ClosedRange<Double> = 0.5...(Double(monthDays) + 0.5)
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("每天花多少").font(.headline)
                 Spacer()
@@ -257,7 +260,7 @@ struct SpendingInsightView: View {
             }
             Chart {
                 ForEach(days, id: \.0) { d in
-                    BarMark(x: .value("日", d.0), y: .value("金額", d.1), width: .ratio(0.7))
+                    BarMark(x: .value("日", d.0), y: .value("金額", d.1), width: .fixed(6))
                         .foregroundStyle(d.1 > avg * 1.8 ? Color.orange : Color.accentColor)
                         .opacity(pickedDay == nil || pickedDay == d.0 ? 1 : 0.4)
                         .cornerRadius(3)
@@ -267,6 +270,9 @@ struct SpendingInsightView: View {
                     .foregroundStyle(.secondary)
             }
             .chartXSelection(value: $pickedDay)
+            // 數字軸上 .ratio 寬度會變成 0，柱子改固定寬度，並固定整個月的範圍
+            .chartXScale(domain: xRange)
+            .chartYScale(domain: 0...yTop)
             .chartYAxis(.hidden)
             .chartXAxis { AxisMarks(values: [1, 8, 15, 22, 29]) { AxisValueLabel() } }
             .frame(height: 150)
