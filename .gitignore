@@ -5,3 +5,5 @@ Payload/
 .DS_Store
 xcuserdata/
 Screenshots/Screenshots.xcodeproj/
+Ledger/Ledger.xcodeproj/
+Ledger/Ledger/Info.plist
