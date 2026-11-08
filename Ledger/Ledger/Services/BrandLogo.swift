@@ -79,6 +79,23 @@ enum BrandLogo {
         return UIImage(named: "brand-\(b.id)")
     }
 
+    /// 分店名稱去掉品牌名：「萊爾富 彰化精誠店」→「彰化精誠店」
+    static func shortBranch(_ branch: String, merchant: String) -> String {
+        var candidates: [String] = [merchant, BranchMatcher.searchName(merchant)]
+        if let b = brand(for: merchant) ?? brand(for: branch) {
+            candidates += [b.name] + b.keywords
+        }
+        candidates = candidates.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+        let original = branch.trimmingCharacters(in: .whitespaces)
+        var s = original
+        for c in candidates where s.lowercased().hasPrefix(c.lowercased()) {
+            s = String(s.dropFirst(c.count))
+            break
+        }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: " 　-－・·_/|"))
+        return s.count >= 2 ? s : original
+    }
+
     /// 同一家連鎖店（不同寫法、不同分店）算同一個商家
     static func groupKey(for title: String) -> String {
         if let b = brand(for: title) { return "brand:\(b.id)" }

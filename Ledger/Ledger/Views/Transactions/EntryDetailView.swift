@@ -115,7 +115,6 @@ struct EntryDetailView: View {
 
     private var infoCard: some View {
         VStack(spacing: 14) {
-            row("類型", entry.kind.label)
             if entry.kind == .transfer {
                 row("轉出", entry.account?.name ?? "—")
                 row("轉入", entry.toAccount?.name ?? "—")
@@ -301,11 +300,13 @@ struct ReceiptPaperView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            // 連鎖店的 logo
-            MerchantLogo(name: receipt.store, size: 52)
             Text("電子發票證明聯").font(.caption.weight(.bold)).kerning(2).foregroundStyle(.black.opacity(0.55))
-            Text(receipt.store.isEmpty ? "發票" : receipt.store)
-                .font(.title3.weight(.bold)).multilineTextAlignment(.center)
+            HStack(spacing: 8) {
+                // 連鎖店的 logo，放在店名左邊
+                MerchantLogo(name: receipt.store, size: 26)
+                Text(receipt.store.isEmpty ? "發票" : receipt.store)
+                    .font(.title3.weight(.bold)).multilineTextAlignment(.center)
+            }
             if !receipt.invoiceNumber.isEmpty {
                 Text(formattedNumber)
                     .font(.system(size: 26, weight: .heavy, design: .monospaced))

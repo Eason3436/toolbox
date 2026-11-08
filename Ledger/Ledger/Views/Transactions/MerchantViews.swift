@@ -328,6 +328,11 @@ struct MerchantDetailView: View {
 
     private var displayName: String { BrandLogo.brand(for: merchant)?.name ?? merchant }
 
+    /// 只顯示分店名，不重複品牌名
+    private func short(_ b: String) -> String {
+        b == Self.noBranch ? b : BrandLogo.shortBranch(b, merchant: merchant)
+    }
+
     private func branchName(_ e: Entry) -> String {
         let b = e.branch?.trimmingCharacters(in: .whitespaces) ?? ""
         return b.isEmpty ? Self.noBranch : b
@@ -353,7 +358,7 @@ struct MerchantDetailView: View {
                     Picker("分店", selection: $branch) {
                         Text("全部分店").tag("")
                         ForEach(branches) { b in
-                            Text(b.name).tag(b.name)
+                            Text(short(b.name)).tag(b.name)
                         }
                     }
                     .pickerStyle(.menu)
@@ -395,7 +400,7 @@ struct MerchantDetailView: View {
                         .listRowBackground(Color.clear)
                 }
             }
-            Section(branch.isEmpty ? "紀錄" : "\(branch) 的紀錄") {
+            Section(branch.isEmpty ? "紀錄" : "\(short(branch)) 的紀錄") {
                 ForEach(shown) { e in
                     Button { opened = e } label: {
                         EntryRow(entry: e, hidden: hidden, showsDate: true)
@@ -405,7 +410,7 @@ struct MerchantDetailView: View {
             }
         }
         .animation(.snappy, value: branch)
-        .navigationTitle(branch.isEmpty ? displayName : branch)
+        .navigationTitle(branch.isEmpty ? displayName : short(branch))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $opened) { EntryDetailView(entry: $0) }
     }
@@ -466,7 +471,7 @@ struct MerchantDetailView: View {
         let ratio: Double = maxTotal > 0 ? b.total / maxTotal : 0
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(b.name).lineLimit(1)
+                Text(short(b.name)).lineLimit(1)
                 Spacer()
                 Text("\(b.count) 次").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
                 Text(Money.format(b.total, hidden: hidden))
