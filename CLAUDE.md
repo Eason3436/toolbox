@@ -4,20 +4,20 @@
 
 使用者寫繁體中文，回覆也用繁體中文。
 
-## 最重要的一件事：每個 App 在不同分支
+## 分支：所有 App 都在 main
 
-`main` 有 Toolbox 和 Recap（PR #1 已合併）。其他 App 各自在以 App 命名的分支開發，**還沒合併進 main**。要改某個 App，先切到它的分支：
+2026-11-08 起，所有 App 都已合併進 `main`，各自在自己的資料夾。下表的「App 分支」是合併當下的快照，之後不會自動更新；新工作直接從 `main` 開分支、改完開 PR 合回 `main`。
 
-| App | 分支 | 原始碼 | Workflow | Release（下載連結） |
+| App | App 分支 | 原始碼 | Workflow | Release（下載連結） |
 |---|---|---|---|---|
 | Toolbox 工具箱 | `main` | `Toolbox/`、根目錄 `project.yml` | `build.yml` | [`latest`/Toolbox.ipa](https://github.com/Eason3436/toolbox/releases/download/latest/Toolbox.ipa) |
 | Screenshots 截圖腦 | `screenshots` | `Screenshots/` | `screenshots.yml` | [`screenshots-latest`/Screenshots.ipa](https://github.com/Eason3436/toolbox/releases/download/screenshots-latest/Screenshots.ipa) |
-| Recap | `main`（`recap` 分支也可用） | `Recap/` | `recap.yml` | [`recap-latest`/Recap.ipa](https://github.com/Eason3436/toolbox/releases/download/recap-latest/Recap.ipa) |
+| Recap | `recap` | `Recap/` | `recap.yml` | [`recap-latest`/Recap.ipa](https://github.com/Eason3436/toolbox/releases/download/recap-latest/Recap.ipa) |
 | Ledger 記帳 | `ledger` | `Ledger/` | `ledger.yml` | [`ledger-latest`/Ledger.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-latest/Ledger.ipa) |
 | LiveContainer 捷徑版 | `livecontainer` | `LiveContainer/`（overlay + patches） | `livecontainer.yml` | [`livecontainer-latest`/LiveContainer.ipa](https://github.com/Eason3436/toolbox/releases/download/livecontainer-latest/LiveContainer.ipa)（另有 `LiveContainer+SideStore.ipa`） |
 | HealthMi（第三方） | `healthmi` | 無，CI 直接 clone 上游 | `healthmi.yml` | [`healthmi-latest`/HealthMi.ipa](https://github.com/Eason3436/toolbox/releases/download/healthmi-latest/HealthMi.ipa) |
 
-`ui-check` 是 Toolbox 早期的舊分支，可以忽略。`claude/project-thread-*` 是改名前的舊分支，內容已搬到上面的 App 分支，不要再用。
+`ui-check` 是 Toolbox 早期的舊分支，可以忽略。`claude/project-thread-*` 是改名前的舊分支，內容都已在 `main`，不要再用。
 
 Release 的 tag 每次建置都會被刪掉重建（同一個 tag 永遠放最新版），release 標題會寫是哪個 commit。
 
@@ -78,7 +78,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - **沙盒裡沒有 Swift／Xcode，CI 就是編譯器**。改完 push，看 Actions 結果；失敗就讀 build log 修
 - Runner：Recap、Screenshots、Ledger、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
 - 觸發：
-  - `build.yml`（Toolbox）沒有路徑篩選，**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
+  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
   - `recap.yml`、`ledger.yml`：push 改到各自資料夾時跑，也可手動
   - `screenshots.yml`：只能手動
   - `livecontainer.yml`、`healthmi.yml`：改到 workflow 本身（或 `LiveContainer/**`）時跑，也可手動並指定上游 ref
