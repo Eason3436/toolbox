@@ -56,7 +56,7 @@ struct BillsView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 24)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .ledgerNavigation(filter.label)
             .toolbar {
                 HeaderTitle(title: filter.label) {
@@ -229,8 +229,8 @@ struct BillCard: View {
                                 .font(.subheadline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 11)
-                                .foregroundStyle(.black)
-                                .background(.white, in: .capsule)
+                                .foregroundStyle(Palette.onDarkButtonText)
+                                .background(Palette.onDarkButton, in: .capsule)
                         }
                         Button(action: onEdit) {
                             Text("編輯")
@@ -306,7 +306,7 @@ struct BillCalendarSheet: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle("帳單行事曆")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } } }
@@ -319,9 +319,9 @@ struct BillCalendarSheet: View {
 struct PlanningLinks: View {
     var body: some View {
         HStack(spacing: 10) {
-            link("預算", "gauge.with.dots.needle.33percent", .orange) { BudgetsView() }
-            link("儲蓄目標", "target", .pink) { GoalsView() }
-            link("借貸", "person.2.fill", .blue) { LoansView() }
+            link("預算", "gauge.with.dots.needle.33percent", Color.accentColor) { BudgetsView() }
+            link("儲蓄目標", "target", Color.accentColor) { GoalsView() }
+            link("借貸", "person.2.fill", Color.accentColor) { LoansView() }
         }
     }
 
@@ -333,7 +333,7 @@ struct PlanningLinks: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18, style: .continuous))
+            .background(Palette.card, in: .rect(cornerRadius: 18, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(ChipPressStyle())

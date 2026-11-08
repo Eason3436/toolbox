@@ -117,7 +117,7 @@ struct SpendingInsightView: View {
             .padding(.bottom, 40)
             .animation(.snappy, value: anchor)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle("消費分析")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

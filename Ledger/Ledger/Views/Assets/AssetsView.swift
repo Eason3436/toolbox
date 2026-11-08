@@ -43,7 +43,7 @@ struct AssetsView: View {
                 .padding(.bottom, 24)
             }
             .refreshable { await refresh() }
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .ledgerNavigation(filter?.label ?? "資產")
             .toolbar {
                 HeaderTitle(title: filter?.label ?? "資產") {
@@ -287,8 +287,8 @@ struct AssetGroupCard: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .foregroundStyle(.black)
-                                .background(.white, in: .capsule)
+                                .foregroundStyle(Palette.onDarkButtonText)
+                                .background(Palette.onDarkButton, in: .capsule)
                         }
                         Button(action: onAdd) {
                             Image(systemName: "plus")

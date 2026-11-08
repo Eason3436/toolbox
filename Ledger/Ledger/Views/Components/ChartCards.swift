@@ -258,8 +258,8 @@ struct CategoryDonutCard: View {
                         Text(Money.percent(s.total / total))
                             .font(.caption.weight(.bold)).monospacedDigit()
                             .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(.white, in: .capsule)
-                            .foregroundStyle(.black)
+                            .background(Palette.onDarkButton, in: .capsule)
+                            .foregroundStyle(Palette.onDarkButtonText)
                             .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
                     }
                 }

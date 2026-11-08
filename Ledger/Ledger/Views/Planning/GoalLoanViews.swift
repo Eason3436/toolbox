@@ -80,7 +80,7 @@ struct GoalsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle("儲蓄目標")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("新增", systemImage: "plus") { adding = true } }
@@ -170,7 +170,7 @@ struct GoalEditor: View {
                 .padding()
             }
             .amountKeypad(text: $amountText, pad: $pad)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle(goal == nil ? "新增目標" : "編輯目標")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

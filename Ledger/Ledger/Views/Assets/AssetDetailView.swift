@@ -76,7 +76,7 @@ struct AssetDetailView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 18)
                                     .foregroundStyle(.primary)
-                                    .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22, style: .continuous))
+                                    .background(Palette.card, in: .rect(cornerRadius: 22, style: .continuous))
                             }
                             .disabled(asset.quantity <= 0)
                         }
@@ -114,7 +114,7 @@ struct AssetDetailView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 30)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle(asset.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -291,7 +291,7 @@ struct AssetDetailView: View {
                                 Text("平均成本 \(Money.symbol(for: cur))\(Money.format(asset.costPerUnit, currency: "USD"))")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .padding(.horizontal, 4)
-                                    .background(Color(.secondarySystemGroupedBackground))
+                                    .background(Palette.card)
                             }
                     }
                     if let sp = selectedPoint {

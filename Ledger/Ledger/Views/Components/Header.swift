@@ -36,7 +36,7 @@ extension View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(removing: .title)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
     }
 }
 

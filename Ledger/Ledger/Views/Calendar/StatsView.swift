@@ -181,7 +181,7 @@ struct StatsView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle("統計")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
