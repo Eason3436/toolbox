@@ -116,9 +116,9 @@ struct EntryDetailView: View {
             Group {
                 if entry.kind == .transfer {
                     CategoryIcon(symbol: "arrow.left.arrow.right", color: .blue, size: 72)
-                } else if isSubscription, let logo = BrandLogo.subscriptionLogoName(name: entry.title, platform: platform ?? "") {
-                    // 訂閱：用服務或平台的 logo
-                    MerchantLogo(name: logo, size: 72)
+                } else if isSubscription, let g = BrandLogo.subscriptionGlyph(name: entry.title, platform: platform) {
+                    // 訂閱：用服務或平台的單色 logo
+                    BrandGlyphIcon(glyph: g, size: 72)
                 } else if let c = entry.category {
                     c.icon(size: 72, trigger: headerPlay)
                         .task { try? await Task.sleep(for: .milliseconds(350)); headerPlay += 1 }
@@ -162,7 +162,10 @@ struct EntryDetailView: View {
                 HStack(alignment: .center) {
                     Text("平台").foregroundStyle(.secondary)
                     Spacer()
-                    MerchantLogo(name: platform, size: 22)
+                    if let g = BrandLogo.glyph(for: platform) {
+                        Image("brandmono-\(g.id)").renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 18, height: 18).foregroundStyle(g.color)
+                    }
                     Text(platform).fontWeight(.medium)
                 }
             }

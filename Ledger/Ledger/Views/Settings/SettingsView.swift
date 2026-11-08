@@ -100,6 +100,7 @@ struct SettingsView: View {
                 Section {
                     Button {
                         restoring = false
+                        pickingSyncFolder = false
                         importing = true
                     } label: {
                         Label("從 Cashew 備份匯入", systemImage: "square.and.arrow.down")
@@ -131,21 +132,13 @@ struct SettingsView: View {
                         }
                     } else {
                         Button {
+                            // 跟匯入共用同一個檔案選擇器（同一頁放兩個 fileImporter 只有一個會動）
+                            restoring = false
                             pickingSyncFolder = true
+                            importing = true
                         } label: {
                             Label("選擇 iCloud 雲碟資料夾", systemImage: "icloud")
                         }
-                        .fileImporter(isPresented: $pickingSyncFolder, allowedContentTypes: [.folder]) { result in
-                            if case .success(let url) = result {
-                                do {
-                                    try CloudSync.setFolder(url)
-                                    syncFolder = CloudSync.folderName
-                                    syncStatus = CloudSync.run(force: true)
-                                } catch {
-                                    syncStatus = "無法使用這個資料夾：\(error.localizedDescription)"
-                                }
-                            }
-            }
                     }
                     if let syncStatus {
                         Text(syncStatus + (CloudSync.lastSync.map { "・" + RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: .now) } ?? ""))
@@ -168,6 +161,7 @@ struct SettingsView: View {
                     }
                     Button {
                         restoring = true
+                        pickingSyncFolder = false
                         importing = true
                     } label: {
                         Label("從備份還原", systemImage: "arrow.counterclockwise")
@@ -203,8 +197,26 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(role: .close) { dismiss() } }
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: restoring ? [.json] : [.item]) { result in
+            .fileImporter(isPresented: $importing,
+                          allowedContentTypes: pickingSyncFolder ? [.folder] : (restoring ? [.json] : [.item])) { result in
                 let isRestore = restoring
+                if pickingSyncFolder {
+                    pickingSyncFolder = false
+                    importing = false
+                    switch result {
+                    case .success(let url):
+                        do {
+                            try CloudSync.setFolder(url)
+                            syncFolder = CloudSync.folderName
+                            syncStatus = CloudSync.run(force: true)
+                        } catch {
+                            syncStatus = "無法使用這個資料夾：\(error.localizedDescription)"
+                        }
+                    case .failure(let error):
+                        syncStatus = "無法使用這個資料夾：\(error.localizedDescription)"
+                    }
+                    return
+                }
                 switch result {
                 case .success(let url):
                     do {

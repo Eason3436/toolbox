@@ -166,8 +166,8 @@ struct BillCard: View {
             GradientCardBackground(color: Color(hex: "#2C2C2E"))
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 12) {
-                    if let logo = BrandLogo.subscriptionLogoName(name: occ.bill.name, platform: occ.bill.platform) {
-                        MerchantLogo(name: logo, size: 40)
+                    if let g = BrandLogo.subscriptionGlyph(name: occ.bill.name, platform: occ.bill.platform) {
+                        BrandGlyphIcon(glyph: g, size: 40, onDark: true)
                     } else if let c = occ.bill.category {
                         c.icon(size: 40, onDark: true)
                     } else {
@@ -202,7 +202,10 @@ struct BillCard: View {
                         HStack(spacing: 5) {
                             Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " ·"))
                             if !occ.bill.platform.isEmpty {
-                                MerchantLogo(name: occ.bill.platform, size: 15)
+                                if let g = BrandLogo.glyph(for: occ.bill.platform) {
+                                    Image("brandmono-\(g.id)").renderingMode(.template).resizable().scaledToFit()
+                                        .frame(width: 13, height: 13)
+                                }
                                 Text(occ.bill.platform)
                             }
                         }

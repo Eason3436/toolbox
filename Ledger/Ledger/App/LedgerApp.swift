@@ -121,6 +121,8 @@ struct RootView: View {
             switch phase {
             case .active:
                 BillService.processAutoPay(context: context)
+                // 全家／FamilyMart、萊爾富／Hi-Life 統一成同一個店名
+                BrandLogo.normalizeTitles(in: context)
                 CloudSync.run()
                 // 裝在 LiveContainer 時，捷徑動作會把記帳請求放進收件匣
                 Task {
