@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import MapKit
 import Charts
+import UIKit
 
 /// 詳情頁的小地圖：用商家名稱（或發票上的地址）在 Apple 地圖搜尋
 struct MerchantMapCard: View {
@@ -65,9 +66,39 @@ struct MerchantMapCard: View {
                 .frame(maxWidth: 340)
                 .frame(maxWidth: .infinity)
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else if searched {
+                // 找不到位置時也留一個入口，直接到 Apple 地圖搜尋
+                Button {
+                    let q = (branch ?? merchant).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                    if let url = URL(string: "maps://?q=\(q)") { UIApplication.shared.open(url) }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Color.accentColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(branch ?? merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text("沒有找到確切位置，點一下在地圖搜尋").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(14)
+                    .background(.regularMaterial, in: .rect(cornerRadius: 20, style: .continuous))
+                    .foregroundStyle(.primary)
+                }
+                .buttonStyle(ChipPressStyle())
+                .frame(maxWidth: 340)
+                .frame(maxWidth: .infinity)
+            } else {
+                // 搜尋中先留位置，避免卡片突然跳出來
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.regularMaterial)
+                    .frame(maxWidth: 340, minHeight: 60, maxHeight: 60)
+                    .overlay(ProgressView())
+                    .frame(maxWidth: .infinity)
             }
         }
         .animation(.snappy, value: item != nil)
+        .animation(.snappy, value: searched)
         .task(id: (address ?? "") + merchant + (branch ?? "")) { await search() }
     }
 
@@ -89,19 +120,25 @@ struct MerchantMapCard: View {
             searched = true
             return
         }
-        let query = (address?.isEmpty == false ? "\(merchant) \(address!)" : merchant).trimmingCharacters(in: .whitespaces)
-        guard query.count >= 2, query != "未命名" else { return }
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = query
-        req.resultTypes = [.pointOfInterest, .address]
-        // 預設在台灣找
-        req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
-                                        latitudinalMeters: 450_000, longitudinalMeters: 450_000)
-        var found: MKMapItem? = try? await MKLocalSearch(request: req).start().mapItems.first
-        // 店名＋地址找不到時，只用地址再找一次
-        if found == nil, let address, address.count >= 6 {
-            req.naturalLanguageQuery = address
-            found = try? await MKLocalSearch(request: req).start().mapItems.first
+        var tries: [String] = []
+        let addr: String = address?.trimmingCharacters(in: .whitespaces) ?? ""
+        if !addr.isEmpty { tries.append("\(merchant) \(addr)") }
+        if addr.count >= 6 { tries.append(addr) }
+        if let branch, !branch.isEmpty, branch != merchant { tries.append(branch) }
+        tries.append(BranchMatcher.searchName(merchant))
+        tries = tries.filter { $0.count >= 2 && $0 != "未命名" }
+        var found: MKMapItem?
+        for q in tries {
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = q
+            req.resultTypes = [.pointOfInterest, .address]
+            // 預設在台灣找
+            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                            latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+            if let hit = try? await MKLocalSearch(request: req).start().mapItems.first {
+                found = hit
+                break
+            }
         }
         item = found
         searched = true
