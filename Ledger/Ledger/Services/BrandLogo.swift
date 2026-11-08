@@ -212,6 +212,19 @@ extension BrandLogo {
         "notion": "", "dropbox": "#3D8BFF", "canva": "#00C4CC", "duolingo": "#58CC02",
         "nintendo": "#FF4554", "playstation": "#3A8DFF", "xbox": "#48B648", "github": "",
         "crunchyroll": "#FF7A1A", "netflix": "#E50914", "spotify": "#1ED760", "apple": "",
+        // 連鎖店
+        "50lan": "#2F6FD6", "85c": "#E0294E", "bafang": "#D99A1E", "burgerking": "#F07A22",
+        "cama": "#E0A100", "carrefour": "#2E6FD8", "chingshin": "#E2333D", "coco": "#F08A1C",
+        "cosmed": "#F57A00", "costco": "#E31837", "cpc": "#2E7BD6", "decathlon": "#4A5BE0",
+        "dintaifung": "#D8262E", "dominos": "#1E88C8", "eslite": "#8E8E93", "familymart": "#22A74A",
+        "foodpanda": "#E8197A", "hilife": "#E3141F", "ikea": "#1F6FC5", "kebuke": "#B39A72",
+        "kfc": "#E4002B", "louisa": "#8E8E93", "mcdonalds": "#F5A800", "milksha": "#0F86B0",
+        "misterdonut": "#E05A28", "momo": "#E5139E", "mos": "#D6401E", "muji": "#A4262C",
+        "okmart": "#E5202E", "pchome": "#E5221E", "pizzahut": "#E3262F", "poya": "#DD006F",
+        "pxmart": "#1F5FBF", "rtmart": "#E3242B", "seven": "#0A9A6A", "shopee": "#EE4D2D",
+        "simplemart": "#B53A8B", "starbucks": "#00A862", "sukiya": "#E0141E", "thsr": "#E86A1F",
+        "tkk": "#E9312A", "uber": "#8E8E93", "ubereats": "#06C167", "uniqlo": "#E60012",
+        "watsons": "#00A0A0",
     ]
 
     struct Glyph {
