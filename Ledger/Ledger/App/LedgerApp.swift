@@ -121,6 +121,7 @@ struct RootView: View {
             switch phase {
             case .active:
                 BillService.processAutoPay(context: context)
+                CloudSync.run()
                 // 裝在 LiveContainer 時，捷徑動作會把記帳請求放進收件匣
                 Task {
                     let msgs = await LiveContainerInbox.process()
