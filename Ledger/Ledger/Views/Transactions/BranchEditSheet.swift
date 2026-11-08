@@ -189,6 +189,18 @@ struct BranchEditSheet: View {
             e.longitude = longitude
         }
         try? context.save()
+        // 地圖上只有品牌名（例如「全家」）時，用位置找出分店名
+        if let lat = latitude, let lon = longitude, let first = entries.first,
+           BranchMatcher.isBrandOnly(name, merchant: first.title) {
+            let list = entries
+            Task {
+                if let m = await BranchMatcher.nameBranch(merchant: first.title,
+                                                           near: CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
+                    for e in list { e.branch = m.name; if e.branchAddress == nil { e.branchAddress = m.address } }
+                    try? context.save()
+                }
+            }
+        }
         onDone()
         dismiss()
     }

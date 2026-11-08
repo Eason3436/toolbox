@@ -17,6 +17,7 @@ struct MerchantMapCard<Trailing: View>: View {
 
     @State private var item: MKMapItem?
     @State private var searched = false
+    @State private var geoAddress: String?
     @Query private var visits: [Entry]
 
     init(merchant: String, address: String? = nil, coordinate: CLLocationCoordinate2D? = nil, branch: String? = nil,
@@ -110,14 +111,12 @@ struct MerchantMapCard<Trailing: View>: View {
         .buttonStyle(ChipPressStyle())
     }
 
-    /// 例如「彰化市」：從地址裡抓出縣市區
+    /// 例如「彰化縣 彰化市」：從地址裡抓出縣市和鄉鎮區
     private func area(of item: MKMapItem) -> String? {
-        let addr = item.address?.fullAddress ?? item.address?.shortAddress ?? address ?? ""
-        let t = addr.replacingOccurrences(of: "台灣", with: "").replacingOccurrences(of: "臺灣", with: "")
-        if let r = t.range(of: #"[\p{Han}]{1,3}[市區鄉鎮]"#, options: .regularExpression) {
-            return String(t[r])
+        for addr in [item.address?.fullAddress, geoAddress, address, item.address?.shortAddress] {
+            if let addr, let a = BranchMatcher.area(in: addr) { return a }
         }
-        return item.address?.shortAddress
+        return nil
     }
 
     private func search() async {
@@ -126,6 +125,11 @@ struct MerchantMapCard<Trailing: View>: View {
             it.name = branch ?? merchant
             item = it
             searched = true
+            // 自己建的地點沒有地址，反查一次才有縣市
+            if let req = MKReverseGeocodingRequest(location: it.location),
+               let hit = try? await req.mapItems.first {
+                geoAddress = hit.address?.fullAddress
+            }
             return
         }
         var tries: [String] = []

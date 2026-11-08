@@ -73,6 +73,13 @@ struct EntryDetailView: View {
                     try? context.save()
                 }
             }
+            .task(id: entry.id) {
+                // 有位置但分店只寫品牌名（例如「全家」），自己找出是哪一家
+                guard entry.kind == .expense, entry.latitude != nil,
+                      BranchMatcher.isBrandOnly(entry.branch, merchant: entry.title) else { return }
+                await BranchMatcher.refineBranchName(entry)
+                try? context.save()
+            }
             .onChange(of: photo) { _, item in
                 guard let item else { return }
                 Task { await importReceipt(item) }
