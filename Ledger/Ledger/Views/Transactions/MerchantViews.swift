@@ -167,7 +167,7 @@ extension MerchantMapCard where Trailing == EmptyView {
 enum PlaceCheck {
     private static let nonPlaceWords = ["回饋", "利息", "退款", "退費", "退貨", "手續費", "年費", "轉帳", "轉入", "轉出",
                                         "繳費", "扣繳", "薪資", "薪水", "獎金", "紅利", "折抵", "提款",
-                                        "銀行", "信用卡", "卡費", "保費"]
+                                        "銀行", "信用卡", "卡費", "保費", "訂閱", "會員", "月費", "內購"]
 
     static func hasPlace(title: String, kind: EntryKind, categoryName: String?) -> Bool {
         guard kind == .expense else { return false }

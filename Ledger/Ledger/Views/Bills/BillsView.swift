@@ -29,7 +29,7 @@ struct BillsView: View {
     @State private var showCalendar = false
 
     private var occurrences: [BillOccurrence] {
-        var list = BillService.occurrences(bills, in: DateText.monthInterval(month))
+        var list = BillService.upcoming(bills)
         switch filter {
         case .all: break
         case .subscription: list = list.filter { $0.bill.isSubscription && !$0.bill.receives }
@@ -48,7 +48,7 @@ struct BillsView: View {
                     PlanningLinks()
                     summary
                     if occurrences.isEmpty {
-                        EmptyHint(symbol: "calendar.badge.clock", title: "這個月沒有帳單", message: "按右下角的 ＋ 新增訂閱或固定帳單")
+                        EmptyHint(symbol: "calendar.badge.clock", title: "還沒有帳單", message: "按右下角的 ＋ 新增訂閱或固定帳單")
                     } else {
                         cards
                     }
@@ -65,29 +65,6 @@ struct BillsView: View {
                         Text("訂閱").tag(BillFilter.subscription)
                         Text("固定收入").tag(BillFilter.income)
                         Text("未完成").tag(BillFilter.unpaid)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("本月") { month = .now }
-                        ForEach(-6..<7) { i in
-                            if i != 0 {
-                                let d = DateText.addMonths(.now, i)
-                                Button(DateText.monthTitle(d)) { month = d }
-                            }
-                        }
-                    } label: {
-                        VStack(spacing: 0) {
-                            Text(DateText.monthTitle(month)).font(.headline).monospacedDigit()
-                            HStack(spacing: 2) {
-                                Text("每月")
-                                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        .fixedSize()
-                        .padding(.horizontal, 6)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -113,31 +90,35 @@ struct BillsView: View {
         }
     }
 
+    /// 不分月：30 天內要繳的、每月大約多少、本月已繳
     private var summary: some View {
-        let occs = BillService.occurrences(bills, in: DateText.monthInterval(month))
-        let all = occs.filter { !$0.bill.receives }
-        let incomes = occs.filter { $0.bill.receives }
-        let total = all.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
-        let paid = all.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
-        let incomeTotal = incomes.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
-        let received = incomes.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
-        let ratio = total > 0 ? paid / total : 1
+        let soon = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
+        let shown = BillService.upcoming(bills)
+        let pending = shown.filter { !$0.paid && !$0.bill.receives && $0.due <= soon }
+            .reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let active = bills.filter(\.active)
+        let monthly = active.filter { !$0.receives }
+            .reduce(0) { $0 + BillService.monthlyEquivalent($1) * QuoteService.rate(from: $1.currency) }
+        let monthlyIncome = active.filter(\.receives)
+            .reduce(0) { $0 + BillService.monthlyEquivalent($1) * QuoteService.rate(from: $1.currency) }
+        let thisMonth = BillService.occurrences(bills, in: DateText.monthInterval(.now)).filter { !$0.bill.receives }
+        let paid = thisMonth.filter(\.paid).reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let monthTotal = thisMonth.reduce(0) { $0 + $1.bill.amount * QuoteService.rate(from: $1.bill.currency) }
+        let ratio = monthTotal > 0 ? paid / monthTotal : 1
         return VStack(alignment: .leading, spacing: 14) {
-            Text("待支付").foregroundStyle(.secondary).font(.title3)
+            Text("30 天內待支付").foregroundStyle(.secondary).font(.title3)
             HStack(spacing: 12) {
-                MoneyText(value: total - paid, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
+                MoneyText(value: pending, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
                     .lineLimit(1).minimumScaleFactor(0.5)
-                Pill(text: "已付 \(Money.percent(ratio))", tint: ratio >= 1 ? .green : .orange)
+                Pill(text: "本月已付 \(Money.percent(ratio))", tint: ratio >= 1 ? .green : .orange)
                 Spacer()
                 EyeButton(hidden: $hidden)
             }
             Divider()
-            SummaryRow(title: "總計", amount: total, hidden: hidden)
-            SummaryRow(title: "已繳", amount: paid, hidden: hidden)
-            if !incomes.isEmpty {
-                Divider()
-                SummaryRow(title: "固定收入", amount: incomeTotal, hidden: hidden)
-                SummaryRow(title: "已收到", amount: received, hidden: hidden)
+            SummaryRow(title: "每月約", amount: monthly, hidden: hidden)
+            SummaryRow(title: "本月已繳", amount: paid, hidden: hidden)
+            if monthlyIncome > 0 {
+                SummaryRow(title: "固定收入每月約", amount: monthlyIncome, hidden: hidden)
             }
         }
         .cardStyle()
@@ -185,7 +166,9 @@ struct BillCard: View {
             GradientCardBackground(color: Color(hex: "#2C2C2E"))
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 12) {
-                    if let c = occ.bill.category {
+                    if let logo = BrandLogo.subscriptionLogoName(name: occ.bill.name, platform: occ.bill.platform) {
+                        MerchantLogo(name: logo, size: 40)
+                    } else if let c = occ.bill.category {
                         c.icon(size: 40, onDark: true)
                     } else {
                         CategoryIcon(symbol: "arrow.triangle.2.circlepath", color: .orange, size: 40, onDark: true)
@@ -216,9 +199,15 @@ struct BillCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(occ.bill.receives ? "入帳日" : "到期").font(.caption).foregroundStyle(.white.opacity(0.6))
                         Text(DateText.dueText(occ.due)).font(.headline)
-                        Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " · \(occ.bill.platform)"))
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.6))
+                        HStack(spacing: 5) {
+                            Text(occ.bill.recurrenceText + (occ.bill.platform.isEmpty ? "" : " ·"))
+                            if !occ.bill.platform.isEmpty {
+                                MerchantLogo(name: occ.bill.platform, size: 15)
+                                Text(occ.bill.platform)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.6))
                     }
                     .foregroundStyle(.white)
                     .padding(.bottom, 12)

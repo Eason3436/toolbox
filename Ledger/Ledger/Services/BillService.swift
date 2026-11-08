@@ -16,6 +16,29 @@ enum BillService {
             .sorted { $0.due < $1.due }
     }
 
+    /// 不分月：每個帳單只列一次，顯示最早還沒繳的那期（過去 90 天內），都繳了就顯示下一期
+    static func upcoming(_ bills: [Bill]) -> [BillOccurrence] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let from = cal.date(byAdding: .day, value: -90, to: today) ?? today
+        let to = cal.date(byAdding: .day, value: 400, to: today) ?? today
+        let window = DateInterval(start: from, end: to)
+        let list: [BillOccurrence] = bills.filter(\.active).compactMap { b in
+            let occs = b.dueDates(in: window).map { BillOccurrence(bill: b, due: $0) }
+            return occs.first(where: { !$0.paid }) ?? occs.first(where: { $0.due >= today }) ?? occs.last
+        }
+        return list.sorted { $0.due < $1.due }
+    }
+
+    /// 換算成每個月大約多少（未來一年的總額 ÷ 12）
+    static func monthlyEquivalent(_ bill: Bill) -> Double {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let end = cal.date(byAdding: .year, value: 1, to: today) ?? today
+        let n = bill.dueDates(in: DateInterval(start: today, end: end)).count
+        return Double(n) * bill.amount / 12
+    }
+
     static func markPaid(_ occ: BillOccurrence, context: ModelContext) {
         let bill = occ.bill
         let key = Bill.key(for: occ.due)
