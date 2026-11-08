@@ -8,10 +8,42 @@ enum BrandLogo {
         var name: String
         /// 名稱裡出現這些字就算（不分大小寫、忽略空白）
         var keywords: [String]
+        /// 整個名稱剛好是這些字才算（太短、容易誤判的，例如 LINE、Max）
+        var exact: [String] = []
     }
 
     /// 順序有差：比較長、比較特定的放前面（Uber Eats 要比 Uber 先比對）
     static let brands: [Brand] = [
+        // 訂閱服務與應用商店：比較特定的放前面（YouTube Music 在 YouTube 前、Xbox 在 Microsoft 前）
+        Brand(id: "applemusic", name: "Apple Music", keywords: ["apple music", "applemusic"]),
+        Brand(id: "appletv", name: "Apple TV", keywords: ["apple tv", "appletv"]),
+        Brand(id: "icloud", name: "iCloud", keywords: ["icloud"]),
+        Brand(id: "appstore", name: "App Store", keywords: ["app store", "appstore", "apple.com/bill", "itunes", "apple services", "應用商店", "app內購", "app 內購"]),
+        Brand(id: "youtubemusic", name: "YouTube Music", keywords: ["youtube music", "youtubemusic"]),
+        Brand(id: "youtube", name: "YouTube", keywords: ["youtube"]),
+        Brand(id: "googleone", name: "Google One", keywords: ["google one", "googleone", "google storage"]),
+        Brand(id: "googleplay", name: "Google Play", keywords: ["google play", "googleplay"]),
+        Brand(id: "disneyplus", name: "Disney+", keywords: ["disney+", "disneyplus", "disney plus"]),
+        Brand(id: "primevideo", name: "Prime Video", keywords: ["prime video", "primevideo", "amazon prime", "amzn digital"]),
+        Brand(id: "max", name: "HBO Max", keywords: ["hbo max", "hbomax", "max.com", "hbo go"], exact: ["max", "hbo"]),
+        Brand(id: "catchplay", name: "CATCHPLAY+", keywords: ["catchplay"]),
+        Brand(id: "friday", name: "friDay影音", keywords: ["friday影音", "fridayvideo", "friday video", "遠傳friday"]),
+        Brand(id: "kkbox", name: "KKBOX", keywords: ["kkbox", "kkcompany"]),
+        Brand(id: "linemusic", name: "LINE MUSIC", keywords: ["line music", "linemusic"]),
+        Brand(id: "line", name: "LINE", keywords: ["line貼圖", "line store", "line禮物", "ly corporation", "line premium"], exact: ["line"]),
+        Brand(id: "chatgpt", name: "ChatGPT", keywords: ["chatgpt", "openai"]),
+        Brand(id: "claude", name: "Claude", keywords: ["claude", "anthropic"]),
+        Brand(id: "xbox", name: "Xbox", keywords: ["xbox"]),
+        Brand(id: "microsoft365", name: "Microsoft 365", keywords: ["microsoft 365", "microsoft365", "microsoft*365", "office 365", "office365"]),
+        Brand(id: "adobe", name: "Adobe", keywords: ["adobe", "creative cloud"]),
+        Brand(id: "notion", name: "Notion", keywords: ["notion"]),
+        Brand(id: "dropbox", name: "Dropbox", keywords: ["dropbox"]),
+        Brand(id: "canva", name: "Canva", keywords: ["canva"]),
+        Brand(id: "duolingo", name: "Duolingo", keywords: ["duolingo", "多鄰國"]),
+        Brand(id: "nintendo", name: "Nintendo", keywords: ["nintendo", "任天堂"]),
+        Brand(id: "playstation", name: "PlayStation", keywords: ["playstation", "sony interactive"]),
+        Brand(id: "github", name: "GitHub", keywords: ["github"]),
+        Brand(id: "crunchyroll", name: "Crunchyroll", keywords: ["crunchyroll"]),
         Brand(id: "seven", name: "7-ELEVEN", keywords: ["7-eleven", "7-11", "seven-eleven", "統一超商", "小七"]),
         Brand(id: "familymart", name: "全家", keywords: ["全家便利", "familymart", "family mart", "全家"]),
         Brand(id: "hilife", name: "萊爾富", keywords: ["萊爾富", "hi-life", "hilife"]),
@@ -69,7 +101,8 @@ enum BrandLogo {
         let n = name.lowercased().replacingOccurrences(of: " ", with: "")
         guard !n.isEmpty else { return nil }
         return brands.first { b in
-            b.keywords.contains { n.contains($0.lowercased().replacingOccurrences(of: " ", with: "")) }
+            b.exact.contains { n == $0 }
+                || b.keywords.contains { n.contains($0.lowercased().replacingOccurrences(of: " ", with: "")) }
         }
     }
 
