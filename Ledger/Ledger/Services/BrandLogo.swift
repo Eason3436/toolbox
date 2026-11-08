@@ -274,4 +274,11 @@ extension Entry {
         guard kind != .transfer, isSubscriptionEntry else { return nil }
         return BrandLogo.subscriptionGlyph(name: title, platform: subscriptionPlatform)
     }
+
+    /// 列表圖示：訂閱用服務／平台，連鎖店用店家的單色 logo
+    var listGlyph: BrandLogo.Glyph? {
+        guard kind != .transfer else { return nil }
+        if let g = subscriptionGlyph { return g }
+        return BrandLogo.glyph(for: title)
+    }
 }

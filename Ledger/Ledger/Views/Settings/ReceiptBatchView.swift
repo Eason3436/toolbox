@@ -36,7 +36,7 @@ struct ReceiptBatchView: View {
                 }
                 .disabled(running)
             } footer: {
-                Text("在 iPhone 上辨識，照片不會存起來。用發票上的日期時間和金額找對應的記帳，找到就把發票內容和分店填進去；找不到的可以直接新增一筆。")
+                Text("在 iPhone 上辨識，照片不會存起來。用發票上的金額和前後一兩天內的時間找對應的記帳（店名對得上的優先），找到就把發票內容和分店填進去；找不到的可以直接新增一筆。")
             }
 
             if !rows.isEmpty {
@@ -165,11 +165,15 @@ struct ReceiptBatchView: View {
         try? context.save()
     }
 
-    /// 金額一樣、時間最接近（同一天內；發票有時間就要在 3 小時內），沒有發票的優先
+    /// 找對應的記帳（放寬：記帳時間常常跟發票時間對不上）
+    /// - 金額相同（±1 元）；店名對得上時允許差 3%（折扣、四捨五入）
+    /// - 發票有時間：前後 36 小時內；只有日期：前後 2 天內；沒有日期：最近 90 天且店名對得上
+    /// - 分數越小越好：時間差＋金額差，店名對得上大幅加分，已經有發票的排後面
     private func findEntry(for r: Receipt, excluding used: Set<UUID>) -> Entry? {
         guard r.total > 0 else { return nil }
         let parsed = Self.parseDate(r.date)
-        let lo = r.total - 0.5, hi = r.total + 0.5
+        let slack: Double = max(1, r.total * 0.03)
+        let lo = r.total - slack, hi = r.total + slack
         let expense = EntryKind.expense.rawValue
         let fetch = FetchDescriptor<Entry>(predicate: #Predicate<Entry> { e in
             e.kindRaw == expense && e.amount >= lo && e.amount <= hi
@@ -177,30 +181,38 @@ struct ReceiptBatchView: View {
         let candidates = ((try? context.fetch(fetch)) ?? []).filter { !used.contains($0.id) }
         guard !candidates.isEmpty else { return nil }
         let storeKey = BrandLogo.groupKey(for: r.store)
+        let storeName = BranchMatcher.searchName(r.store)
+
+        func sameStore(_ e: Entry) -> Bool {
+            guard !r.store.isEmpty else { return false }
+            if BrandLogo.groupKey(for: e.title) == storeKey { return true }
+            return storeName.count >= 2 && e.title.localizedCaseInsensitiveContains(storeName)
+        }
 
         func score(_ e: Entry) -> Double? {
-            var s: Double = 0
+            let store = sameStore(e)
+            let amountDiff = abs(e.amount - r.total)
+            // 金額不完全一樣時，一定要店名對得上
+            if amountDiff > 1 && !store { return nil }
+            var s: Double = amountDiff * 600
             if let p = parsed {
                 let date = p.0, hasTime = p.1
                 let diff = abs(e.date.timeIntervalSince(date))
                 if hasTime {
-                    guard diff <= 3 * 3600 else { return nil }
+                    guard diff <= 36 * 3600 else { return nil }
                     s += diff
                 } else {
-                    guard Calendar.current.isDate(e.date, inSameDayAs: date) else { return nil }
-                    s += 3600
+                    let days = abs(Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: e.date),
+                                                                   to: Calendar.current.startOfDay(for: date)).day ?? 99)
+                    guard days <= 2 else { return nil }
+                    s += 3600 + Double(days) * 86400
                 }
             } else {
-                // 發票沒日期：只接受最近 60 天內、店名對得上的
-                guard e.date > .now.addingTimeInterval(-60 * 86400),
-                      !r.store.isEmpty, BrandLogo.groupKey(for: e.title) == storeKey else { return nil }
+                guard e.date > .now.addingTimeInterval(-90 * 86400), store else { return nil }
                 s += 86400
             }
+            if store { s -= 6 * 3600 }
             if e.receiptJSON != nil { s += 30 * 86400 }
-            if !r.store.isEmpty, BrandLogo.groupKey(for: e.title) == storeKey
-                || e.title.localizedCaseInsensitiveContains(BranchMatcher.searchName(r.store)) {
-                s -= 1800
-            }
             return s
         }
         return candidates.compactMap { e in score(e).map { (e, $0) } }.min { $0.1 < $1.1 }?.0
