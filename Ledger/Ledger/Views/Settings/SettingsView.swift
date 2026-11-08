@@ -38,6 +38,10 @@ struct SettingsView: View {
                     Text("捷徑自動記帳")
                 }
 
+                Section("主要色") {
+                    ThemePicker()
+                }
+
                 Section("帳戶") {
                     ForEach(accounts) { a in
                         Button { editingAccount = a } label: {
