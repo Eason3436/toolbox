@@ -36,7 +36,7 @@ struct ContentView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle("數字動效示範")
         .navigationBarTitleDisplayMode(.inline)
     }

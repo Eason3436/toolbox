@@ -95,7 +95,7 @@ struct BudgetsView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle("預算")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -194,7 +194,7 @@ struct BudgetDetailView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle(budget.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("編輯") { editing = true } }
@@ -281,7 +281,7 @@ struct BudgetEditor: View {
                 .padding()
             }
             .amountKeypad(text: $amountText, pad: $pad)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle(budget == nil ? "新增預算" : "編輯預算")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

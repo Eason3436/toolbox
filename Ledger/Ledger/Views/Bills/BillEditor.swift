@@ -81,7 +81,7 @@ struct BillEditor: View {
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 12)
                                 .frame(minWidth: 160)
-                                .background(Color(.secondarySystemGroupedBackground), in: .capsule)
+                                .background(Palette.card, in: .capsule)
                         } else {
                             Button { editingPlatform = true } label: { DashedChip(title: "平台") }
                                 .buttonStyle(.plain)
@@ -107,7 +107,7 @@ struct BillEditor: View {
             }
             .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle(bill == nil ? "新增帳單" : "編輯帳單")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

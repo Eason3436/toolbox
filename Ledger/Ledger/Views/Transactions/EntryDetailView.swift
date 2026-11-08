@@ -54,7 +54,7 @@ struct EntryDetailView: View {
                 }
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle("交易詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

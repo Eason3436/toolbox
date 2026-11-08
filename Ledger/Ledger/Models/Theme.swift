@@ -88,3 +88,18 @@ struct ThemePicker: View {
         .sensoryFeedback(.selection, trigger: picked)
     }
 }
+
+/// 中性色：背景、卡片都不用純黑／純白，深色模式另外調整，不是直接反轉
+enum Palette {
+    /// 頁面底色
+    static let background = Theme.dynamic(light: "#F2F2F5", dark: "#0F0F11")
+    /// 卡片
+    static let card = Theme.dynamic(light: "#FCFCFD", dark: "#1C1C1F")
+    /// 卡片裡再一層（按鈕、輸入框）
+    static let raised = Theme.dynamic(light: "#ECECF0", dark: "#2A2A2E")
+    /// 深色卡片上的主要按鈕：接近白，但不是純白
+    static let onDarkButton = Color(hex: "#F2F2F4")
+    static let onDarkButtonText = Color(hex: "#1C1C1E")
+    /// 一般圖示用的中性灰（不再每一列一個顏色）
+    static let icon = Theme.dynamic(light: "#6B6B73", dark: "#A1A1A8")
+}

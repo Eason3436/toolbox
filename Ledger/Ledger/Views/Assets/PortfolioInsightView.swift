@@ -68,7 +68,7 @@ struct PortfolioInsightView: View {
             .padding(.bottom, 30)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.background)
         .navigationTitle(focus.map { "\($0.name) 分析" } ?? "投資分析")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

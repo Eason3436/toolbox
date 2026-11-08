@@ -188,7 +188,7 @@ struct EntriesView: View {
             }
             .listSectionSpacing(14)
             .scrollContentBackground(.hidden)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .ledgerNavigation(accountTitle)
             .toolbar {
                 HeaderTitle(title: accountTitle) {

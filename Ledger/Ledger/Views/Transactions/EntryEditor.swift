@@ -102,7 +102,7 @@ struct EntryEditor: View {
             .scrollEdgeEffectStyle(.soft, for: .top)
             .amountKeypad(text: $amountText, pad: $pad)
             .scrollDismissesKeyboard(.interactively)
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle(entry == nil ? "記一筆" : "編輯記帳")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -184,7 +184,7 @@ struct EntryEditor: View {
                     .disabled(sentence.trimmingCharacters(in: .whitespaces).isEmpty || parsing)
                 }
                 .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
-                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22, style: .continuous))
+                .background(Palette.card, in: .rect(cornerRadius: 22, style: .continuous))
                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
 
@@ -219,7 +219,7 @@ struct EntryEditor: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(active ? Color.accentColor : Color(.secondarySystemGroupedBackground),
+        .background(active ? Color.accentColor : Palette.card,
                     in: .rect(cornerRadius: 18, style: .continuous))
         .contentShape(.rect)
     }
@@ -243,12 +243,12 @@ struct EntryEditor: View {
                 }
             }
             Divider().padding(.leading, 52)
-            detailRow("clock.fill", .blue, "時間") {
+            detailRow("clock.fill", Palette.icon, "時間") {
                 DatePicker("", selection: $date).labelsHidden()
             }
             if !goals.filter({ !$0.archived }).isEmpty {
                 Divider().padding(.leading, 52)
-                detailRow("target", .pink, "儲蓄目標") {
+                detailRow("target", Palette.icon, "儲蓄目標") {
                     Menu {
                         Button("不歸入目標") { goal = nil }
                         ForEach(goals.filter { !$0.archived }) { g in
@@ -264,7 +264,7 @@ struct EntryEditor: View {
             }
             if kind == .expense {
                 Divider().padding(.leading, 52)
-                detailRow("chart.pie.fill", .purple, "不計入預算") {
+                detailRow("chart.pie.fill", Palette.icon, "不計入預算") {
                     Toggle("", isOn: $excludeFromBudget.animation(Motion.chip)).labelsHidden()
                 }
             }
@@ -278,7 +278,7 @@ struct EntryEditor: View {
             .padding(.horizontal, 12).padding(.vertical, 10)
         }
         .font(.subheadline)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20, style: .continuous))
+        .background(Palette.card, in: .rect(cornerRadius: 20, style: .continuous))
     }
 
     private func detailIcon(_ symbol: String, _ color: Color) -> some View {
