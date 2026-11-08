@@ -62,6 +62,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - 使用者偏好：介面安靜、少「AI」字眼、要圖表不要長文字、Tab bar 用原生的
 - iOS 27、Swift 5、SwiftData；`com.eason3436.ledger`
 - CI 注意：長的 tuple／三元運算鏈會讓 Swift 型別檢查逾時，拆成有型別的 helper
+- 更新日誌：`Ledger/Ledger/Views/Settings/ChangelogView.swift`（設定 → 版本）。每次更新加一筆並同步改 `Ledger/project.yml` 的 `MARKETING_VERSION`：大改版動第一碼、新功能動第二碼、只有修正動第三碼
 
 ### LiveContainer 捷徑版（`LiveContainer/`）
 [LiveContainer](https://github.com/LiveContainer/LiveContainer)（AGPL-3.0）的修改版。使用者把自己的 App 裝在 LiveContainer 裡跑，但裝在裡面的 App 的捷徑動作系統看不到，所以在 LiveContainer 自己的 App Intents 延伸功能加了動作：開啟裡面的 App、傳資料到 App 收件匣、記帳：從通知記帳／快速記一筆。背景動作把 JSON 放到 `<guest home>/Library/LCShortcutInbox/`，Ledger 回到前景時讀取（`Ledger/Ledger/Services/LiveContainerInbox.swift`）。另加「App 更新」：比對 GitHub release asset 的 `updated_at`，一鍵更新上面這些 App。

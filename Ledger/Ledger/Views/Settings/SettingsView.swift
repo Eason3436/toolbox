@@ -189,7 +189,9 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                    NavigationLink { ChangelogView() } label: {
+                        LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
+                    }
                 }
             }
             .navigationTitle("設定")

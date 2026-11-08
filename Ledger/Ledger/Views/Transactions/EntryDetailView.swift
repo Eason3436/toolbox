@@ -153,7 +153,10 @@ struct EntryDetailView: View {
             } else {
                 row("分類", entry.category?.fullName ?? "未分類")
                 row("帳戶", entry.account?.name ?? "未指定帳戶")
-                if let b = entry.branch { row("分店", b) }
+                if entry.branch != nil || entry.latitude != nil {
+                    row("分店", BranchMatcher.isBrandOnly(entry.branch, merchant: entry.title)
+                        ? "未標注" : BrandLogo.shortBranch(entry.branch ?? "", merchant: entry.title))
+                }
             }
             row("時間", entry.date.formatted(.dateTime.year().month().day().weekday().hour().minute()))
             if let g = entry.goal { row("儲蓄目標", g.name) }
