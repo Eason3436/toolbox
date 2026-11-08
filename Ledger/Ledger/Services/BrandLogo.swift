@@ -81,7 +81,11 @@ enum BrandLogo {
 
     /// 分店名稱去掉品牌名：「萊爾富 彰化精誠店」→「彰化精誠店」
     static func shortBranch(_ branch: String, merchant: String) -> String {
-        var candidates: [String] = [merchant, BranchMatcher.searchName(merchant)]
+        var stripped = merchant
+        for w in ["國際股份有限公司", "股份有限公司", "有限公司", "企業", "公司"] {
+            stripped = stripped.replacingOccurrences(of: w, with: "")
+        }
+        var candidates: [String] = [merchant, stripped]
         if let b = brand(for: merchant) ?? brand(for: branch) {
             candidates += [b.name] + b.keywords
         }
