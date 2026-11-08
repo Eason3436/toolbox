@@ -1,0 +1,682 @@
+import AppIntents
+import SwiftUI
+import UniformTypeIdentifiers
+import Translation
+
+/// 課堂分頁：上課中顯示即時字幕，否則顯示開始畫面（過去的課在紀錄頁）。
+struct LectureHomeView: View {
+    @Environment(RecordingController.self) private var recorder
+    @Environment(Router.self) private var router
+
+    var body: some View {
+        @Bindable var router = router
+        NavigationStack(path: $router.lecturePath) {
+            Group {
+                if recorder.mode == .lecture, recorder.isActive, let session = recorder.lecture {
+                    LectureLiveView(session: session)
+                        .userActivity(SiriScreen.lectureActivity) { activity in
+                            activity.title = session.lecture.displayTitle
+                            activity.appEntityIdentifier = EntityIdentifier(for: LectureEntity.self, identifier: session.lecture.id)
+                        }
+                } else {
+                    LectureStartView()
+                }
+            }
+            .animation(.smooth, value: recorder.isActive)
+            .navigationDestinations()
+        }
+    }
+}
+
+struct TargetLanguage: Identifiable, Hashable {
+    let id: String
+    let name: String
+    static let all = [
+        TargetLanguage(id: "zh-Hant-TW", name: "繁體中文"),
+        TargetLanguage(id: "zh-Hans-CN", name: "簡體中文"),
+        TargetLanguage(id: "en-US", name: "英文"),
+        TargetLanguage(id: "ja-JP", name: "日文"),
+    ]
+}
+
+struct LectureStartView: View {
+    @Environment(RecordingController.self) private var recorder
+    @Environment(AppSettings.self) private var settings
+    @Environment(RecapStore.self) private var store
+    @State private var locales: [Locale] = []
+    @State private var translationStatus: LanguageAvailability.Status?
+    @State private var downloadConfig: TranslationSession.Configuration?
+    @State private var error: String?
+    @State private var starting = false
+    @State private var importing = false
+    @Environment(Router.self) private var router
+
+    var body: some View {
+        @Bindable var settings = settings
+        List {
+            Section {
+                heroCard
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                if recorder.isActive, recorder.mode == .allDay {
+                    Label("目前在全天錄音，開始上課會先停止全天錄音。", systemImage: "info.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            }
+            .animation(.smooth, value: error)
+            todaySection
+            Section {
+                Toggle(isOn: foreignBinding.animation(.smooth)) {
+                    Label("非中文授課", systemImage: "character.bubble")
+                }
+                if isForeign {
+                    Picker("上課語言", selection: $settings.lectureSourceLocale) {
+                        if locales.isEmpty { Text(settings.lectureSourceLocale).tag(settings.lectureSourceLocale) }
+                        ForEach(locales.filter { !$0.identifier.hasPrefix("zh") }, id: \.identifier) { locale in
+                            Text(SpeechSupport.displayName(locale)).tag(locale.identifier)
+                        }
+                    }
+                    Picker("翻譯成", selection: $settings.translationTarget) {
+                        ForEach(TargetLanguage.all) { Text($0.name).tag($0.id) }
+                    }
+                    translationRow
+                }
+            } header: {
+                Text("語言")
+            } footer: {
+                Text(isForeign ? "上課時即時顯示字幕和翻譯。" : "中文課只錄音，下課後才轉文字並由 \(AIConfig.engineName) 整理，比較省電。")
+            }
+            Section {
+                Button { importing = true } label: {
+                    Label("匯入錄音檔整理", systemImage: "waveform.badge.plus")
+                }
+                NavigationLink {
+                    TimetableView()
+                } label: {
+                    LabeledContent {
+                        Text(settings.timetable.isEmpty ? "未設定" : "\(settings.timetable.count) 節")
+                    } label: {
+                        Label("課表", systemImage: "tablecells")
+                    }
+                }
+            } header: {
+                Text("更多")
+            } footer: {
+                Text("語音備忘錄或其他錄音也能匯進來整理。過去的課在「紀錄 → 課堂」。")
+            }
+        }
+        .navigationTitle("課堂模式")
+        .sheet(isPresented: $importing) {
+            ImportAudioView { id in router.lecturePath.append(LectureRoute(id: id)) }
+        }
+        .sensoryFeedback(.selection, trigger: settings.lectureSourceLocale)
+        .sensoryFeedback(.selection, trigger: settings.translationTarget)
+        .sensoryFeedback(.selection, trigger: settings.lectureForeign)
+        .task {
+            locales = await SpeechSupport.supportedLocales().sorted { $0.identifier < $1.identifier }
+            await refreshStatus()
+        }
+        .onChange(of: settings.lectureSourceLocale) { Task { await refreshStatus() } }
+        .onChange(of: settings.translationTarget) { Task { await refreshStatus() } }
+        .translationTask(downloadConfig) { session in
+            do {
+                try await session.prepareTranslation()
+            } catch {
+                self.error = "翻譯語言下載失敗：\(error.localizedDescription)"
+            }
+            await refreshStatus()
+        }
+    }
+
+    /// 頂部大卡：現在這節課（或下一節）＋開始按鈕
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: currentEntry?.subject.symbol ?? "graduationcap")
+                    .font(.title2)
+                    .frame(width: 48, height: 48)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.25)), in: .circle)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(currentEntry == nil ? "隨堂錄音" : "現在這節")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(currentEntry?.title ?? "科目下課後自動判斷")
+                        .font(.title3.bold())
+                    if let entry = currentEntry {
+                        Text(entry.timeText + (isForeign ? "・即時字幕" : "・下課後整理"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else if let next = settings.timetableNext() {
+                        Text("下一節 \(next.title)・\(TimetableEntry.hm(next.startMinute))")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            Button {
+                start()
+            } label: {
+                HStack {
+                    Spacer()
+                    if starting { ProgressView() } else { Label("開始上課", systemImage: "record.circle").font(.headline) }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .animation(.smooth(duration: 0.2), value: starting)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(starting)
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    @ViewBuilder
+    private var todaySection: some View {
+        let today = settings.timetableToday()
+        if !today.isEmpty {
+            Section("今天的課") {
+                ForEach(today) { entry in
+                    HStack(spacing: 12) {
+                        Image(systemName: entry.subject.symbol)
+                            .foregroundStyle(entry.id == currentEntry?.id ? Color.accentColor : .secondary)
+                            .frame(width: 24)
+                        Text(entry.title)
+                            .fontWeight(entry.id == currentEntry?.id ? .semibold : .regular)
+                        Spacer()
+                        Text(entry.timeText).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .opacity(isPast(entry) ? 0.45 : 1)
+                }
+            }
+        }
+    }
+
+    private func isPast(_ entry: TimetableEntry) -> Bool {
+        let c = Calendar.current
+        let minute = c.component(.hour, from: .now) * 60 + c.component(.minute, from: .now)
+        return entry.endMinute < minute
+    }
+
+    /// 現在課表上的那節課
+    private var currentEntry: TimetableEntry? { settings.timetableEntry() }
+
+    /// 課表上是英文課就自動開即時字幕；沒有課表時看開關
+    private var isForeign: Bool {
+        if let entry = currentEntry { return entry.subject == .english }
+        return settings.lectureForeign
+    }
+
+    private var foreignBinding: Binding<Bool> {
+        Binding { isForeign } set: { settings.lectureForeign = $0 }
+    }
+
+    @ViewBuilder
+    private var subjectRow: some View {
+        if let entry = currentEntry {
+            Label("依課表：\(entry.title)（\(entry.timeText)）", systemImage: entry.subject.symbol)
+        } else {
+            Label("科目：下課後由 AI 自動判斷", systemImage: "wand.and.stars")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var translationRow: some View {
+        switch translationStatus {
+        case .installed:
+            Label("翻譯語言已下載，可離線即時翻譯", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.footnote)
+        case .supported:
+            VStack(alignment: .leading, spacing: 6) {
+                Label("要先下載翻譯語言（只需一次），不然會改用 Apple Intelligence 翻譯，比較慢。", systemImage: "arrow.down.circle")
+                    .font(.footnote).foregroundStyle(.orange)
+                Button("下載翻譯語言") {
+                    downloadConfig = TranslationSession.Configuration(
+                        source: Locale(identifier: settings.lectureSourceLocale).language,
+                        target: Locale.Language(identifier: settings.translationTarget)
+                    )
+                }
+            }
+        case .unsupported:
+            Label("系統翻譯不支援這組語言，會改用 Apple Intelligence 翻譯。", systemImage: "exclamationmark.triangle")
+                .font(.footnote).foregroundStyle(.orange)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func refreshStatus() async {
+        translationStatus = await TranslationSupport.status(sourceLocale: settings.lectureSourceLocale, target: settings.translationTarget)
+    }
+
+    private func start() {
+        error = nil
+        starting = true
+        Task {
+            defer { starting = false }
+            do {
+                try await recorder.start(mode: .lecture, source: .manual)
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+}
+
+/// 上課中：即時字幕＋翻譯。
+struct LectureLiveView: View {
+    let session: LectureSession
+    @Environment(RecordingController.self) private var recorder
+    @Environment(Router.self) private var router
+    @Environment(QuickRecap.self) private var quick
+    @Environment(AppSettings.self) private var settings
+    @State private var follow = true
+
+    private var noTranslation: Bool { session.translatorName == "不需翻譯" }
+
+    var body: some View {
+        @Bindable var settings = settings
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(session.lecture.lines) { line in
+                        LineView(line: line, showSource: settings.lectureShowSource || noTranslation, sourceIsMain: noTranslation)
+                            .id(line.id)
+                    }
+                    if !session.volatileText.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if settings.lectureShowSource || noTranslation {
+                                Text(session.volatileText).font(noTranslation ? .title3 : .subheadline).foregroundStyle(.tertiary)
+                            }
+                            if !session.volatileTranslation.isEmpty {
+                                Text(session.volatileTranslation).font(.title3).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if !session.isLive {
+                        ContentUnavailableView {
+                            Label(session.lecture.subject.map { $0 == .general ? "錄音中" : "\($0.title)課錄音中" } ?? "錄音中", systemImage: "waveform")
+                        } description: {
+                            Text("中文課只錄音，比較省電。下課後會轉成文字，並整理上課重點、摘要和老師提醒的事項。")
+                        }
+                    } else if session.lecture.lines.isEmpty && session.volatileText.isEmpty {
+                        ContentUnavailableView("正在聽…", systemImage: "ear", description: Text("老師開始說話後，原文和翻譯會出現在這裡。第一次使用某個語言時要先下載語音模型。"))
+                    }
+                    Color.clear.frame(height: 1).id("bottom")
+                }
+                .padding(16)
+            }
+            .scrollEdgeEffectStyle(.soft, for: .all)
+            .onChange(of: session.lecture.lines.count) {
+                if follow { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            }
+            .onChange(of: session.volatileText) {
+                if follow { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: recorder.state == .interrupted ? "pause.circle.fill" : "record.circle")
+                            .foregroundStyle(recorder.state == .interrupted ? .orange : .red)
+                        if let started = recorder.startedAt {
+                            Text(started, style: .timer).font(.headline.monospacedDigit())
+                        }
+                    }
+                    Text(session.translatorName).font(.caption2).foregroundStyle(.secondary)
+                }
+                LevelMeter(level: recorder.level).frame(width: 60)
+                Spacer()
+                if recorder.state == .interrupted || recorder.state == .paused {
+                    Button("繼續") { Task { await recorder.resume() } }.buttonStyle(.glassProminent)
+                } else {
+                    Button { recorder.pause() } label: { Image(systemName: "pause.fill").padding(.vertical, 4) }
+                        .buttonStyle(.glass)
+                }
+                Button(role: .destructive) {
+                    Task { await recorder.stop() }
+                } label: {
+                    Label("下課", systemImage: "stop.fill").padding(.vertical, 4)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.red)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .padding(.horizontal, 12)
+        }
+        .navigationTitle("上課中")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Button {
+                router.showQuickRecap = true
+                Task { await quick.run(minutes: 15) }
+            } label: {
+                Label("最近 15 分鐘重點", systemImage: "sparkles")
+            }
+            Menu {
+                Toggle("顯示原文", isOn: $settings.lectureShowSource)
+                Toggle("自動捲到最新", isOn: $follow)
+            } label: {
+                Image(systemName: "textformat")
+            }
+        }
+    }
+}
+
+private struct LineView: View {
+    let line: LiveLine
+    let showSource: Bool
+    var sourceIsMain = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if showSource {
+                Text(line.source).font(sourceIsMain ? .title3 : .subheadline).foregroundStyle(sourceIsMain ? .primary : .secondary)
+            }
+            if sourceIsMain {
+                EmptyView()
+            } else if let t = line.translation {
+                if !t.isEmpty { Text(t).font(.title3) }
+            } else {
+                Text("翻譯中…").font(.footnote).foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+    }
+}
+
+/// 課後：重點、術語、錄音、雙語逐字稿。
+struct LectureDetailView: View {
+    let id: UUID
+    @Environment(RecapStore.self) private var store
+    @Environment(ProcessingQueue.self) private var queue
+    @State private var renaming = false
+    @State private var newName = ""
+    @State private var showSource = true
+    @State private var showingNotes = false
+    @State private var importingFile = false
+    @State private var notice: String?
+
+    var body: some View {
+        if let lecture = store.lecture(id) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let notes = lecture.claudeNotes, !notes.isEmpty {
+                        // Muse 整理好了：直接看它的筆記，下面不再重複整理
+                        MuseNotesCard(label: "Muse 課堂筆記", raw: notes, sheetTitle: lecture.displayTitle)
+                    } else {
+                        richNotesCard(lecture)
+                    }
+                    summaryCard(lecture)
+                    if !lecture.audioParts.isEmpty {
+                        Card {
+                            Text("錄音").font(.headline)
+                            ForEach(Array(lecture.audioParts.enumerated()), id: \.offset) { index, part in
+                                AudioPlayerView(url: store.audioURL(part.file), title: lecture.audioParts.count > 1 ? "第 \(index + 1) 段・\(part.start.hm)" : nil)
+                            }
+                        }
+                    }
+                    if let refined = lecture.refinedTranscript, !refined.isEmpty {
+                        Card {
+                            DisclosureGroup {
+                                Text(refined).font(.subheadline).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            } label: {
+                                Label("中英合併逐字稿", systemImage: "text.badge.checkmark").font(.headline)
+                            }
+                        }
+                    }
+                    Card {
+                        HStack {
+                            Text("逐字稿（\(lecture.lines.count) 句）").font(.headline)
+                            Spacer()
+                            Toggle("原文", isOn: $showSource).fixedSize().font(.footnote)
+                        }
+                        ForEach(lecture.lines) { line in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(line.offset.clockText).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                                if showSource { Text(line.source).font(.subheadline).foregroundStyle(.secondary) }
+                                if let t = line.translation, !t.isEmpty { Text(t) }
+                            }
+                            .textSelection(.enabled)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+            .navigationTitle(lecture.displayTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            // 螢幕感知：Siri 知道「這堂課」是哪一堂
+            .userActivity(SiriScreen.lectureActivity) { activity in
+                activity.title = lecture.displayTitle
+                activity.appEntityIdentifier = EntityIdentifier(for: LectureEntity.self, identifier: lecture.id)
+            }
+            .toolbar {
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) { Image(systemName: "questionmark.bubble") }
+                ShareLink(item: MarkdownExport.lecture(lecture)) { Image(systemName: "square.and.arrow.up") }
+                Menu {
+                    Button("重新命名", systemImage: "pencil") { newName = lecture.name ?? lecture.displayTitle; renaming = true }
+                    Picker(selection: Binding(get: { lecture.subject ?? .general }, set: { value in
+                        var updated = lecture
+                        updated.subject = value
+                        store.upsertLecture(updated)
+                        Haptics.selection()
+                    })) {
+                        ForEach(SchoolSubject.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                    } label: {
+                        Label("科目：\(lecture.subject?.title ?? "未判斷")", systemImage: "books.vertical")
+                    }
+                    .pickerStyle(.menu)
+                    Button("重新整理重點", systemImage: "sparkles") { queue.resummarizeLecture(lecture.id) }
+                    if AIConfig.usesGemini {
+                        Button("重新製作詳細筆記", systemImage: "doc.richtext") { queue.regenerateRichNotes(lecture.id) }
+                    }
+                    Section("用其他 AI 做筆記") {
+                        exportMenuItems(lecture)
+                    }
+                } label: { Image(systemName: "ellipsis") }
+            }
+            .fileImporter(isPresented: $importingFile, allowedContentTypes: Self.importTypes) { result in
+                guard case .success(let url) = result else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let data = (try? Data(contentsOf: url)) ?? Data()
+                importNotes(String(decoding: data, as: UTF8.self), into: lecture)
+            }
+            .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+                Button("好") { notice = nil }
+            }
+            .alert("課堂名稱", isPresented: $renaming) {
+                TextField("例如：經濟學原理", text: $newName)
+                Button("儲存") {
+                    var updated = lecture
+                    updated.name = newName
+                    store.upsertLecture(updated)
+                }
+                Button("取消", role: .cancel) {}
+            }
+        } else {
+            ContentUnavailableView("找不到這堂課", systemImage: "questionmark")
+        }
+    }
+
+    static let importTypes: [UTType] = [.html, .plainText, .text, .utf8PlainText] + [UTType(filenameExtension: "md")].compactMap { $0 }
+
+    private func exportText(_ lecture: Lecture) -> String {
+        let transcript = lecture.refinedTranscript ?? lecture.sourceText
+        return RichNotes.exportText(lecture: lecture, transcript: transcript, memory: LearningMemory.previousLectureContext(for: lecture, in: store))
+    }
+
+    private func exportFileURL(_ lecture: Lecture) -> URL {
+        let safe = lecture.displayTitle.replacingOccurrences(of: "/", with: "-").prefix(40)
+        let url = FileManager.default.temporaryDirectory.appending(path: "\(safe)-逐字稿與提示詞.txt")
+        try? exportText(lecture).write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @ViewBuilder
+    private func exportMenuItems(_ lecture: Lecture) -> some View {
+        Button("複製逐字稿＋提示詞", systemImage: "doc.on.doc") { copyExport(lecture) }
+            .disabled(lecture.lines.isEmpty)
+        ShareLink(item: exportFileURL(lecture)) { Label("分享成文字檔", systemImage: "square.and.arrow.up") }
+            .disabled(lecture.lines.isEmpty)
+        Button("從剪貼簿匯入筆記", systemImage: "doc.on.clipboard") { importFromClipboard(lecture) }
+        Button("從檔案匯入筆記", systemImage: "folder") { importingFile = true }
+    }
+
+    private func copyExport(_ lecture: Lecture) {
+        UIPasteboard.general.string = exportText(lecture)
+        Haptics.success()
+        notice = "已複製逐字稿和提示詞。貼給任何 AI，把它產生的 notes.html（或整段回覆）存起來，再回來按「匯入」。"
+    }
+
+    private func importFromClipboard(_ lecture: Lecture) {
+        importNotes(UIPasteboard.general.string ?? "", into: lecture)
+    }
+
+    private func importNotes(_ raw: String, into lecture: Lecture) {
+        guard let html = RichNotes.importNotes(raw), html.count > 40 else {
+            Haptics.error()
+            notice = "看不懂這份內容。請貼上 AI 產生的 HTML 或 Markdown 筆記。"
+            return
+        }
+        guard var latest = store.lecture(lecture.id) else { return }
+        latest.richNotes = html
+        latest.richNotesError = nil
+        store.upsertLecture(latest)
+        Haptics.success()
+        showingNotes = true
+    }
+
+    @ViewBuilder
+    private func richNotesCard(_ lecture: Lecture) -> some View {
+        if let html = lecture.richNotes, !html.isEmpty {
+            Button {
+                Haptics.tap()
+                showingNotes = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.richtext").font(.title2).foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("詳細課程筆記").font(.headline).foregroundStyle(.primary)
+                        Text("流程、重點、會考、補充、事實查核、單字表").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingNotes) { RichNotesSheet(lecture: lecture, html: html) }
+        } else if !AIConfig.usesMuse, !AIConfig.usesGemini || lecture.richNotesError != nil, !lecture.lines.isEmpty {
+            Card {
+                Label("用任何 AI 做課程筆記", systemImage: "doc.richtext").font(.headline)
+                Text("1. 按「匯出」複製逐字稿和提示詞，貼給 ChatGPT、Claude、Gemini 等任何 AI。\n2. 把 AI 產生的 notes.html 檔案或回覆內容匯回來，這裡就會用整理好的排版顯示。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if let error = lecture.richNotesError {
+                    Label("Gemini 失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.footnote)
+                }
+                HStack {
+                    Button("匯出", systemImage: "doc.on.doc") { copyExport(lecture) }
+                    Menu {
+                        Button("從剪貼簿貼上", systemImage: "doc.on.clipboard") { importFromClipboard(lecture) }
+                        Button("選擇檔案", systemImage: "folder") { importingFile = true }
+                    } label: {
+                        Label("匯入", systemImage: "square.and.arrow.down")
+                    }
+                    if AIConfig.usesGemini {
+                        Button("Gemini 再試") { queue.regenerateRichNotes(lecture.id) }
+                    }
+                }
+                .buttonStyle(.glass)
+            }
+        } else if AIConfig.usesGemini, lecture.summary != nil {
+            Card {
+                if let error = lecture.richNotesError {
+                    Label("課程筆記失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.footnote)
+                    Button("再試一次") { queue.regenerateRichNotes(lecture.id) }.buttonStyle(.glass)
+                } else {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Gemini 正在製作詳細課程筆記…").foregroundStyle(.secondary)
+                    }
+                    Button("現在製作") { queue.kick(summaries: true) }.buttonStyle(.glass)
+                }
+            }
+        }
+    }
+
+    private func summaryCard(_ lecture: Lecture) -> some View {
+        Card {
+            HStack(spacing: 6) {
+                if let subject = lecture.subject, subject != .general {
+                    Label(subject.title, systemImage: subject.symbol)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.tint.opacity(0.12), in: Capsule())
+                }
+                Text("\(lecture.start.formatted(date: .abbreviated, time: .shortened))\(lecture.end.map { "–\($0.hm)" } ?? "")")
+            }
+            .font(.subheadline).foregroundStyle(.secondary)
+            if let s = lecture.summary, !s.title.isEmpty {
+                Text(s.title).font(.title2.bold())
+                Text(s.overview)
+                if !s.keyPoints.isEmpty {
+                    Text("課堂重點").font(.headline).padding(.top, 4)
+                    BulletList(items: s.keyPoints)
+                }
+                if let exam = s.examPoints, !exam.isEmpty {
+                    Label(lecture.subject?.isSeminar == true ? "講者強調" : "老師說會考", systemImage: "star.fill")
+                        .font(.headline).foregroundStyle(.orange).padding(.top, 4)
+                    BulletList(items: exam, symbol: "star", tint: .orange)
+                }
+                if !s.terms.isEmpty {
+                    Text("術語").font(.headline).padding(.top, 4)
+                    BulletList(items: s.terms, symbol: "character.book.closed", tint: .purple)
+                }
+                if !s.todos.isEmpty {
+                    Text("作業與提醒").font(.headline).padding(.top, 4)
+                    TodoList(items: s.todos, source: "Recap 課堂：\(lecture.displayTitle)")
+                }
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) {
+                    Label("對這堂課追問", systemImage: "questionmark.bubble")
+                }
+                .buttonStyle(.glass)
+                .padding(.top, 4)
+            } else if let error = lecture.summaryError {
+                Label("整理重點失敗：\(error)", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                Button("再試一次") { queue.resummarizeLecture(lecture.id) }.buttonStyle(.glass)
+            } else if lecture.end == nil {
+                Text("上課中，下課後會整理重點。").foregroundStyle(.secondary)
+            } else if lecture.needsTranscription {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("下課了，正在把錄音轉成文字…").foregroundStyle(.secondary)
+                }
+                Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
+            } else if lecture.lines.isEmpty {
+                Text("這堂課沒有辨識到內容。").foregroundStyle(.secondary)
+            } else if lecture.claudeNotes != nil {
+                // 已經有 Muse 的筆記，不再顯示整理中
+                NavigationLink(value: AskRoute(scope: .lecture(lecture.id))) {
+                    Label("對這堂課追問", systemImage: "questionmark.bubble")
+                }
+                .buttonStyle(.glass)
+            } else if AIConfig.usesMuse {
+                Label("逐字稿已交給 Muse，整理好會自動出現在上面。", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button("立即同步") { Task { await RecapSync.run() } }.buttonStyle(.glass)
+            } else {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text(queue.readiness == .available ? "正在整理重點…" : queue.readiness.message).foregroundStyle(.secondary)
+                }
+                Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
+            }
+        }
+    }
+}

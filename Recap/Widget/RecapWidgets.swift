@@ -1,0 +1,267 @@
+import ActivityKit
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+@main
+struct RecapWidgets: WidgetBundle {
+    var body: some Widget {
+        RecordingLiveActivity()
+    }
+}
+
+private let recordRed = Color(red: 1.0, green: 0.27, blue: 0.23)
+
+/// 版面參考系統「語音備忘錄」與「計時器」的即時動態：
+/// 左邊狀態＋大計時，右邊圓形按鈕；動態島精簡模式只放圖示與時間。
+struct RecordingLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: RecordingActivityAttributes.self) { context in
+            LockScreenView(context: context)
+                .activityBackgroundTint(nil)
+                .activitySystemActionForegroundColor(recordRed)
+                .widgetURL(RecapURL.open)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    ActionButtons(state: context.state, dark: true, size: 50)
+                        .frame(maxHeight: .infinity, alignment: .center)
+                        .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(context.state.isPaused ? "已暫停" : modeTitle(context))
+                            .font(.subheadline.weight(.semibold))
+                        ElapsedText(state: context.state)
+                            .font(.system(size: 40, weight: .medium).monospacedDigit())
+                            .contentTransition(.numericText())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .foregroundStyle(stateTint(context.state))
+                    .frame(maxHeight: .infinity, alignment: .center)
+                    .padding(.trailing, 6)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CaptionLine(context: context, dark: true)
+                        if context.state.endedAt == nil {
+                            SummaryButton(dark: true)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+                }
+            } compactLeading: {
+                LiveWaveform(state: context.state, bars: 6)
+            } compactTrailing: {
+                ElapsedText(state: context.state)
+                    .font(.body.weight(.medium).monospacedDigit())
+                    .foregroundStyle(stateTint(context.state))
+                    .contentTransition(.numericText())
+                    .frame(width: 52, alignment: .trailing)
+            } minimal: {
+                LiveWaveform(state: context.state, bars: 4)
+            }
+            .keylineTint(recordRed)
+            .widgetURL(RecapURL.open)
+        }
+    }
+}
+
+private func stateTint(_ state: RecordingActivityAttributes.ContentState) -> Color {
+    if state.endedAt != nil { return .secondary }
+    return state.isPaused ? .orange : recordRed
+}
+
+private func symbol(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
+    context.attributes.isLecture ? "captions.bubble.fill" : "waveform"
+}
+
+private func modeTitle(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
+    context.attributes.isLecture ? "課堂" : "全天錄音"
+}
+
+private func statusText(_ context: ActivityViewContext<RecordingActivityAttributes>) -> String {
+    let s = context.state
+    if s.endedAt != nil { return "錄音已儲存" }
+    if s.manualPause { return "已暫停" }
+    if s.isPaused { return "被打斷" }
+    if let stopAt = s.stopAt { return "錄到 \(stopAt.formatted(date: .omitted, time: .shortened))" }
+    if context.attributes.isLecture { return s.segmentCount > 0 ? "\(s.segmentCount) 句" : "正在聽" }
+    return s.segmentCount > 0 ? "已存 \(s.segmentCount) 段" : "收音中"
+}
+
+/// 小標：彩色圖示＋模式＋狀態，像系統即時動態的標題列。
+private struct StatusLabel: View {
+    let context: ActivityViewContext<RecordingActivityAttributes>
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: context.state.endedAt != nil ? "checkmark.circle.fill" : (context.state.isPaused ? "pause.circle.fill" : "record.circle"))
+                .foregroundStyle(stateTint(context.state))
+                .contentTransition(.symbolEffect(.replace))
+            Text(modeTitle(context))
+                .foregroundStyle(stateTint(context.state))
+            Text(statusText(context))
+                .foregroundStyle(.secondary)
+                .contentTransition(.opacity)
+        }
+        .font(.footnote.weight(.semibold))
+        .lineLimit(1)
+    }
+}
+
+/// 計時（從開始錄音算起）；暫停時顯示「暫停」。
+private struct ElapsedText: View {
+    let state: RecordingActivityAttributes.ContentState
+    var body: some View {
+        if let end = state.endedAt {
+            Text(Duration.seconds(max(0, end.timeIntervalSince(state.startedAt))).formatted(.time(pattern: end.timeIntervalSince(state.startedAt) >= 3600 ? .hourMinuteSecond : .minuteSecond)))
+        } else if state.isPaused {
+            Text("暫停")
+        } else {
+            Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: true)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
+/// 課堂模式最新一句翻譯，換句時由下往上推入。
+private struct CaptionLine: View {
+    let context: ActivityViewContext<RecordingActivityAttributes>
+    var dark = false
+    var body: some View {
+        if context.attributes.isLecture, let line = context.state.line, !line.isEmpty {
+            Text(line)
+                .font(.callout)
+                .foregroundStyle(dark ? Color.white : Color.primary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .id(line)
+                .transition(.push(from: .bottom))
+        }
+    }
+}
+
+/// 圓形按鈕：暫停／繼續、停止。
+private struct ActionButtons: View {
+    let state: RecordingActivityAttributes.ContentState
+    var dark = false
+    var size: CGFloat = 48
+
+    private var neutralFill: AnyShapeStyle {
+        dark ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(.fill.secondary)
+    }
+
+    var body: some View {
+        if state.endedAt == nil { buttons }
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 10) {
+            if state.isPaused {
+                Button(intent: ResumeFromActivityIntent()) {
+                    circle("play.fill", fill: AnyShapeStyle(recordRed.opacity(0.3)), fg: recordRed)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("繼續錄音")
+            } else {
+                Button(intent: PauseFromActivityIntent()) {
+                    circle("pause.fill", fill: AnyShapeStyle(Color.orange.opacity(0.3)), fg: .orange)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("暫停")
+            }
+            Button(intent: StopFromActivityIntent()) {
+                circle("stop.fill", fill: neutralFill, fg: dark ? .white : .primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("停止")
+        }
+    }
+
+    private func circle(_ name: String, fill: AnyShapeStyle, fg: Color) -> some View {
+        Image(systemName: name)
+            .font(.system(size: size * 0.38, weight: .semibold))
+            .foregroundStyle(fg)
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: size, height: size)
+            .background(fill, in: .circle)
+    }
+}
+
+private struct LockScreenView: View {
+    let context: ActivityViewContext<RecordingActivityAttributes>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                ActionButtons(state: context.state, size: 50)
+                    .animation(.smooth, value: context.state.isPaused)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 0) {
+                    StatusLabel(context: context)
+                    ElapsedText(state: context.state)
+                        .font(.system(size: 44, weight: .medium).monospacedDigit())
+                        .foregroundStyle(stateTint(context.state))
+                        .contentTransition(.numericText())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+            }
+            CaptionLine(context: context)
+            if context.state.endedAt == nil {
+                SummaryButton()
+            }
+        }
+        .padding(14)
+    }
+}
+
+/// 即時波形：每秒一格，跟著實際音量起伏；暫停或結束時換成圖示。
+private struct LiveWaveform: View {
+    let state: RecordingActivityAttributes.ContentState
+    let bars: Int
+
+    var body: some View {
+        if state.endedAt != nil {
+            Image(systemName: "checkmark")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(stateTint(state))
+        } else if state.isPaused {
+            Image(systemName: "pause.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.orange)
+        } else if state.levels.isEmpty {
+            Image(systemName: "waveform")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(recordRed)
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers)
+        } else {
+            let values = Array((Array(repeating: 0.0, count: bars) + state.levels).suffix(bars))
+            HStack(alignment: .center, spacing: 2) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                    Capsule()
+                        .fill(recordRed)
+                        .frame(width: 3, height: 4 + 14 * value)
+                }
+            }
+            .frame(height: 18)
+            .animation(.smooth(duration: 0.4), value: state.levels)
+        }
+    }
+}
+
+/// 「最近 15 分鐘摘要」：打開 App 直接顯示整理結果。
+private struct SummaryButton: View {
+    var dark = false
+    var body: some View {
+        Link(destination: RecapURL.quick(minutes: 15)) {
+            Label("最近 15 分鐘摘要", systemImage: "text.line.first.and.arrowtriangle.forward")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(dark ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(dark ? AnyShapeStyle(Color.white.opacity(0.14)) : AnyShapeStyle(.fill.tertiary), in: .capsule)
+        }
+    }
+}
