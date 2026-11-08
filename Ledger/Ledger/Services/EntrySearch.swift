@@ -63,7 +63,7 @@ enum EntrySearch {
     }
 
     /// 一般文字搜尋：商家、備註、分類、分店、發票品項；連鎖店不同寫法算同一家
-    static func text(_ e: Entry, contains q: String) -> Bool {
+    nonisolated static func text(_ e: Entry, contains q: String) -> Bool {
         let q = q.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return true }
         if e.title.localizedCaseInsensitiveContains(q) || e.note.localizedCaseInsensitiveContains(q) { return true }
@@ -75,7 +75,7 @@ enum EntrySearch {
     }
 
     /// 短的關鍵字直接比對就好；像一句話的才交給模型
-    static func looksLikeSentence(_ q: String) -> Bool {
+    nonisolated static func looksLikeSentence(_ q: String) -> Bool {
         let t = q.trimmingCharacters(in: .whitespaces)
         guard t.count >= 4 else { return false }
         let hints = ["上個", "這個", "本月", "上月", "今天", "昨天", "前天", "週", "星期", "禮拜", "月", "年",
