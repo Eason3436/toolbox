@@ -1,0 +1,106 @@
+name: Build Recap IPA
+
+on:
+  push:
+    paths:
+      - "Recap/**"
+      - ".github/workflows/recap.yml"
+  pull_request:
+    paths:
+      - "Recap/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Xcode 27（iOS 27 SDK）映像檔
+    runs-on: xcode-27
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Recap
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          STATUS=0
+          xcodebuild \
+            -project Recap.xcodeproj \
+            -scheme Recap \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || STATUS=$?
+          grep -E "error:" build.log | grep -v "^\s*|" | sort -u | head -80 || true
+          tail -3 build.log
+          exit $STATUS
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Recap.app Payload/
+          zip -qry Recap.ipa Payload
+          ls -lh Recap.ipa
+
+      - name: Unit tests (simulator)
+        continue-on-error: true
+        run: |
+          xcrun simctl list devices available | grep -i iphone | head -20 || true
+          DEST=$(xcrun simctl list devices available | grep -E "iPhone 17 Pro Max" | head -1 | grep -oE "[0-9A-F-]{36}" || true)
+          if [ -z "$DEST" ]; then DEST=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | grep -oE "[0-9A-F-]{36}"); fi
+          set -o pipefail
+          xcodebuild test \
+            -project Recap.xcodeproj \
+            -scheme Recap \
+            -destination "id=$DEST" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
+          grep -E "(error:|✘|✔|Test run|failed|passed)" test.log | tail -80 || true
+          exit ${STATUS:-0}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recap-build-log
+          path: |
+            Recap/build.log
+            Recap/test.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Recap-ipa
+          path: Recap/Recap.ipa
+
+      - name: Publish to "recap-latest" release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete recap-latest --yes --cleanup-tag || true
+          gh release create recap-latest Recap.ipa \
+            --target "$GITHUB_SHA" \
+            --title "Recap 最新版本（${GITHUB_SHA::7}，${GITHUB_REF_NAME}）" \
+            --notes "用 SideStore 安裝：在 iPhone 上下載 Recap.ipa，然後在 SideStore 的 My Apps 按 + 選這個檔案。" \
+            --prerelease
