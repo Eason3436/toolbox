@@ -12,9 +12,21 @@ struct LedgerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            ThemedRoot()
         }
         .modelContainer(Store.container)
+    }
+}
+
+/// 套用使用者選的主要色到整個 App
+struct ThemedRoot: View {
+    @AppStorage(Theme.key) private var themeRaw = "rose"
+
+    var body: some View {
+        let c: Color = Theme.color(for: themeRaw)
+        RootView()
+            .tint(c)
+            .accentColor(c)
     }
 }
 
