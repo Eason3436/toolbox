@@ -54,7 +54,7 @@ enum BrandLogo {
         Brand(id: "pchome", name: "PChome", keywords: ["pchome", "網路家庭", "網家"]),
         Brand(id: "netflix", name: "Netflix", keywords: ["netflix", "網飛"]),
         Brand(id: "spotify", name: "Spotify", keywords: ["spotify"]),
-        Brand(id: "apple", name: "Apple", keywords: ["apple.com", "apple store", "app store", "itunes", "icloud", "蘋果"]),
+        Brand(id: "apple", name: "Apple", keywords: ["apple.com", "apple store", "蘋果"]),
         Brand(id: "eslite", name: "誠品", keywords: ["誠品", "eslite"]),
         Brand(id: "decathlon", name: "迪卡儂", keywords: ["迪卡儂", "decathlon"]),
         Brand(id: "tkk", name: "頂呱呱", keywords: ["頂呱呱", "tkk"]),
@@ -71,6 +71,13 @@ enum BrandLogo {
         return brands.first { b in
             b.keywords.contains { n.contains($0.lowercased().replacingOccurrences(of: " ", with: "")) }
         }
+    }
+
+    /// 訂閱用的 logo：先看服務本身（Apple Music），沒有就用平台（App Store）
+    static func subscriptionLogoName(name: String, platform: String) -> String? {
+        if image(for: name) != nil { return name }
+        if !platform.isEmpty, image(for: platform) != nil { return platform }
+        return nil
     }
 
     /// 有 logo 圖才回傳

@@ -21,6 +21,28 @@ struct EntryDetailView: View {
     @State private var confirmRemoveReceipt = false
 
     private var receipt: Receipt? { Receipt.from(entry.receiptJSON) }
+
+    /// 訂閱或帳單產生的記帳
+    private var isSubscription: Bool {
+        entry.bill != nil || entry.source == .bill || (entry.category?.fullName.contains("訂閱") ?? false)
+    }
+
+    /// 平台（App Store、Google Play…）：帳單上的，或備註裡「平台：…」那一行
+    private var platform: String? {
+        if let p = entry.bill?.platform, !p.isEmpty { return p }
+        for line in entry.note.components(separatedBy: .newlines) where line.hasPrefix("平台：") {
+            let p = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
+            if !p.isEmpty { return p }
+        }
+        return nil
+    }
+
+    private var noteWithoutPlatform: String {
+        entry.note.components(separatedBy: .newlines)
+            .filter { !$0.hasPrefix("平台：") }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     private var currency: String { entry.account?.currency ?? Prefs.mainCurrency }
 
     var body: some View {
@@ -94,6 +116,9 @@ struct EntryDetailView: View {
             Group {
                 if entry.kind == .transfer {
                     CategoryIcon(symbol: "arrow.left.arrow.right", color: .blue, size: 72)
+                } else if isSubscription, let logo = BrandLogo.subscriptionLogoName(name: entry.title, platform: platform ?? "") {
+                    // 訂閱：用服務或平台的 logo
+                    MerchantLogo(name: logo, size: 72)
                 } else if let c = entry.category {
                     c.icon(size: 72, trigger: headerPlay)
                         .task { try? await Task.sleep(for: .milliseconds(350)); headerPlay += 1 }
@@ -133,9 +158,17 @@ struct EntryDetailView: View {
             row("時間", entry.date.formatted(.dateTime.year().month().day().weekday().hour().minute()))
             if let g = entry.goal { row("儲蓄目標", g.name) }
             if let b = entry.bill { row("帳單", b.name) }
-            if !entry.note.isEmpty {
+            if let platform {
+                HStack(alignment: .center) {
+                    Text("平台").foregroundStyle(.secondary)
+                    Spacer()
+                    MerchantLogo(name: platform, size: 22)
+                    Text(platform).fontWeight(.medium)
+                }
+            }
+            if !noteWithoutPlatform.isEmpty {
                 Divider()
-                Text(entry.note).frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.secondary)
+                Text(noteWithoutPlatform).frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.secondary)
             }
             if let categoryNote {
                 Label(categoryNote, systemImage: "info.circle")
@@ -163,8 +196,8 @@ struct EntryDetailView: View {
         let coordinate: CLLocationCoordinate2D? = entry.latitude.flatMap { lat in
             entry.longitude.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) }
         }
-        let showMap = hasReceiptStore || coordinate != nil
-            || PlaceCheck.hasPlace(title: entry.title, kind: entry.kind, categoryName: entry.category?.fullName)
+        let showMap = !isSubscription && (hasReceiptStore || coordinate != nil
+            || PlaceCheck.hasPlace(title: entry.title, kind: entry.kind, categoryName: entry.category?.fullName))
         let income = entry.kind == .income
         if showMap {
             MerchantMapCard(merchant: hasReceiptStore ? receipt!.store : entry.title,
