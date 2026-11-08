@@ -190,28 +190,43 @@ enum BranchMatcher {
 
     // MARK: 只有品牌名時，找出分店名
 
-    /// 分店欄位是空的，或只寫了品牌名（例如「全家」），就還不知道是哪一家
+    /// 分店欄位是空的、只寫了品牌名（例如「全家」），或是之前用門牌代替的（「全家 中華西路283號」），就還不知道是哪一家
     static func isBrandOnly(_ branch: String?, merchant: String) -> Bool {
         let b = norm(branch ?? "")
         if b.isEmpty { return true }
         var names: [String] = [merchant, searchName(merchant)]
         if let brand = BrandLogo.brand(for: merchant) ?? BrandLogo.brand(for: branch ?? "") {
             names += [brand.name] + brand.keywords
-            names += ["全家便利商店", "\(brand.name)便利商店"]
+            names += ["\(brand.name)便利商店"]
         }
-        return names.map(norm).contains(b)
+        if names.map(norm).contains(b) { return true }
+        return isAddressName(branch ?? "", merchant: merchant)
+    }
+
+    /// 「全家 中華西路283號」這種用門牌當分店名的
+    static func isAddressName(_ branch: String, merchant: String) -> Bool {
+        let rest = BrandLogo.shortBranch(branch, merchant: merchant)
+        guard !rest.contains("店"), !rest.contains("門市") else { return false }
+        return rest.range(of: #"^[\p{Han}0-9]*(?:路|街|大道)[\p{Han}0-9段巷弄之\-]*號?$"#, options: .regularExpression) != nil
     }
 
     private static func norm(_ s: String) -> String {
         s.lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "　", with: "")
     }
 
-    /// 有位置但 Apple 地圖只給品牌名：先找附近有分店名的同品牌店，再用地址搜尋，
-    /// 都找不到就用門牌地址當分店名（例如「全家 中華西路283號」），至少分得出是哪一家
+    /// 有位置但 Apple 地圖只給品牌名：用附近的店家、地址、行政區多試幾次，找出有分店名的那一家。
+    /// 找不到就回傳 nil（不拿地址當店名）
     static func nameBranch(merchant: String, near c: CLLocationCoordinate2D) async -> Match? {
         let here = CLLocation(latitude: c.latitude, longitude: c.longitude)
-        let brandName: String = BrandLogo.brand(for: merchant)?.name ?? searchName(merchant)
+        let brand = BrandLogo.brand(for: merchant)
+        let brandName: String = brand?.name ?? searchName(merchant)
         guard brandName.count >= 2 else { return nil }
+        // 搜尋用的名稱：品牌名＋比較完整的中文名（例如「全家便利商店」）
+        var queryNames: [String] = [brandName]
+        if let longest = brand?.keywords.filter({ $0.range(of: #"\p{Han}"#, options: .regularExpression) != nil })
+            .max(by: { $0.count < $1.count }), longest != brandName {
+            queryNames.append(longest)
+        }
 
         func pick(_ items: [MKMapItem], within meters: Double) -> MKMapItem? {
             items.filter { item in
@@ -222,36 +237,53 @@ enum BranchMatcher {
             }
             .min { $0.location.distance(from: here) < $1.location.distance(from: here) }
         }
-
-        // 1. 附近同品牌、而且有分店名的店
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = brandName
-        req.resultTypes = .pointOfInterest
-        req.region = MKCoordinateRegion(center: c, latitudinalMeters: 600, longitudinalMeters: 600)
-        if let hit = pick((try? await MKLocalSearch(request: req).start().mapItems) ?? [], within: 120) {
-            return Match(name: hit.name ?? brandName, address: hit.address?.shortAddress, coordinate: hit.location.coordinate)
+        func found(_ hit: MKMapItem) -> Match {
+            Match(name: hit.name ?? brandName, address: hit.address?.shortAddress, coordinate: hit.location.coordinate)
+        }
+        func search(_ q: String, radius: Double) async -> [MKMapItem] {
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = q
+            req.resultTypes = .pointOfInterest
+            req.region = MKCoordinateRegion(center: c, latitudinalMeters: radius, longitudinalMeters: radius)
+            return (try? await MKLocalSearch(request: req).start().mapItems) ?? []
         }
 
-        // 2. 用這個位置的地址搜尋「品牌＋地址」
-        let street = await streetAddress(at: here)
-        if let street {
-            let q = MKLocalSearch.Request()
-            q.naturalLanguageQuery = "\(brandName) \(street)"
-            q.resultTypes = .pointOfInterest
-            q.region = MKCoordinateRegion(center: c, latitudinalMeters: 2000, longitudinalMeters: 2000)
-            if let hit = pick((try? await MKLocalSearch(request: q).start().mapItems) ?? [], within: 200) {
-                return Match(name: hit.name ?? brandName, address: hit.address?.shortAddress, coordinate: hit.location.coordinate)
+        // 1. 這個位置附近的所有店家
+        let poi = MKLocalPointsOfInterestRequest(center: c, radius: 120)
+        if let hit = pick((try? await MKLocalSearch(request: poi).start().mapItems) ?? [], within: 120) { return found(hit) }
+        // 2. 附近搜尋品牌名
+        for name in queryNames {
+            if let hit = pick(await search(name, radius: 800), within: 150) { return found(hit) }
+        }
+        // 3. 用這個位置的地址、行政區搜尋「品牌＋地址」
+        let geo = await reverseAddress(at: here)
+        var places: [String] = []
+        if let street = geo.street { places.append(street) }
+        if let full = geo.full { places.append(full) }
+        if let area = geo.full.flatMap(area(in:)) { places.append(area.replacingOccurrences(of: " ", with: "")) }
+        for place in places {
+            for name in queryNames {
+                if let hit = pick(await search("\(name) \(place)", radius: 3000), within: 200) { return found(hit) }
             }
-            // 3. 用門牌當分店名
-            return Match(name: "\(brandName) \(street)", address: street, coordinate: c)
         }
         return nil
     }
 
-    /// 這個位置的門牌（例如「中華西路283號」）
-    static func streetAddress(at loc: CLLocation) async -> String? {
+    /// 這個位置的地址：完整地址和門牌（例如「中華西路283號」）
+    static func reverseAddress(at loc: CLLocation) async -> (full: String?, street: String?) {
         guard let req = MKReverseGeocodingRequest(location: loc),
-              let item = try? await req.mapItems.first else { return nil }
+              let item = try? await req.mapItems.first else { return (nil, nil) }
+        let full = item.address?.fullAddress ?? item.address?.shortAddress
+        return (full, await streetAddress(at: loc, item: item))
+    }
+
+    /// 這個位置的門牌（例如「中華西路283號」）
+    static func streetAddress(at loc: CLLocation, item known: MKMapItem? = nil) async -> String? {
+        var found = known
+        if found == nil, let req = MKReverseGeocodingRequest(location: loc) {
+            found = try? await req.mapItems.first
+        }
+        guard let item = found else { return nil }
         let full = item.address?.fullAddress ?? item.address?.shortAddress ?? ""
         let t = full.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? full
         if let r = t.range(of: #"[\p{Han}0-9]{1,10}(?:路|街|大道)[\p{Han}0-9段巷弄之\-]*號?"#, options: .regularExpression) {
@@ -282,7 +314,13 @@ enum BranchMatcher {
     static func refineBranchName(_ entry: Entry) async {
         guard let lat = entry.latitude, let lon = entry.longitude,
               isBrandOnly(entry.branch, merchant: entry.title) else { return }
-        guard let m = await nameBranch(merchant: entry.title, near: CLLocationCoordinate2D(latitude: lat, longitude: lon)) else { return }
+        guard let m = await nameBranch(merchant: entry.title, near: CLLocationCoordinate2D(latitude: lat, longitude: lon)) else {
+            // 查不到分店名：之前用門牌代替的改回品牌名
+            if let b = entry.branch, isAddressName(b, merchant: entry.title) {
+                entry.branch = BrandLogo.brand(for: entry.title)?.name ?? searchName(entry.title)
+            }
+            return
+        }
         entry.branch = m.name
         if entry.branchAddress == nil { entry.branchAddress = m.address }
     }

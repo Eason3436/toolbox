@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import UIKit
 
 /// 有名的連鎖店：用商家名稱認出是哪一家，顯示它的 logo（Assets 裡的 brand-<id>）
@@ -140,6 +141,22 @@ enum BrandLogo {
         return s.count >= 2 ? s : original
     }
 
+    /// 連鎖店的各種寫法（FamilyMart、全家便利商店、Hi-Life…）統一成同一個店名，例如「全家」「萊爾富」。
+    /// 帳單產生的記帳保留帳單名稱。回傳改了幾筆。
+    @MainActor
+    @discardableResult
+    static func normalizeTitles(in context: ModelContext) -> Int {
+        guard let all = try? context.fetch(FetchDescriptor<Entry>()) else { return 0 }
+        var n = 0
+        for e in all where e.bill == nil && e.kind != .transfer {
+            guard let b = brand(for: e.title), e.title != b.name else { continue }
+            e.title = b.name
+            n += 1
+        }
+        if n > 0 { try? context.save() }
+        return n
+    }
+
     /// 同一家連鎖店（不同寫法、不同分店）算同一個商家
     static func groupKey(for title: String) -> String {
         if let b = brand(for: title) { return "brand:\(b.id)" }
@@ -179,5 +196,82 @@ struct MerchantLogo<Fallback: View>: View {
 extension MerchantLogo where Fallback == EmptyView {
     init(name: String, size: CGFloat) {
         self.init(name: name, size: size) { EmptyView() }
+    }
+}
+
+// MARK: - 單色線條 logo（跟分類圖示同風格）
+
+extension BrandLogo {
+    /// 每個服務的代表色；灰白的那幾個在淺色模式改深灰
+    static let glyphColors: [String: String] = [
+        "applemusic": "#FA2D48", "appletv": "", "icloud": "#3E9BF7", "appstore": "#1C8EF9",
+        "googleplay": "#34A853", "youtube": "#FF0033", "youtubemusic": "#FF0033", "disneyplus": "#4A8CFF",
+        "primevideo": "#1A98FF", "max": "", "catchplay": "#F26F21", "friday": "#13B5EC",
+        "kkbox": "#09CEF6", "linemusic": "#10DC6E", "line": "#06C755", "chatgpt": "",
+        "claude": "#D97757", "googleone": "#4285F4", "microsoft365": "#5B8DEF", "adobe": "#FF4A3D",
+        "notion": "", "dropbox": "#3D8BFF", "canva": "#00C4CC", "duolingo": "#58CC02",
+        "nintendo": "#FF4554", "playstation": "#3A8DFF", "xbox": "#48B648", "github": "",
+        "crunchyroll": "#FF7A1A", "netflix": "#E50914", "spotify": "#1ED760", "apple": "",
+    ]
+
+    struct Glyph {
+        let id: String
+        let color: Color
+    }
+
+    static func glyph(for name: String) -> Glyph? {
+        guard let b = brand(for: name), let hex = glyphColors[b.id],
+              UIImage(named: "brandmono-\(b.id)") != nil else { return nil }
+        let color: Color = hex.isEmpty ? Theme.dynamic(light: "#3A3A3C", dark: "#D1D1D6") : Color(hex: hex)
+        return Glyph(id: b.id, color: color)
+    }
+
+    /// 訂閱：先看服務本身，沒有再看平台（App Store、Google Play…）
+    static func subscriptionGlyph(name: String, platform: String?) -> Glyph? {
+        if let g = glyph(for: name) { return g }
+        if let p = platform, !p.isEmpty { return glyph(for: p) }
+        return nil
+    }
+}
+
+struct BrandGlyphIcon: View {
+    var glyph: BrandLogo.Glyph
+    var size: CGFloat = 44
+    var onDark: Bool = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+                .fill(glyph.color.opacity(onDark ? 0.28 : 0.16))
+            Image("brandmono-\(glyph.id)")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size * 0.56, height: size * 0.56)
+                .foregroundStyle(glyph.color)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+extension Entry {
+    /// 訂閱（帳單產生、或分類是訂閱）
+    var isSubscriptionEntry: Bool {
+        bill != nil || source == .bill || (category?.fullName.contains("訂閱") ?? false)
+    }
+
+    /// 帳單上的平台，或備註裡「平台：…」那一行
+    var subscriptionPlatform: String? {
+        if let p = bill?.platform, !p.isEmpty { return p }
+        for line in note.components(separatedBy: .newlines) where line.hasPrefix("平台：") {
+            let p = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
+            if !p.isEmpty { return p }
+        }
+        return nil
+    }
+
+    var subscriptionGlyph: BrandLogo.Glyph? {
+        guard kind != .transfer, isSubscriptionEntry else { return nil }
+        return BrandLogo.subscriptionGlyph(name: title, platform: subscriptionPlatform)
     }
 }

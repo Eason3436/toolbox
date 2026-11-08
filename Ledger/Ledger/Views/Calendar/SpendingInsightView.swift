@@ -98,13 +98,12 @@ struct SpendingInsightView: View {
         let weekdays = weekdayTotals(now)
         let merchants = topMerchants(now)
         let items: [ItemStat] = Self.itemStats(now)
-        let prevItems: [ItemStat] = Self.itemStats(prev)
 
         ScrollView {
             VStack(spacing: 16) {
                 monthSwitcher(month)
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
-                aiCard(cats: cats, merchants: merchants, total: total, prevTotal: prevTotal)
+                aiCard(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
                 CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
                                   title: "分類比例", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
@@ -126,7 +125,6 @@ struct SpendingInsightView: View {
                     .accessibilityLabel("月／年統計")
             }
         }
-        .task(id: month.start) { await runAI(cats: cats, merchants: merchants, items: items, prevItems: prevItems, total: total, prevTotal: prevTotal) }
     }
 
     // MARK: 月份
@@ -170,59 +168,71 @@ struct SpendingInsightView: View {
         .cardStyle()
     }
 
-    // MARK: AI 重點卡
+    // MARK: 本月重點（直接用資料算，不讓 AI 寫）
+
+    private struct Fact: Identifiable {
+        var id: String
+        var symbol: String
+        var color: Color
+        var title: String
+        var detail: String
+    }
+
+    private func facts(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], items: [ItemStat],
+                       total: Double, prevTotal: Double) -> [Fact] {
+        var list: [Fact] = []
+        if prevTotal > 0 {
+            let diff = total - prevTotal
+            let up = diff >= 0
+            list.append(Fact(id: "total", symbol: up ? "arrow.up.right" : "arrow.down.right", color: up ? .red : .green,
+                             title: up ? "比上月多花 \(Money.format(diff, hidden: hidden))" : "比上月少花 \(Money.format(-diff, hidden: hidden))",
+                             detail: "本月 \(Money.format(total, hidden: hidden))，上月 \(Money.format(prevTotal, hidden: hidden))"))
+        }
+        if let c = cats.filter({ $0.delta > 0 }).max(by: { $0.delta < $1.delta }) {
+            list.append(Fact(id: "cat", symbol: c.symbol, color: c.color,
+                             title: "\(c.name)增加最多",
+                             detail: "多了 \(Money.format(c.delta, hidden: hidden))（上月 \(Money.format(c.prev, hidden: hidden)) → 本月 \(Money.format(c.now, hidden: hidden))）"))
+        } else if let c = cats.max(by: { $0.now < $1.now }), c.now > 0 {
+            list.append(Fact(id: "cat", symbol: c.symbol, color: c.color,
+                             title: "花最多的是\(c.name)",
+                             detail: "本月 \(Money.format(c.now, hidden: hidden))，占 \(Money.percent(total > 0 ? c.now / total : 0))"))
+        }
+        if let m = merchants.max(by: { $0.count < $1.count }), m.count >= 2 {
+            list.append(Fact(id: "merchant", symbol: "storefront", color: .blue,
+                             title: "最常去\(m.name)",
+                             detail: "\(m.count) 次，共 \(Money.format(m.total, hidden: hidden))"))
+        }
+        if let i = items.max(by: { $0.quantity == $1.quantity ? $0.total < $1.total : $0.quantity < $1.quantity }), i.quantity >= 2 {
+            list.append(Fact(id: "item", symbol: "cart", color: .orange,
+                             title: "最常買\(i.name)",
+                             detail: "在\(i.merchant)買了 \(Self.qtyText(i.quantity)) 個，共 \(Money.format(i.total, hidden: hidden))"))
+        }
+        return list
+    }
 
     @ViewBuilder
-    private func aiCard(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], total: Double, prevTotal: Double) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("本月重點").font(.headline)
-                Spacer()
-                if loadingAI { ProgressView().controlSize(.small) }
-            }
-            if let insight {
-                Text(insight.headline).font(.subheadline).foregroundStyle(.secondary)
-                ForEach(Array(insight.highlights.enumerated()), id: \.offset) { _, h in
-                    highlightRow(h, cat: cats.first { $0.name == h.subject })
-                }
-                if !insight.tip.isEmpty {
-                    Text(insight.tip)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let aiError {
-                Text(aiError).font(.footnote).foregroundStyle(.secondary)
-            } else if !loadingAI {
+    private func aiCard(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], items: [ItemStat],
+                        total: Double, prevTotal: Double) -> some View {
+        let list = facts(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("本月重點").font(.headline)
+            if list.isEmpty {
                 Text("這個月還沒有足夠的資料").font(.footnote).foregroundStyle(.secondary)
+            }
+            ForEach(list) { f in
+                HStack(spacing: 12) {
+                    Image(systemName: f.symbol)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(f.color)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(f.title).font(.subheadline.weight(.semibold))
+                        Text(f.detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    Spacer(minLength: 0)
+                }
             }
         }
         .cardStyle()
-        .animation(.snappy, value: insight?.headline)
-    }
-
-    private func highlightRow(_ h: SavedInsight.Highlight, cat: Cat?) -> some View {
-        let color: Color = h.tone == "good" ? .green : (h.tone == "bad" ? .red : .blue)
-        return HStack(spacing: 12) {
-            Image(systemName: cat?.symbol ?? (h.tone == "good" ? "arrow.down.right" : h.tone == "bad" ? "arrow.up.right" : "equal"))
-                .font(.subheadline.weight(.semibold)).foregroundStyle(cat?.color ?? color)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(h.title).font(.subheadline.weight(.semibold))
-                Text(h.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-            Spacer(minLength: 4)
-            if let cat {
-                // 本月 vs 上月 的小長條
-                VStack(alignment: .trailing, spacing: 3) {
-                    let maxV = max(cat.now, cat.prev, 1)
-                    miniBar(cat.prev / maxV, .secondary.opacity(0.35))
-                    miniBar(cat.now / maxV, color)
-                    Text(cat.delta >= 0 ? "+\(Money.format(cat.delta, hidden: hidden))" : Money.format(cat.delta, hidden: hidden))
-                        .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(color)
-                }
-                .frame(width: 70)
-            }
-        }
     }
 
     private func miniBar(_ ratio: Double, _ color: Color) -> some View {
@@ -375,7 +385,8 @@ struct SpendingInsightView: View {
         var map: [String: ItemStat] = [:]
         for e in list {
             guard let r = Receipt.from(e.receiptJSON) else { continue }
-            let merchant: String = r.store.isEmpty ? e.title : r.store
+            let raw: String = r.store.isEmpty ? e.title : r.store
+            let merchant: String = BrandLogo.brand(for: raw)?.name ?? raw
             for it in r.items where it.price > 0 {
                 let name: String = it.name.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else { continue }
@@ -478,58 +489,17 @@ struct SpendingInsightView: View {
     }
 
     private func topMerchants(_ list: [Entry]) -> [(name: String, total: Double, count: Int)] {
-        Dictionary(grouping: list) { $0.title }
+        // 連鎖店的不同寫法（全家／FamilyMart）算同一家
+        Dictionary(grouping: list) { BrandLogo.groupKey(for: $0.title) }
             .filter { !PayMethod.isPayMethod($0.key) && $0.key != "未命名" }
-            .map { (name: $0.key, total: $0.value.reduce(0) { $0 + $1.amount }, count: $0.value.count) }
+            .map { g -> (name: String, total: Double, count: Int) in
+                let t = g.value.first?.title ?? g.key
+                return (name: BrandLogo.brand(for: t)?.name ?? t, total: g.value.reduce(0) { $0 + $1.amount }, count: g.value.count)
+            }
             .sorted { $0.total > $1.total }
             .prefix(5).map { $0 }
     }
 
     // MARK: AI
 
-    private func runAI(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], items: [ItemStat], prevItems: [ItemStat], total: Double, prevTotal: Double) async {
-        aiError = nil
-        let monthStart: Date = DateText.monthInterval(anchor).start
-        // 今天已經分析過（或是已經結束的月份分析過）就直接用存好的
-        if let saved = SavedInsight.load(monthStart),
-           Calendar.current.isDateInToday(saved.createdAt) || !DateText.monthInterval(.now).contains(monthStart) {
-            insight = saved
-            return
-        }
-        insight = SavedInsight.load(monthStart)
-        guard total > 0 else { return }
-        guard NoticeParser.aiAvailable else { return }
-        loadingAI = true
-        defer { loadingAI = false }
-        let catLines = cats.prefix(8).map { "\($0.name)：本月 \(Int($0.now))、上月 \(Int($0.prev))" }.joined(separator: "\n")
-        let merLines = merchants.map { "\($0.name)：\(Int($0.total)) 元，\($0.count) 次" }.joined(separator: "\n")
-        let itemLines = items.prefix(25).map { i -> String in
-            let before = prevItems.first { $0.name == i.name }
-            let last = before.map { "，上月 \(Self.qtyText($0.quantity)) 個 \(Int($0.total)) 元" } ?? "，上月沒買"
-            return "\(i.name)（在\(i.merchant)）：\(Self.qtyText(i.quantity)) 個 \(Int(i.total)) 元\(last)"
-        }.joined(separator: "\n")
-        let session = LanguageModelSession(instructions: """
-        你是記帳 App 的消費分析助理。根據使用者這個月和上個月的分類花費、商家，以及發票上的購買品項（買了什麼、在哪家店買），
-        挑出最值得注意的三件事。有品項資料時，優先從「買了什麼」看習慣，例如「在全家買了 8 瓶奶茶」比只說「便利商店花比較多」更有用。
-        重點的 subject 填分類、商家或品項名稱。
-        用繁體中文，句子要短，數字要跟資料一致，不要編造資料中沒有的分類或商家。
-        """)
-        let prompt = """
-        本月總支出 \(Int(total)) 元，上月 \(Int(prevTotal)) 元。
-        分類：
-        \(catLines)
-        常去商家：
-        \(merLines)
-        發票品項（本月）：
-        \(itemLines.isEmpty ? "沒有發票資料" : itemLines)
-        """
-        do {
-            let r = try await session.respond(to: prompt, generating: AISpendingInsight.self).content
-            let saved = SavedInsight(r)
-            saved.save(monthStart)
-            withAnimation(.snappy) { insight = saved }
-        } catch {
-            aiError = "暫時無法產生重點"
-        }
-    }
 }
