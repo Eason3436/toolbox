@@ -56,8 +56,12 @@ struct RootView: View {
         // 系統原生 Liquid Glass 分頁列（按住可以左右拖曳切換）；新增是浮在分頁列右上方的小按鈕
         TabView(selection: $tab) {
             ForEach(AppTab.allCases, id: \.self) { t in
-                Tab(t.label, systemImage: t.symbol, value: t) {
+                // 分頁列只顯示圖示，不顯示文字
+                Tab(value: t) {
                     page(t)
+                } label: {
+                    Image(systemName: t.symbol)
+                        .accessibilityLabel(Text(t.label))
                 }
             }
         }
