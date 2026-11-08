@@ -12,8 +12,11 @@ struct BranchEditSheet: View {
     @Query(sort: \Entry.date, order: .reverse) private var all: [Entry]
 
     @State private var query = ""
-    @State private var results: [MKMapItem] = []
-    @State private var searching = false
+    /// 沒打字時列出的附近同名店
+    @State private var nearby: [MKMapItem] = []
+    @State private var completer = PlaceCompleter()
+    @State private var resolving = false
+    @FocusState private var fieldFocused: Bool
 
     private struct Place: Identifiable {
         var name: String
@@ -80,25 +83,51 @@ struct BranchEditSheet: View {
                 }
 
                 Section {
-                    if searching && results.isEmpty {
-                        HStack { Spacer(); ProgressView(); Spacer() }
-                    }
-                    ForEach(results, id: \.self) { item in
-                        Button {
-                            let c = item.location.coordinate
-                            apply(name: item.name ?? query, address: item.address?.fullAddress ?? item.address?.shortAddress,
-                                  latitude: c.latitude, longitude: c.longitude)
-                        } label: {
-                            placeRow(title: item.name ?? "", subtitle: item.address?.shortAddress ?? item.address?.fullAddress,
-                                     trailing: nil)
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("搜尋分店、路名或地區，例如：彰化精誠", text: $query)
+                            .focused($fieldFocused)
+                            .submitLabel(.search)
+                            .autocorrectionDisabled()
+                        if !query.isEmpty {
+                            Button { query = "" } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.borderless)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    let typed = query.trimmingCharacters(in: .whitespaces)
+                    if typed.isEmpty {
+                        ForEach(nearby, id: \.self) { item in
+                            Button { use(item) } label: {
+                                placeRow(title: item.name ?? "", subtitle: item.address?.shortAddress ?? item.address?.fullAddress,
+                                         trailing: nil)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        if resolving || (completer.searching && completer.results.isEmpty) {
+                            HStack { Spacer(); ProgressView(); Spacer() }
+                        }
+                        ForEach(completer.results, id: \.self) { c in
+                            Button { use(c) } label: {
+                                placeRow(title: c.title, subtitle: c.subtitle, trailing: nil)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(resolving)
+                        }
+                        // 地圖找不到時，也可以直接用打的名稱
+                        Button {
+                            apply(name: typed, address: nil, latitude: nil, longitude: nil)
+                        } label: {
+                            Label("直接用「\(typed)」當分店名", systemImage: "character.cursor.ibeam")
+                        }
                     }
                 } header: {
                     Text("在地圖搜尋")
                 } footer: {
-                    if !searching && results.isEmpty && !query.isEmpty {
-                        Text("找不到「\(query)」，換個關鍵字試試，例如加上路名或地區")
+                    if !query.isEmpty && !completer.searching && completer.results.isEmpty {
+                        Text("地圖上找不到，換個關鍵字試試，例如只打路名或地區")
                     }
                 }
 
@@ -112,13 +141,10 @@ struct BranchEditSheet: View {
             }
             .navigationTitle("更改地點")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜尋分店，例如：彰化精誠")
-            .task(id: query) {
-                // 打字停一下再搜
-                try? await Task.sleep(for: .milliseconds(350))
-                guard !Task.isCancelled else { return }
-                await search()
+            .onChange(of: query, initial: true) { _, q in
+                completer.update(typed: q, brand: merchantName, region: searchRegion)
             }
+            .task { await loadNearby() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
             }
@@ -146,39 +172,47 @@ struct BranchEditSheet: View {
         .contentShape(.rect)
     }
 
-    /// 搜「商家 + 關鍵字」；沒打字就列出附近（去過的分店附近，否則全台）的同名店
-    private func search() async {
-        let typed = query.trimmingCharacters(in: .whitespaces)
-        let base = merchantName
-        let q: String
-        if typed.isEmpty {
-            q = base
-        } else if base.isEmpty || typed.localizedCaseInsensitiveContains(base) {
-            q = typed
-        } else {
-            q = "\(base) \(typed)"
-        }
-        guard q.count >= 2 else { results = []; return }
-        searching = true
-        defer { searching = false }
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = q
-        req.resultTypes = [.pointOfInterest, .address]
+    /// 搜尋範圍：去過的分店附近，否則全台
+    private var searchRegion: MKCoordinateRegion {
         if let p = knownPlaces.first(where: { $0.latitude != nil }), let lat = p.latitude, let lon = p.longitude {
-            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                                            latitudinalMeters: 40_000, longitudinalMeters: 40_000)
-        } else {
-            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
-                                            latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+            return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                                      latitudinalMeters: 60_000, longitudinalMeters: 60_000)
         }
-        var items = (try? await MKLocalSearch(request: req).start().mapItems) ?? []
-        // 打了字卻沒結果，就只用打的字再找一次
-        if items.isEmpty, !typed.isEmpty, q != typed {
-            req.naturalLanguageQuery = typed
-            items = (try? await MKLocalSearch(request: req).start().mapItems) ?? []
+        return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                  latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+    }
+
+    /// 沒打字時：列出附近的同名店
+    private func loadNearby() async {
+        let base = merchantName
+        guard base.count >= 2 else { return }
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = base
+        req.resultTypes = [.pointOfInterest]
+        req.region = searchRegion
+        let items = (try? await MKLocalSearch(request: req).start().mapItems) ?? []
+        nearby = Array(items.prefix(15))
+    }
+
+    private func use(_ item: MKMapItem) {
+        let c = item.location.coordinate
+        apply(name: item.name ?? query, address: item.address?.fullAddress ?? item.address?.shortAddress,
+              latitude: c.latitude, longitude: c.longitude)
+    }
+
+    /// 點了自動完成的結果：換成地圖上的那個地點
+    private func use(_ c: MKLocalSearchCompletion) {
+        resolving = true
+        Task {
+            defer { resolving = false }
+            let item = try? await MKLocalSearch(request: MKLocalSearch.Request(completion: c)).start().mapItems.first
+            if let item {
+                use(item)
+            } else {
+                // 解析不到座標就只存名稱
+                apply(name: c.title, address: c.subtitle.isEmpty ? nil : c.subtitle, latitude: nil, longitude: nil)
+            }
         }
-        guard !Task.isCancelled else { return }
-        results = Array(items.prefix(15))
     }
 
     private func apply(name: String?, address: String?, latitude: Double?, longitude: Double?) {
@@ -203,6 +237,64 @@ struct BranchEditSheet: View {
         }
         onDone()
         dismiss()
+    }
+}
+
+/// 邊打字邊列出地圖上的地點（自動完成比每次打字都完整搜尋快，也不容易被限制次數）
+@MainActor @Observable
+final class PlaceCompleter: NSObject, MKLocalSearchCompleterDelegate {
+    var results: [MKLocalSearchCompletion] = []
+    var searching = false
+
+    @ObservationIgnored private let completer = MKLocalSearchCompleter()
+    @ObservationIgnored private var typed = ""
+    @ObservationIgnored private var withBrand = false
+
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = [.pointOfInterest, .address]
+    }
+
+    /// 先搜「品牌＋打的字」，沒結果再只搜打的字
+    func update(typed raw: String, brand: String, region: MKCoordinateRegion) {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        typed = t
+        guard !t.isEmpty else {
+            completer.cancel()
+            results = []
+            searching = false
+            return
+        }
+        completer.region = region
+        withBrand = !brand.isEmpty && !t.localizedCaseInsensitiveContains(brand)
+        searching = true
+        completer.queryFragment = withBrand ? "\(brand) \(t)" : t
+    }
+
+    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        let list = completer.results
+        MainActor.assumeIsolated {
+            if list.isEmpty && withBrand {
+                withBrand = false
+                self.completer.queryFragment = typed
+                return
+            }
+            results = Array(list.prefix(15))
+            searching = false
+        }
+    }
+
+    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        MainActor.assumeIsolated {
+            if withBrand {
+                withBrand = false
+                self.completer.queryFragment = typed
+                return
+            }
+            results = []
+            searching = false
+        }
     }
 }
 

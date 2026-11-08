@@ -305,7 +305,7 @@ struct EntryRow: View {
         HStack(spacing: 14) {
             if entry.kind == .transfer {
                 CategoryIcon(symbol: "arrow.left.arrow.right", color: .blue)
-            } else if let g = entry.subscriptionGlyph {
+            } else if let g = entry.listGlyph {
                 BrandGlyphIcon(glyph: g)
             } else if let c = entry.category {
                 c.icon()
