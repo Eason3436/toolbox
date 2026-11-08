@@ -11,16 +11,16 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
 packages:
-  PulsoIcon:
-    url: https://github.com/CityPulso/PulsoIcon.git
-    from: 6.1.0
+  SVGPath:
+    url: https://github.com/nicklockwood/SVGPath.git
+    from: 1.3.1
 targets:
   Ledger:
     type: application
     platform: iOS
     dependencies:
-      - package: PulsoIcon
-        product: PulsoIcon
+      - package: SVGPath
+        product: SVGPath
     sources:
       - path: Ledger
         excludes:
