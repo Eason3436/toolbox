@@ -56,6 +56,8 @@ struct CategoryIcon: View {
     var color: Color
     var size: CGFloat = 40
     var onDark: Bool = false
+    /// 數值改變時圖示播放一次動畫
+    var trigger: Int = 0
 
     var body: some View {
         ZStack {
@@ -64,9 +66,7 @@ struct CategoryIcon: View {
             if let emoji, !emoji.isEmpty {
                 Text(emoji).font(.system(size: size * 0.5))
             } else {
-                Image(systemName: symbol)
-                    .font(.system(size: size * 0.42, weight: .semibold))
-                    .foregroundStyle(color)
+                LedgerIcon(symbol: symbol, size: size * 0.5, color: color, weight: 2.2, trigger: trigger)
             }
         }
         .frame(width: size, height: size)
@@ -74,8 +74,8 @@ struct CategoryIcon: View {
 }
 
 extension Category {
-    func icon(size: CGFloat = 44, onDark: Bool = false) -> CategoryIcon {
-        CategoryIcon(symbol: symbol, emoji: emoji, color: color, size: size, onDark: onDark)
+    func icon(size: CGFloat = 44, onDark: Bool = false, trigger: Int = 0) -> CategoryIcon {
+        CategoryIcon(symbol: symbol, emoji: emoji, color: color, size: size, onDark: onDark, trigger: trigger)
     }
 }
 
@@ -99,10 +99,15 @@ struct Chip: View {
     var body: some View {
         HStack(spacing: 8) {
             if let shownSymbol {
-                Image(systemName: shownSymbol)
-                    .foregroundStyle(removable && selected ? tint : (symbolColor ?? (selected ? tint : .primary)))
-                    .contentTransition(.symbolEffect(.replace.downUp))
-                    .symbolEffect(.bounce, value: selected)
+                if !removable, LedgerIcon.pulso(for: shownSymbol) != nil {
+                    LedgerIcon(symbol: shownSymbol, size: 17, color: symbolColor ?? (selected ? tint : Color.primary),
+                               trigger: selected ? 1 : 0)
+                } else {
+                    Image(systemName: shownSymbol)
+                        .foregroundStyle(removable && selected ? tint : (symbolColor ?? (selected ? tint : .primary)))
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                        .symbolEffect(.bounce, value: selected)
+                }
             }
             Text(title).lineLimit(1)
             if showsChevron {
