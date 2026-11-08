@@ -301,6 +301,8 @@ struct ReceiptPaperView: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            // 連鎖店的 logo
+            MerchantLogo(name: receipt.store, size: 52)
             Text("電子發票證明聯").font(.caption.weight(.bold)).kerning(2).foregroundStyle(.black.opacity(0.55))
             Text(receipt.store.isEmpty ? "發票" : receipt.store)
                 .font(.title3.weight(.bold)).multilineTextAlignment(.center)

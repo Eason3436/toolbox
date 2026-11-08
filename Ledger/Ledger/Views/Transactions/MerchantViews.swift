@@ -192,12 +192,20 @@ struct MerchantSummaryCard: View {
         self.income = income
         self.compact = compact
         let m = merchant
-        _entries = Query(filter: #Predicate<Entry> { $0.title == m }, sort: \Entry.date, order: .reverse)
+        // 連鎖店：不同寫法（全家／全家便利商店）都算同一家，所以抓全部再自己篩
+        if BrandLogo.brand(for: merchant) != nil {
+            _entries = Query(sort: \Entry.date, order: .reverse)
+        } else {
+            _entries = Query(filter: #Predicate<Entry> { $0.title == m }, sort: \Entry.date, order: .reverse)
+        }
     }
+
+    private var displayName: String { BrandLogo.brand(for: merchant)?.name ?? merchant }
 
     var body: some View {
         let kind: EntryKind = income ? .income : .expense
-        let list = entries.filter { $0.kind == kind }
+        let key = BrandLogo.groupKey(for: merchant)
+        let list = entries.filter { $0.kind == kind && BrandLogo.groupKey(for: $0.title) == key }
         let total = list.reduce(0) { $0 + $1.amount }
         let month = DateText.monthInterval(.now)
         let thisMonth = list.filter { month.contains($0.date) }.reduce(0) { $0 + $1.amount }
@@ -209,8 +217,11 @@ struct MerchantSummaryCard: View {
                 compactBody(totalTitle: totalTitle, total: total, thisMonth: thisMonth, count: list.count)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Label("在「\(merchant)」", systemImage: "storefront").font(.headline).lineLimit(1)
+                    HStack(spacing: 10) {
+                        MerchantLogo(name: merchant, size: 28) {
+                            Image(systemName: "storefront").font(.headline)
+                        }
+                        Text("在「\(displayName)」").font(.headline).lineLimit(1)
                         Spacer()
                         Image(systemName: "chevron.right").foregroundStyle(.secondary)
                     }
@@ -233,9 +244,11 @@ struct MerchantSummaryCard: View {
 
     private func compactBody(totalTitle: String, total: Double, thisMonth: Double, count: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "storefront").foregroundStyle(.secondary)
-                Text(merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
+            HStack(spacing: 8) {
+                MerchantLogo(name: merchant, size: 34) {
+                    Image(systemName: "storefront").foregroundStyle(.secondary)
+                }
+                Text(displayName).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
             }
@@ -277,22 +290,146 @@ struct MerchantSummaryCard: View {
     }
 }
 
-/// 單一商家的所有消費
+
+/// 單一商家（連鎖店會把各分店合在一起）的消費分析，可以切換看某一家分店
 struct MerchantDetailView: View {
     var merchant: String
     @Query private var entries: [Entry]
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
     @State private var opened: Entry?
+    /// 空字串＝全部分店
+    @State private var branch = ""
+
+    private static let noBranch = "未標分店"
 
     init(merchant: String) {
         self.merchant = merchant
         let m = merchant
-        _entries = Query(filter: #Predicate<Entry> { $0.title == m }, sort: \Entry.date, order: .reverse)
+        if BrandLogo.brand(for: merchant) != nil {
+            _entries = Query(sort: \Entry.date, order: .reverse)
+        } else {
+            _entries = Query(filter: #Predicate<Entry> { $0.title == m }, sort: \Entry.date, order: .reverse)
+        }
+    }
+
+    private struct BranchStat: Identifiable {
+        var name: String
+        var total: Double
+        var count: Int
+        var id: String { name }
+    }
+
+    private struct ItemStat: Identifiable {
+        var name: String
+        var total: Double
+        var count: Double
+        var id: String { name }
+    }
+
+    private var displayName: String { BrandLogo.brand(for: merchant)?.name ?? merchant }
+
+    private func branchName(_ e: Entry) -> String {
+        let b = e.branch?.trimmingCharacters(in: .whitespaces) ?? ""
+        return b.isEmpty ? Self.noBranch : b
     }
 
     var body: some View {
-        let spent = entries.filter { $0.kind == .expense }
+        let key = BrandLogo.groupKey(for: merchant)
+        let mine: [Entry] = entries.filter { BrandLogo.groupKey(for: $0.title) == key }
+        let branches = branchStats(mine)
+        let shown: [Entry] = branch.isEmpty ? mine : mine.filter { branchName($0) == branch }
+        let spent: [Entry] = shown.filter { $0.kind == .expense }
+        let hasBranches = branches.contains { $0.name != Self.noBranch }
+
+        List {
+            Section {
+                header(spent)
+                if !spent.isEmpty {
+                    monthChart(spent)
+                }
+            }
+            if hasBranches {
+                Section {
+                    Picker("分店", selection: $branch) {
+                        Text("全部分店").tag("")
+                        ForEach(branches) { b in
+                            Text(b.name).tag(b.name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+            if branch.isEmpty && branches.count > 1 {
+                Section("各分店") {
+                    let maxTotal = branches.map(\.total).max() ?? 1
+                    ForEach(branches) { b in
+                        Button {
+                            withAnimation(.snappy) { branch = b.name }
+                        } label: {
+                            branchRow(b, maxTotal: maxTotal)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            let items = topItems(spent)
+            if !items.isEmpty {
+                Section("常買") {
+                    ForEach(items) { it in
+                        HStack {
+                            Text(it.name).lineLimit(1)
+                            Spacer()
+                            Text("\(it.count.formatted(.number.precision(.fractionLength(0...1)))) 次")
+                                .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                            Text(Money.format(it.total, hidden: hidden))
+                                .font(.subheadline.weight(.semibold)).monospacedDigit()
+                                .frame(minWidth: 64, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+            if !spent.isEmpty && PlaceCheck.hasPlace(title: merchant, kind: .expense, categoryName: spent.first?.category?.fullName) {
+                Section {
+                    mapCard(shown)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+            }
+            Section(branch.isEmpty ? "紀錄" : "\(branch) 的紀錄") {
+                ForEach(shown) { e in
+                    Button { opened = e } label: {
+                        EntryRow(entry: e, hidden: hidden, showsDate: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .animation(.snappy, value: branch)
+        .navigationTitle(branch.isEmpty ? displayName : branch)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $opened) { EntryDetailView(entry: $0) }
+    }
+
+    // MARK: 區塊
+
+    private func header(_ spent: [Entry]) -> some View {
         let total = spent.reduce(0) { $0 + $1.amount }
+        let avg = spent.isEmpty ? 0 : total / Double(spent.count)
+        return HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("總共花了").foregroundStyle(.secondary)
+                MoneyText(value: total, hidden: hidden, font: .system(size: 38, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                Text("\(spent.count) 次・平均每次 \(Money.format(avg, hidden: hidden))")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            MerchantLogo(name: merchant, size: 64)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func monthChart(_ spent: [Entry]) -> some View {
         // 最近 6 個月（沒花的月份補 0），用「10月」這種文字當橫軸，柱子固定寬度
         let cal = Calendar.current
         let thisMonth = DateText.monthInterval(.now).start
@@ -302,57 +439,88 @@ struct MerchantDetailView: View {
             guard let m = cal.date(byAdding: .month, value: -back, to: thisMonth) else { return nil }
             return ("\(cal.component(.month, from: m))月", sums[m] ?? 0, back == 0)
         }
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("總共花了").foregroundStyle(.secondary)
-                    MoneyText(value: total, hidden: hidden, font: .system(size: 38, weight: .bold, design: .rounded))
-                    Text("\(spent.count) 次・平均每次 \(Money.format(spent.isEmpty ? 0 : total / Double(spent.count), hidden: hidden))")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-                if !spent.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("最近 6 個月").font(.caption).foregroundStyle(.secondary)
-                        Chart(byMonth, id: \.label) { m in
-                            BarMark(x: .value("月份", m.label), y: .value("金額", m.total), width: .fixed(22))
-                                .foregroundStyle(m.current ? Color.accentColor : Color.accentColor.opacity(0.35))
-                                .cornerRadius(6)
-                                .annotation(position: .top, spacing: 4) {
-                                    if m.total > 0 {
-                                        Text(Money.format(m.total, hidden: hidden))
-                                            .font(.caption2.weight(.semibold)).monospacedDigit()
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("最近 6 個月").font(.caption).foregroundStyle(.secondary)
+            Chart(byMonth, id: \.label) { m in
+                BarMark(x: .value("月份", m.label), y: .value("金額", m.total), width: .fixed(22))
+                    .foregroundStyle(m.current ? Color.accentColor : Color.accentColor.opacity(0.35))
+                    .cornerRadius(6)
+                    .annotation(position: .top, spacing: 4) {
+                        if m.total > 0 {
+                            Text(Money.format(m.total, hidden: hidden))
+                                .font(.caption2.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(.secondary)
                         }
-                        .chartYAxis(.hidden)
-                        .chartXAxis {
-                            AxisMarks { _ in AxisValueLabel().font(.caption2) }
-                        }
-                        .frame(height: 120)
                     }
-                    .padding(.vertical, 6)
-                }
             }
-            if !spent.isEmpty && PlaceCheck.hasPlace(title: merchant, kind: .expense, categoryName: spent.first?.category?.fullName) {
-                Section {
-                    MerchantMapCard(merchant: merchant)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                }
+            .chartYAxis(.hidden)
+            .chartXAxis {
+                AxisMarks { _ in AxisValueLabel().font(.caption2) }
             }
-            Section("紀錄") {
-                ForEach(entries) { e in
-                    Button { opened = e } label: {
-                        EntryRow(entry: e, hidden: hidden, showsDate: true)
-                    }
-                    .buttonStyle(.plain)
-                }
+            .frame(height: 120)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func branchRow(_ b: BranchStat, maxTotal: Double) -> some View {
+        let ratio: Double = maxTotal > 0 ? b.total / maxTotal : 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(b.name).lineLimit(1)
+                Spacer()
+                Text("\(b.count) 次").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text(Money.format(b.total, hidden: hidden))
+                    .font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .frame(minWidth: 64, alignment: .trailing)
+            }
+            GeometryReader { g in
+                Capsule().fill(Color.accentColor.opacity(0.7))
+                    .frame(width: max(6, g.size.width * ratio))
+            }
+            .frame(height: 5)
+        }
+        .padding(.vertical, 2)
+        .contentShape(.rect)
+    }
+
+    /// 選了分店且知道位置就直接用；否則用名稱搜尋
+    @ViewBuilder
+    private func mapCard(_ shown: [Entry]) -> some View {
+        if branch.isEmpty {
+            MerchantMapCard(merchant: displayName)
+        } else if let e = shown.first(where: { $0.latitude != nil && $0.longitude != nil }),
+                  let lat = e.latitude, let lon = e.longitude {
+            MerchantMapCard(merchant: displayName, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                            branch: branch)
+        } else if branch != Self.noBranch {
+            MerchantMapCard(merchant: displayName, address: shown.compactMap(\.branchAddress).first, branch: branch)
+        }
+    }
+
+    // MARK: 計算
+
+    private func branchStats(_ mine: [Entry]) -> [BranchStat] {
+        let spent = mine.filter { $0.kind == .expense }
+        let groups = Dictionary(grouping: spent) { branchName($0) }
+        let stats: [BranchStat] = groups.map { name, list in
+            BranchStat(name: name, total: list.reduce(0) { $0 + $1.amount }, count: list.count)
+        }
+        return stats.sorted { $0.total > $1.total }
+    }
+
+    /// 發票上最常買的品項（前 5 名，折扣不算）
+    private func topItems(_ spent: [Entry]) -> [ItemStat] {
+        var sums: [String: (total: Double, count: Double)] = [:]
+        for e in spent {
+            guard let r = Receipt.from(e.receiptJSON) else { continue }
+            for it in r.items where it.price > 0 {
+                let name = it.name.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { continue }
+                let old = sums[name] ?? (0, 0)
+                sums[name] = (old.total + it.price, old.count + max(it.quantity, 1))
             }
         }
-        .navigationTitle(merchant)
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $opened) { EntryDetailView(entry: $0) }
+        let list: [ItemStat] = sums.map { ItemStat(name: $0.key, total: $0.value.total, count: $0.value.count) }
+        return Array(list.sorted { $0.count == $1.count ? $0.total > $1.total : $0.count > $1.count }.prefix(5))
     }
 }
