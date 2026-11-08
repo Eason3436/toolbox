@@ -70,10 +70,13 @@ struct SettingsView: View {
                     Button("新增帳戶", systemImage: "plus") { addingAccount = true }
                 }
 
-                Section("分類與地點") {
+                Section("分類、地點與發票") {
                     NavigationLink("管理分類") { CategoryManagerView() }
                     NavigationLink { BranchBatchView() } label: {
                         Text("交易地點")
+                    }
+                    NavigationLink { ReceiptBatchView() } label: {
+                        Text("匯入發票照片")
                     }
                 }
 

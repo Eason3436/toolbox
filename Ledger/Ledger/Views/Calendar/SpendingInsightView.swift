@@ -290,8 +290,10 @@ struct SpendingInsightView: View {
 
     private func dailyCard(_ days: [(Int, Double)], avg: Double, monthDays: Int) -> some View {
         let peak: Double = days.map { $0.1 }.max() ?? 0
-        let yTop: Double = max(peak, avg, 1) * 1.1
+        let yTop: Double = max(peak, avg, 1) * 1.25
         let xRange: ClosedRange<Double> = 0.5...(Double(monthDays) + 0.5)
+        // 花最多的 3 天標上金額（全部都標會擠在一起）
+        let labeled: Set<Int> = Set(days.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(3).map { $0.0 })
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("每天花多少").font(.headline)
@@ -299,7 +301,7 @@ struct SpendingInsightView: View {
                 if let d = pickedDay, let v = days.first(where: { $0.0 == d })?.1 {
                     Text("\(d) 日 \(Money.format(v, hidden: hidden))").font(.subheadline.weight(.semibold)).monospacedDigit()
                 } else {
-                    Text("虛線是日均").font(.caption).foregroundStyle(.secondary)
+                    Text("虛線是日均 \(Money.format(avg, hidden: hidden))").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
             Chart {
@@ -308,6 +310,14 @@ struct SpendingInsightView: View {
                         .foregroundStyle(d.1 > avg * 1.8 ? Color.orange : Color.accentColor)
                         .opacity(pickedDay == nil || pickedDay == d.0 ? 1 : 0.4)
                         .cornerRadius(3)
+                        .annotation(position: .top, spacing: 3) {
+                            if pickedDay == nil && labeled.contains(d.0) {
+                                Text(Money.format(d.1, hidden: hidden))
+                                    .font(.caption2.weight(.semibold)).monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize()
+                            }
+                        }
                 }
                 RuleMark(y: .value("日均", avg))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
@@ -388,6 +398,10 @@ struct SpendingInsightView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 ForEach(w, id: \.0) { d in
                     VStack(spacing: 6) {
+                        Text(d.1 > 0 ? Money.format(d.1, hidden: hidden) : "")
+                            .font(.caption2.weight(.semibold)).monospacedDigit()
+                            .foregroundStyle(d.1 == maxV ? Color.orange : Color.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.6)
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(d.1 == maxV ? Color.orange.gradient : Color.accentColor.opacity(0.45).gradient)
                             .frame(height: max(6, 90 * d.1 / max(maxV, 1)))
@@ -396,7 +410,7 @@ struct SpendingInsightView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 112, alignment: .bottom)
+            .frame(height: 130, alignment: .bottom)
         }
         .cardStyle()
     }

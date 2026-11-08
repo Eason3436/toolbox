@@ -151,6 +151,7 @@ enum BranchMatcher {
             entry.latitude = m.coordinate.latitude
             entry.longitude = m.coordinate.longitude
         }
+        await refineBranchName(entry)
     }
 
     /// 發票上的店名＋地址／分店名 → 找到那一家店，存到這筆記帳（已經有位置就不動）
@@ -181,8 +182,108 @@ enum BranchMatcher {
                 entry.branch = name
                 entry.branchAddress = item.address?.shortAddress
             }
+            await refineBranchName(entry)
             return
         }
     }
 
+
+    // MARK: 只有品牌名時，找出分店名
+
+    /// 分店欄位是空的，或只寫了品牌名（例如「全家」），就還不知道是哪一家
+    static func isBrandOnly(_ branch: String?, merchant: String) -> Bool {
+        let b = norm(branch ?? "")
+        if b.isEmpty { return true }
+        var names: [String] = [merchant, searchName(merchant)]
+        if let brand = BrandLogo.brand(for: merchant) ?? BrandLogo.brand(for: branch ?? "") {
+            names += [brand.name] + brand.keywords
+            names += ["全家便利商店", "\(brand.name)便利商店"]
+        }
+        return names.map(norm).contains(b)
+    }
+
+    private static func norm(_ s: String) -> String {
+        s.lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "　", with: "")
+    }
+
+    /// 有位置但 Apple 地圖只給品牌名：先找附近有分店名的同品牌店，再用地址搜尋，
+    /// 都找不到就用門牌地址當分店名（例如「全家 中華西路283號」），至少分得出是哪一家
+    static func nameBranch(merchant: String, near c: CLLocationCoordinate2D) async -> Match? {
+        let here = CLLocation(latitude: c.latitude, longitude: c.longitude)
+        let brandName: String = BrandLogo.brand(for: merchant)?.name ?? searchName(merchant)
+        guard brandName.count >= 2 else { return nil }
+
+        func pick(_ items: [MKMapItem], within meters: Double) -> MKMapItem? {
+            items.filter { item in
+                guard let n = item.name, !isBrandOnly(n, merchant: merchant) else { return false }
+                let sameBrand = BrandLogo.groupKey(for: n) == BrandLogo.groupKey(for: merchant)
+                    || n.localizedCaseInsensitiveContains(brandName)
+                return sameBrand && item.location.distance(from: here) <= meters
+            }
+            .min { $0.location.distance(from: here) < $1.location.distance(from: here) }
+        }
+
+        // 1. 附近同品牌、而且有分店名的店
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = brandName
+        req.resultTypes = .pointOfInterest
+        req.region = MKCoordinateRegion(center: c, latitudinalMeters: 600, longitudinalMeters: 600)
+        if let hit = pick((try? await MKLocalSearch(request: req).start().mapItems) ?? [], within: 120) {
+            return Match(name: hit.name ?? brandName, address: hit.address?.shortAddress, coordinate: hit.location.coordinate)
+        }
+
+        // 2. 用這個位置的地址搜尋「品牌＋地址」
+        let street = await streetAddress(at: here)
+        if let street {
+            let q = MKLocalSearch.Request()
+            q.naturalLanguageQuery = "\(brandName) \(street)"
+            q.resultTypes = .pointOfInterest
+            q.region = MKCoordinateRegion(center: c, latitudinalMeters: 2000, longitudinalMeters: 2000)
+            if let hit = pick((try? await MKLocalSearch(request: q).start().mapItems) ?? [], within: 200) {
+                return Match(name: hit.name ?? brandName, address: hit.address?.shortAddress, coordinate: hit.location.coordinate)
+            }
+            // 3. 用門牌當分店名
+            return Match(name: "\(brandName) \(street)", address: street, coordinate: c)
+        }
+        return nil
+    }
+
+    /// 這個位置的門牌（例如「中華西路283號」）
+    static func streetAddress(at loc: CLLocation) async -> String? {
+        guard let req = MKReverseGeocodingRequest(location: loc),
+              let item = try? await req.mapItems.first else { return nil }
+        let full = item.address?.fullAddress ?? item.address?.shortAddress ?? ""
+        let t = full.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? full
+        if let r = t.range(of: #"[\p{Han}0-9]{1,10}(?:路|街|大道)[\p{Han}0-9段巷弄之\-]*號?"#, options: .regularExpression) {
+            var s = String(t[r])
+            // 去掉前面的縣市區
+            if let d = s.range(of: #"^.*?[縣市區鄉鎮]"#, options: .regularExpression), s[d.upperBound...].count >= 3 {
+                s = String(s[d.upperBound...])
+            }
+            return s
+        }
+        return item.address?.shortAddress
+    }
+
+    /// 縣市＋鄉鎮區，例如「彰化縣 彰化市」「臺中市 西屯區」
+    static func area(in address: String) -> String? {
+        var t = address.replacingOccurrences(of: "台灣", with: "").replacingOccurrences(of: "臺灣", with: "")
+        t = t.replacingOccurrences(of: " ", with: "")
+        if let r = t.range(of: #"[\p{Han}]{2}[縣市][\p{Han}]{1,3}?[市區鄉鎮]"#, options: .regularExpression) {
+            let s = String(t[r])
+            let county = String(s.prefix(3))
+            return "\(county) \(s.dropFirst(3))"
+        }
+        if let r = t.range(of: #"[\p{Han}]{2}[縣市]"#, options: .regularExpression) { return String(t[r]) }
+        return nil
+    }
+
+    /// 已經有位置、但分店只有品牌名的記帳，補上分店名
+    static func refineBranchName(_ entry: Entry) async {
+        guard let lat = entry.latitude, let lon = entry.longitude,
+              isBrandOnly(entry.branch, merchant: entry.title) else { return }
+        guard let m = await nameBranch(merchant: entry.title, near: CLLocationCoordinate2D(latitude: lat, longitude: lon)) else { return }
+        entry.branch = m.name
+        if entry.branchAddress == nil { entry.branchAddress = m.address }
+    }
 }
