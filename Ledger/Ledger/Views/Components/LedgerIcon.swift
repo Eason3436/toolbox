@@ -1,5 +1,4 @@
 import SwiftUI
-import PulsoIcon
 
 /// 線條圖示（PulsoIcon），點選或出現時會依圖示播放自己的小動畫；
 /// 沒有對應的就退回系統 SF Symbol
