@@ -304,7 +304,7 @@ struct MerchantDetailView: View {
     /// 空字串＝全部分店
     @State private var branch = ""
 
-    private static let noBranch = "未標分店"
+    private static let noBranch = "未標注"
 
     init(merchant: String) {
         self.merchant = merchant
@@ -339,7 +339,8 @@ struct MerchantDetailView: View {
 
     private func branchName(_ e: Entry) -> String {
         let b = e.branch?.trimmingCharacters(in: .whitespaces) ?? ""
-        return b.isEmpty ? Self.noBranch : b
+        // 只有品牌名、或只是地址的，都算「未標注」
+        return BranchMatcher.isBrandOnly(b, merchant: e.title) ? Self.noBranch : b
     }
 
     var body: some View {

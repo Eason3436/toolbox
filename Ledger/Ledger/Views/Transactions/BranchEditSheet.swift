@@ -359,7 +359,7 @@ struct BranchBatchView: View {
     }
 
     private func branchText(_ e: Entry) -> String {
-        guard let b = e.branch, !b.isEmpty else { return "未標分店" }
+        guard let b = e.branch, !BranchMatcher.isBrandOnly(b, merchant: e.title) else { return "未標注" }
         return BrandLogo.shortBranch(b, merchant: e.title)
     }
 }

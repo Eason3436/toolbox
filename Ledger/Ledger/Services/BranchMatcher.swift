@@ -1,5 +1,6 @@
 import Foundation
 import MapKit
+import SwiftData
 import FoundationModels
 
 @Generable(description: "從附近店家中選出交易商家的那一家分店")
@@ -323,5 +324,50 @@ enum BranchMatcher {
         }
         entry.branch = m.name
         if entry.branchAddress == nil { entry.branchAddress = m.address }
+    }
+
+    // MARK: 舊資料一次補齊
+
+    private static var refining = false
+    private static let triedKey = "branchRefineTried"
+
+    /// 有位置、但分店只有品牌名或地址的舊記帳：同一個地點只查一次，查到就換成真正的店名，
+    /// 查不到的地址改回品牌名（顯示成「未標注」）。每次最多查 25 個地點，避免一次打太多請求
+    static func refineAll(context: ModelContext) async {
+        guard !refining else { return }
+        refining = true
+        defer { refining = false }
+        guard let all = try? context.fetch(FetchDescriptor<Entry>()) else { return }
+        var tried: Set<String> = Set(UserDefaults.standard.stringArray(forKey: triedKey) ?? [])
+        var groups: [String: [Entry]] = [:]
+        for e in all {
+            guard let lat = e.latitude, let lon = e.longitude, isBrandOnly(e.branch, merchant: e.title) else { continue }
+            let key = BrandLogo.groupKey(for: e.title) + String(format: "|%.4f,%.4f", lat, lon)
+            groups[key, default: []].append(e)
+        }
+        var changed = false
+        var looked = 0
+        for (key, entries) in groups {
+            // 地址當店名的一定要處理；只有品牌名的查過一次就不再查
+            let hasAddress = entries.contains { isAddressName($0.branch ?? "", merchant: $0.title) }
+            guard hasAddress || !tried.contains(key), looked < 25, let first = entries.first,
+                  let lat = first.latitude, let lon = first.longitude else { continue }
+            looked += 1
+            tried.insert(key)
+            if let m = await nameBranch(merchant: first.title, near: CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
+                for e in entries {
+                    e.branch = m.name
+                    if e.branchAddress == nil { e.branchAddress = m.address }
+                }
+                changed = true
+            } else {
+                for e in entries where isAddressName(e.branch ?? "", merchant: e.title) {
+                    e.branch = BrandLogo.brand(for: e.title)?.name ?? searchName(e.title)
+                    changed = true
+                }
+            }
+        }
+        UserDefaults.standard.set(Array(tried), forKey: triedKey)
+        if changed { try? context.save() }
     }
 }

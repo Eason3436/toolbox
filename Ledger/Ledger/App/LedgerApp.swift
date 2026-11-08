@@ -123,6 +123,8 @@ struct RootView: View {
                 BillService.processAutoPay(context: context)
                 // 全家／FamilyMart、萊爾富／Hi-Life 統一成同一個店名
                 BrandLogo.normalizeTitles(in: context)
+                // 舊的「只有品牌名／地址」分店，查出真正的店名
+                Task { await BranchMatcher.refineAll(context: context) }
                 CloudSync.run()
                 // 裝在 LiveContainer 時，捷徑動作會把記帳請求放進收件匣
                 Task {
