@@ -5,6 +5,8 @@ on:
     paths-ignore:
       - "Screenshots/**"
       - ".github/workflows/screenshots.yml"
+      - "Ledger/**"
+      - ".github/workflows/ledger.yml"
   workflow_dispatch:
 
 permissions:
