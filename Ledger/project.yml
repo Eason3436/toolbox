@@ -10,10 +10,17 @@ settings:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
+packages:
+  PulsoIcon:
+    url: https://github.com/CityPulso/PulsoIcon.git
+    from: 6.1.0
 targets:
   Ledger:
     type: application
     platform: iOS
+    dependencies:
+      - package: PulsoIcon
+        product: PulsoIcon
     sources:
       - path: Ledger
         excludes:

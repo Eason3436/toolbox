@@ -14,6 +14,7 @@ struct EntryDetailView: View {
     @State private var photo: PhotosPickerItem?
     @State private var analyzing = false
     @State private var receiptError: String?
+    @State private var headerPlay = 0
     @State private var categoryNote: String?
     @State private var showRaw = false
     @State private var confirmDelete = false
@@ -96,7 +97,8 @@ struct EntryDetailView: View {
                 if entry.kind == .transfer {
                     CategoryIcon(symbol: "arrow.left.arrow.right", color: .blue, size: 72)
                 } else if let c = entry.category {
-                    c.icon(size: 72)
+                    c.icon(size: 72, trigger: headerPlay)
+                        .task { try? await Task.sleep(for: .milliseconds(350)); headerPlay += 1 }
                 } else {
                     CategoryIcon(symbol: "questionmark", color: .gray, size: 72)
                 }
