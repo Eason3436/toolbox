@@ -33,17 +33,8 @@ struct EntryDetailView: View {
                         header.appearEffect()
                         receiptSection.appearEffect(delay: 0.05)
                         infoCard.appearEffect(delay: 0.1)
-                        if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty
-                            && (!PayMethod.isPayMethod(entry.title) || receipt?.store.isEmpty == false || entry.latitude != nil) {
-                            MerchantMapCard(merchant: receipt?.store.isEmpty == false ? receipt!.store : entry.title,
-                                            address: receipt?.address,
-                                            coordinate: entry.latitude.flatMap { lat in
-                                                entry.longitude.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) }
-                                            },
-                                            branch: entry.branch)
-                                .appearEffect(delay: 0.15)
-                            MerchantSummaryCard(merchant: entry.title, currency: currency, hidden: hidden)
-                                .appearEffect(delay: 0.2)
+                        if entry.kind != .transfer && !entry.title.trimmingCharacters(in: .whitespaces).isEmpty {
+                            placeSection.appearEffect(delay: 0.15)
                         }
                         if let raw = entry.rawText, !raw.isEmpty { rawCard(raw) }
                         Button("刪除這筆", role: .destructive) { confirmDelete = true }
@@ -154,6 +145,29 @@ struct EntryDetailView: View {
             Text(title).foregroundStyle(.secondary)
             Spacer()
             Text(value).fontWeight(.medium).multilineTextAlignment(.trailing)
+        }
+    }
+
+    // MARK: 地點與統計
+
+    /// 有實體地點（或發票、捷徑附上位置）才找地圖；回饋、利息這類只顯示統計
+    @ViewBuilder
+    private var placeSection: some View {
+        let hasReceiptStore = receipt?.store.isEmpty == false
+        let coordinate: CLLocationCoordinate2D? = entry.latitude.flatMap { lat in
+            entry.longitude.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) }
+        }
+        let showMap = hasReceiptStore || coordinate != nil
+            || PlaceCheck.hasPlace(title: entry.title, kind: entry.kind, categoryName: entry.category?.fullName)
+        let income = entry.kind == .income
+        if showMap {
+            MerchantMapCard(merchant: hasReceiptStore ? receipt!.store : entry.title,
+                            address: receipt?.address, coordinate: coordinate, branch: entry.branch) { compact in
+                MerchantSummaryCard(merchant: entry.title, currency: currency, hidden: hidden,
+                                    income: income, compact: compact)
+            }
+        } else {
+            MerchantSummaryCard(merchant: entry.title, currency: currency, hidden: hidden, income: income)
         }
     }
 

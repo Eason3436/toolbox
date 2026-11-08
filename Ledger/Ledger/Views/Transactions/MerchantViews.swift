@@ -5,101 +5,109 @@ import Charts
 import UIKit
 
 /// 詳情頁的小地圖：用商家名稱（或發票上的地址）在 Apple 地圖搜尋
-struct MerchantMapCard: View {
+/// 有 trailing（例如消費統計）時，地圖和它並排成兩個正方形；找不到位置就只顯示 trailing
+struct MerchantMapCard<Trailing: View>: View {
     var merchant: String
     var address: String?
     /// 已經知道分店位置（捷徑附上位置比對出來的）就直接用，不用再搜尋
     var coordinate: CLLocationCoordinate2D? = nil
     var branch: String? = nil
+    /// 參數：是不是跟地圖並排（正方形）
+    var trailing: (Bool) -> Trailing
 
     @State private var item: MKMapItem?
     @State private var searched = false
     @Query private var visits: [Entry]
 
-    init(merchant: String, address: String? = nil, coordinate: CLLocationCoordinate2D? = nil, branch: String? = nil) {
+    init(merchant: String, address: String? = nil, coordinate: CLLocationCoordinate2D? = nil, branch: String? = nil,
+         @ViewBuilder trailing: @escaping (Bool) -> Trailing) {
         self.merchant = merchant
         self.address = address
         self.coordinate = coordinate
         self.branch = branch
+        self.trailing = trailing
         let m = merchant
         _visits = Query(filter: #Predicate<Entry> { $0.title == m })
     }
 
+    private var paired: Bool { Trailing.self != EmptyView.self }
+
     var body: some View {
         Group {
-            if let item {
-                Button {
-                    item.openInMaps()
-                } label: {
-                    VStack(alignment: .leading, spacing: 10) {
-                        // 地區、店名、去過幾次
-                        VStack(alignment: .leading, spacing: 2) {
-                            if let area = area(of: item) {
-                                Text(area).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            Text(item.name ?? merchant).font(.headline).lineLimit(1)
-                            Text("\(visits.count)×").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 4)
-
-                        // 立體小地圖
-                        Map(initialPosition: .camera(MapCamera(centerCoordinate: item.location.coordinate,
-                                                               distance: 650, heading: 0, pitch: 55)),
-                            interactionModes: []) {
-                            Marker(item.name ?? merchant, systemImage: "bag.fill", coordinate: item.location.coordinate)
-                                .tint(Color.purple)
-                            MapCircle(center: item.location.coordinate, radius: 45)
-                                .foregroundStyle(Color.purple.opacity(0.18))
-                                .stroke(Color.purple.opacity(0.8), lineWidth: 1.5)
-                        }
-                        .mapStyle(.standard(elevation: .realistic, pointsOfInterest: .all))
-                        .frame(height: 130)
-                        .clipShape(.rect(cornerRadius: 16, style: .continuous))
-                        .allowsHitTesting(false)
-                    }
-                    .padding(12)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 24, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(.white.opacity(0.15)))
-                    .foregroundStyle(.primary)
-                }
-                .buttonStyle(ChipPressStyle())
-                .frame(maxWidth: 340)
-                .frame(maxWidth: .infinity)
-                .transition(.opacity.combined(with: .scale(scale: 0.97)))
-            } else if searched {
-                // 找不到位置時也留一個入口，直接到 Apple 地圖搜尋
-                Button {
-                    let q = (branch ?? merchant).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                    if let url = URL(string: "maps://?q=\(q)") { UIApplication.shared.open(url) }
-                } label: {
+            if paired {
+                if let item {
                     HStack(spacing: 12) {
-                        Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Color.accentColor)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(branch ?? merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Text("沒有找到確切位置，點一下在地圖搜尋").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                        square { mapTile(item) }
+                        square { trailing(true) }
                     }
-                    .padding(14)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 20, style: .continuous))
-                    .foregroundStyle(.primary)
+                    .transition(.opacity)
+                } else if searched {
+                    // 找不到位置就不硬放地圖
+                    trailing(false)
+                } else {
+                    HStack(spacing: 12) {
+                        square {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(.regularMaterial)
+                                .overlay(ProgressView())
+                        }
+                        square { trailing(true) }
+                    }
                 }
-                .buttonStyle(ChipPressStyle())
-                .frame(maxWidth: 340)
-                .frame(maxWidth: .infinity)
-            } else {
-                // 搜尋中先留位置，避免卡片突然跳出來
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(.regularMaterial)
-                    .frame(maxWidth: 340, minHeight: 60, maxHeight: 60)
-                    .overlay(ProgressView())
+            } else if let item {
+                square { mapTile(item) }
+                    .frame(maxWidth: 280)
                     .frame(maxWidth: .infinity)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
         .animation(.snappy, value: item != nil)
         .animation(.snappy, value: searched)
         .task(id: (address ?? "") + merchant + (branch ?? "")) { await search() }
+    }
+
+    /// 固定 1:1，裡面的內容填滿
+    private func square<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay { content() }
+    }
+
+    /// 地圖鋪滿整塊，店名放在底部
+    private func mapTile(_ item: MKMapItem) -> some View {
+        Button {
+            item.openInMaps()
+        } label: {
+            Map(initialPosition: .camera(MapCamera(centerCoordinate: item.location.coordinate,
+                                                   distance: 650, heading: 0, pitch: 55)),
+                interactionModes: []) {
+                Marker(item.name ?? merchant, systemImage: "bag.fill", coordinate: item.location.coordinate)
+                    .tint(Color.purple)
+                MapCircle(center: item.location.coordinate, radius: 45)
+                    .foregroundStyle(Color.purple.opacity(0.18))
+                    .stroke(Color.purple.opacity(0.8), lineWidth: 1.5)
+            }
+            .mapStyle(.standard(elevation: .realistic, pointsOfInterest: .excludingAll))
+            .allowsHitTesting(false)
+            .overlay(alignment: .bottomLeading) {
+                VStack(alignment: .leading, spacing: 1) {
+                    if let area = area(of: item) {
+                        Text(area).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Text(item.name ?? merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text("去過 \(visits.count) 次").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+            }
+            .clipShape(.rect(cornerRadius: 28, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.12)))
+            .foregroundStyle(.primary)
+        }
+        .buttonStyle(ChipPressStyle())
     }
 
     /// 例如「彰化市」：從地址裡抓出縣市區
@@ -145,50 +153,118 @@ struct MerchantMapCard: View {
     }
 }
 
-/// 在這個商家總共花了多少
+extension MerchantMapCard where Trailing == EmptyView {
+    init(merchant: String, address: String? = nil, coordinate: CLLocationCoordinate2D? = nil, branch: String? = nil) {
+        self.init(merchant: merchant, address: address, coordinate: coordinate, branch: branch) { _ in EmptyView() }
+    }
+}
+
+/// 這筆交易是不是在某個實體地點發生的（回饋、利息、轉帳這類就不找地圖）
+enum PlaceCheck {
+    private static let nonPlaceWords = ["回饋", "利息", "退款", "退費", "退貨", "手續費", "年費", "轉帳", "轉入", "轉出",
+                                        "繳費", "扣繳", "薪資", "薪水", "獎金", "紅利", "折抵", "提款",
+                                        "銀行", "信用卡", "卡費", "保費"]
+
+    static func hasPlace(title: String, kind: EntryKind, categoryName: String?) -> Bool {
+        guard kind == .expense else { return false }
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, t != "未命名", !PayMethod.isPayMethod(t) else { return false }
+        let text = t + " " + (categoryName ?? "")
+        return !nonPlaceWords.contains { text.contains($0) }
+    }
+}
+
+/// 在這個商家總共花了多少（收入就是總共收到多少）
 struct MerchantSummaryCard: View {
     var merchant: String
     var currency: String
     var hidden: Bool
+    var income = false
+    /// 跟地圖並排的正方形版本
+    var compact = false
 
     @Query private var entries: [Entry]
 
-    init(merchant: String, currency: String, hidden: Bool) {
+    init(merchant: String, currency: String, hidden: Bool, income: Bool = false, compact: Bool = false) {
         self.merchant = merchant
         self.currency = currency
         self.hidden = hidden
+        self.income = income
+        self.compact = compact
         let m = merchant
         _entries = Query(filter: #Predicate<Entry> { $0.title == m }, sort: \Entry.date, order: .reverse)
     }
 
     var body: some View {
-        let spent = entries.filter { $0.kind == .expense }
-        let total = spent.reduce(0) { $0 + $1.amount }
+        let kind: EntryKind = income ? .income : .expense
+        let list = entries.filter { $0.kind == kind }
+        let total = list.reduce(0) { $0 + $1.amount }
         let month = DateText.monthInterval(.now)
-        let thisMonth = spent.filter { month.contains($0.date) }.reduce(0) { $0 + $1.amount }
+        let thisMonth = list.filter { month.contains($0.date) }.reduce(0) { $0 + $1.amount }
+        let totalTitle = income ? "總共收到" : "總共花了"
         NavigationLink {
             MerchantDetailView(merchant: merchant)
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("在「\(merchant)」", systemImage: "storefront").font(.headline).lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
-                }
-                HStack(alignment: .top) {
-                    stat("總共花了", total)
-                    stat("本月", thisMonth)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("次數").font(.caption).foregroundStyle(.secondary)
-                        Text("\(spent.count) 次").font(.title3.weight(.semibold)).monospacedDigit()
+            if compact {
+                compactBody(totalTitle: totalTitle, total: total, thisMonth: thisMonth, count: list.count)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("在「\(merchant)」", systemImage: "storefront").font(.headline).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(alignment: .top) {
+                        stat(totalTitle, total)
+                        stat("本月", thisMonth)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("次數").font(.caption).foregroundStyle(.secondary)
+                            Text("\(list.count) 次").font(.title3.weight(.semibold)).monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .foregroundStyle(.primary)
+                .cardStyle()
             }
-            .foregroundStyle(.primary)
-            .cardStyle()
         }
         .buttonStyle(.plain)
+    }
+
+    private func compactBody(totalTitle: String, total: Double, thisMonth: Double, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "storefront").foregroundStyle(.secondary)
+                Text(merchant).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(totalTitle).font(.caption).foregroundStyle(.secondary)
+                MoneyText(value: total, currency: currency, hidden: hidden, font: .title2.weight(.bold))
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+            Spacer(minLength: 6)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("本月").font(.caption).foregroundStyle(.secondary)
+                    MoneyText(value: thisMonth, currency: currency, hidden: hidden, font: .subheadline.weight(.semibold))
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("次數").font(.caption).foregroundStyle(.secondary)
+                    Text("\(count) 次").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .foregroundStyle(.primary)
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 28, style: .continuous))
+        .contentShape(.rect(cornerRadius: 28, style: .continuous))
     }
 
     private func stat(_ title: String, _ v: Double) -> some View {
@@ -259,10 +335,12 @@ struct MerchantDetailView: View {
                     .padding(.vertical, 6)
                 }
             }
-            Section {
-                MerchantMapCard(merchant: merchant)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+            if !spent.isEmpty && PlaceCheck.hasPlace(title: merchant, kind: .expense, categoryName: spent.first?.category?.fullName) {
+                Section {
+                    MerchantMapCard(merchant: merchant)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
             }
             Section("紀錄") {
                 ForEach(entries) { e in
