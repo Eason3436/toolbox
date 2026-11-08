@@ -19,6 +19,9 @@ struct SettingsView: View {
     @State private var deletingAccount: Account?
     @State private var editingAccount: Account?
     @State private var addingAccount = false
+    @State private var pickingSyncFolder = false
+    @State private var syncStatus: String? = UserDefaults.standard.string(forKey: CloudSync.lastResultKey)
+    @State private var syncFolder: String? = CloudSync.folderName
 
     var body: some View {
         NavigationStack {
@@ -105,6 +108,47 @@ struct SettingsView: View {
                     Text("搬家")
                 } footer: {
                     Text("在 Cashew 打開「設定 → 備份 → 匯出資料」，存成 cashew-…sql 檔，再從這裡選取；也可以在「檔案」App 長按那個檔案 → 分享 → 選「記帳」。會匯入帳戶、分類（含子分類）、交易、預算、目標、借貸，未付款的訂閱會變成帳單。重複匯入不會重複新增。")
+                }
+
+                Section {
+                    if let syncFolder {
+                        LabeledContent("資料夾", value: syncFolder)
+                        Button {
+                            syncStatus = CloudSync.run(force: true)
+                        } label: {
+                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        Button("關閉同步", role: .destructive) {
+                            CloudSync.turnOff()
+                            self.syncFolder = nil
+                            syncStatus = nil
+                        }
+                    } else {
+                        Button {
+                            pickingSyncFolder = true
+                        } label: {
+                            Label("選擇 iCloud 雲碟資料夾", systemImage: "icloud")
+                        }
+                        .fileImporter(isPresented: $pickingSyncFolder, allowedContentTypes: [.folder]) { result in
+                            if case .success(let url) = result {
+                                do {
+                                    try CloudSync.setFolder(url)
+                                    syncFolder = CloudSync.folderName
+                                    syncStatus = CloudSync.run(force: true)
+                                } catch {
+                                    syncStatus = "無法使用這個資料夾：\(error.localizedDescription)"
+                                }
+                            }
+            }
+                    }
+                    if let syncStatus {
+                        Text(syncStatus + (CloudSync.lastSync.map { "・" + RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: .now) } ?? ""))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("iCloud 備份與同步")
+                } footer: {
+                    Text("在「檔案」裡選 iCloud 雲碟的一個資料夾（例如新建「記帳」）。每次打開 App 會自動合併資料夾裡其他裝置的資料，再存回去，並每天留一份備份（保留 14 天）。每台裝置都選同一個資料夾就能互相同步新增的紀錄。")
                 }
 
                 Section {
