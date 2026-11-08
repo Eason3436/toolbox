@@ -1,0 +1,41 @@
+diff --git a/LiveContainerSwiftUI/Views/AppList/LCAppListView.swift b/LiveContainerSwiftUI/Views/AppList/LCAppListView.swift
+index 94eeef1..6376aab 100644
+--- a/LiveContainerSwiftUI/Views/AppList/LCAppListView.swift
++++ b/LiveContainerSwiftUI/Views/AppList/LCAppListView.swift
+@@ -212,6 +212,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
+             }
+             
+             .navigationTitle("lc.appList.myApps".loc)
++            .lcAppUpdates()
+             .toolbar {
+                 ToolbarItem(placement: .topBarLeading) {
+                     if sharedModel.multiLCStatus != 2 {
+@@ -665,7 +666,18 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
+                 self.installOptions.append(AppReplaceOption(isReplace: true, nameOfFolderToInstall: app.appInfo.relativeBundlePath, appToReplace: app))
+             }
+ 
+-            guard let installOptionChosen = await installReplaceAlert.open() else {
++            // toolbox: an update started from "App 更新" replaces the existing copy without asking
++            var autoReplaceOption: AppReplaceOption? = nil
++            if sameBundleIdApp.count == 1, await LCUpdateChecker.shared.consumeAutoReplace(bundleId: newAppInfo.bundleIdentifier()) {
++                autoReplaceOption = self.installOptions.last
++            }
++            let chosenInstallOption: AppReplaceOption?
++            if let autoReplaceOption {
++                chosenInstallOption = autoReplaceOption
++            } else {
++                chosenInstallOption = await installReplaceAlert.open()
++            }
++            guard let installOptionChosen = chosenInstallOption else {
+                 // user cancelled
+                 self.installprogressVisible = false
+                 try fm.removeItem(at: payloadPath)
+@@ -776,6 +788,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
+             }
+ 
+             self.installprogressVisible = false
++            let installedBundleId = finalNewApp.bundleIdentifier()
++            Task { @MainActor in LCUpdateChecker.shared.installFinished(bundleId: installedBundleId) }
+         }
+     }
+     
