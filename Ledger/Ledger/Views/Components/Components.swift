@@ -300,8 +300,10 @@ struct MonthStepper: View {
     var body: some View {
         HStack(spacing: 4) {
             Button { withAnimation(.snappy) { month = DateText.addMonths(month, -1) } } label: {
-                Image(systemName: "chevron.left").frame(width: 32, height: 40)
+                Image(systemName: "chevron.left").frame(width: 32, height: 40).contentShape(.rect)
             }
+            // 放在 List 列裡時，三個按鈕要各自點得到（不然整列只觸發一個）
+            .buttonStyle(.borderless)
             Menu {
                 Button("本月") { withAnimation(.snappy) { month = .now } }
                 ForEach(1..<13) { i in
@@ -315,9 +317,11 @@ struct MonthStepper: View {
                 }
                 .foregroundStyle(.primary)
             }
+            .buttonStyle(.borderless)
             Button { withAnimation(.snappy) { month = DateText.addMonths(month, 1) } } label: {
-                Image(systemName: "chevron.right").frame(width: 32, height: 40)
+                Image(systemName: "chevron.right").frame(width: 32, height: 40).contentShape(.rect)
             }
+            .buttonStyle(.borderless)
         }
         .foregroundStyle(.secondary)
         .padding(.horizontal, 8)

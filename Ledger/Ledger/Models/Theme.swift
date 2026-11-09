@@ -35,6 +35,24 @@ enum Theme {
         return (options.first { $0.id == raw } ?? options[0]).color
     }
 
+    /// 這個色碼是不是跟目前存的值（預設配色或自訂色）幾乎一樣
+    static func isSame(_ hex: String, as raw: String) -> Bool {
+        if raw.hasPrefix("#") { return close(hex, raw) }
+        guard let o = options.first(where: { $0.id == raw }) else { return false }
+        return close(hex, o.light) || close(hex, o.dark)
+    }
+
+    private static func close(_ a: String, _ b: String) -> Bool {
+        guard let x = rgb(a), let y = rgb(b) else { return false }
+        return abs(x.0 - y.0) <= 6 && abs(x.1 - y.1) <= 6 && abs(x.2 - y.2) <= 6
+    }
+
+    private static func rgb(_ hex: String) -> (Int, Int, Int)? {
+        let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard h.count == 6, let v = Int(h, radix: 16) else { return nil }
+        return ((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
+    }
+
     static func dynamic(light: String, dark: String) -> Color {
         let l = UIColor(Color(hex: light)), d = UIColor(Color(hex: dark))
         return Color(UIColor { $0.userInterfaceStyle == .dark ? d : l })
@@ -52,18 +70,39 @@ enum Theme {
 struct ThemePicker: View {
     @AppStorage(Theme.key) private var raw = "rose"
 
+    /// ColorPicker 在選取改變時會把目前的顏色寫回來；如果只是把剛選的預設色寫回來
+    /// 就忽略，不然會變成「自訂色」，勾勾和外框就不見了
     private var custom: Binding<Color> {
-        Binding(get: { Theme.color(for: raw) }, set: { raw = Theme.hex($0) })
+        Binding(get: { Theme.color(for: raw) }, set: { new in
+            let hex = Theme.hex(new)
+            if Theme.isSame(hex, as: raw) { return }
+            raw = hex
+        })
     }
+
+    private var isCustom: Bool { raw.hasPrefix("#") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 14) {
-                ForEach(Theme.options) { o in
-                    swatch(o)
+            // 不用 Lazy 版本：放在 Form 裡偶爾不會重畫，勾勾會停在舊的顏色
+            Grid(horizontalSpacing: 10, verticalSpacing: 14) {
+                ForEach(0..<2, id: \.self) { row in
+                    GridRow {
+                        ForEach(Theme.options[(row * 6)..<(row * 6 + 6)]) { o in
+                            swatch(o).frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
-            ColorPicker("自訂顏色", selection: custom, supportsOpacity: false)
+            HStack {
+                Text("自訂顏色")
+                if isCustom {
+                    Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(Color.accentColor)
+                }
+                Spacer()
+                ColorPicker("自訂顏色", selection: custom, supportsOpacity: false)
+                    .labelsHidden()
+            }
         }
         .padding(.vertical, 6)
     }
