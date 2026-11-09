@@ -155,12 +155,12 @@ struct AccountsView: View {
                     Spacer()
                     Text("今天花了 \(Money.format(todaySpent, currency: cur, hidden: hidden))")
                 }
-                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                .font(.footnote.weight(.medium)).foregroundStyle(.secondary)
             }
 
             HStack(spacing: 10) {
                 statTile("月初", startBalance, "calendar", .blue, cur)
-                statTile("流入", inflow, "arrow.down.left", .green, cur)
+                statTile("收入", inflow, "arrow.down.left", .green, cur)
                 statTile("支出", spent, "arrow.up.right", .orange, cur)
             }
         }
@@ -170,13 +170,13 @@ struct AccountsView: View {
     private func statTile(_ title: String, _ value: Double, _ symbol: String, _ color: Color, _ cur: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
-            MoneyText(value: value, currency: cur, hidden: hidden, font: .subheadline.weight(.bold))
+            MoneyText(value: value, currency: cur, hidden: hidden, font: .title3.weight(.bold))
                 .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(12)
         .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 14, style: .continuous))
     }
 

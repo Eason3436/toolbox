@@ -22,6 +22,10 @@ struct EntriesView: View {
     @AppStorage("entriesAllTime") private var allTime = false
     @State private var filter: EntryFilter = .all
     @State private var search = ""
+    /// 用一句話搜尋時，模型整理出來的條件
+    @State private var smart: EntrySearch.Filter?
+    @State private var smartLoading = false
+    @State private var smartError: String?
     @State private var editing: Entry?
     @State private var pieIncome = false
     @State private var accountFilter: UUID?
@@ -36,14 +40,19 @@ struct EntriesView: View {
     }
 
     private var visible: [Entry] {
-        monthEntries.filter { e in
+        // 搜尋時找全部期間
+        let base: [Entry] = search.isEmpty ? monthEntries : allEntries
+        return base.filter { e in
             switch filter {
             case .all: true
             case .expense: e.kind == .expense
             case .income: e.kind == .income
             }
         }
-        .filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.note.localizedCaseInsensitiveContains(search) || ($0.category?.name.contains(search) ?? false) || ($0.branch?.contains(search) ?? false) }
+        .filter { e in
+            if let smart { return smart.matches(e) }
+            return search.isEmpty || EntrySearch.text(e, contains: search)
+        }
         .filter { e in accountFilter == nil || e.account?.id == accountFilter || e.toAccount?.id == accountFilter }
         .filter { e in payFilter == nil || e.payMethod == payFilter }
         .filter { e in !receiptOnly || e.receiptJSON != nil }
@@ -138,10 +147,14 @@ struct EntriesView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
-                Section {
-                    periodBar
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                if !search.isEmpty {
+                    Section { smartBar }
+                } else {
+                    Section {
+                        periodBar
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
                 }
                 Section {
                     filterChips
@@ -201,8 +214,59 @@ struct EntriesView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) { LedgerModeToggle() }
             }
-            .searchable(text: $search, placement: .navigationBarDrawer, prompt: "搜尋商家、備註、分類")
+            .searchable(text: $search, placement: .navigationBarDrawer, prompt: "搜尋，或說「上個月買的飲料」")
+            .onSubmit(of: .search) { runSmartSearch() }
+            .onChange(of: search) { old, new in
+                smart = nil
+                smartError = nil
+                if old.isEmpty && !new.isEmpty { EntrySearch.prewarm() }
+            }
             .sheet(item: $editing) { EntryDetailView(entry: $0) }
+        }
+    }
+
+    // MARK: 用一句話搜尋
+
+    private func runSmartSearch() {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        guard EntrySearch.looksLikeSentence(q), NoticeParser.aiAvailable else { return }
+        smartLoading = true
+        smartError = nil
+        Task {
+            defer { smartLoading = false }
+            do {
+                let f = try await EntrySearch.parse(q)
+                // 等待期間使用者改了字就不套用
+                guard search.trimmingCharacters(in: .whitespaces) == q else { return }
+                withAnimation(.snappy) { smart = f }
+            } catch {
+                smartError = "看不懂這句，先用關鍵字比對"
+            }
+        }
+    }
+
+    /// 搜尋結果上方：筆數、合計，用一句話搜尋時顯示整理出的條件
+    private var smartBar: some View {
+        let list: [Entry] = visible
+        let spent: Double = list.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("\(list.count) 筆").font(.subheadline.weight(.semibold))
+                Spacer()
+                if smartLoading {
+                    ProgressView().controlSize(.small)
+                } else if spent > 0 {
+                    Text("支出 \(Money.format(spent, hidden: hidden))").font(.subheadline.weight(.semibold)).monospacedDigit()
+                }
+            }
+            if let smart, !smart.summary.isEmpty {
+                Label(smart.summary, systemImage: "sparkle.magnifyingglass")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            } else if let smartError {
+                Text(smartError).font(.caption).foregroundStyle(.secondary)
+            } else if EntrySearch.looksLikeSentence(search) && NoticeParser.aiAvailable && !smartLoading {
+                Text("按「搜尋」用整句話找").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -241,6 +305,8 @@ struct EntryRow: View {
         HStack(spacing: 14) {
             if entry.kind == .transfer {
                 CategoryIcon(symbol: "arrow.left.arrow.right", color: .blue)
+            } else if let g = entry.listGlyph {
+                BrandGlyphIcon(glyph: g)
             } else if let c = entry.category {
                 c.icon()
             } else {
