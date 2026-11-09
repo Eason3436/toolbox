@@ -37,6 +37,7 @@ extension View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(removing: .title)
             .background(Palette.background)
+            .softTopEdge()
     }
 }
 

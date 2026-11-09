@@ -71,6 +71,8 @@ struct RootView: View {
                 // 分頁列只顯示圖示，不顯示文字
                 Tab(value: t) {
                     page(t)
+                        // 點分頁列時頁面左右滑動
+                        .background(TabSlideHook().frame(width: 0, height: 0))
                 } label: {
                     Image(systemName: t.symbol)
                         .accessibilityLabel(Text(t.label))
