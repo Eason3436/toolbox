@@ -23,7 +23,7 @@ struct LCLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LCLiveActivityAttributes.self) { context in
             LockScreenView(context: context)
-                .activitySystemActionForegroundColor(tint(context))
+                .activitySystemActionForegroundColor(accent(context))
                 .widgetURL(context.attributes.launchURL)
         } dynamicIsland: { context in
             DynamicIsland {
@@ -32,14 +32,14 @@ struct LCLiveActivityWidget: Widget {
                         Text(context.attributes.appName)
                             .lineLimit(1)
                     } icon: {
-                        Image(systemName: symbol(context))
-                            .foregroundStyle(tint(context))
+                        Image(systemName: iconName(context))
+                            .foregroundStyle(accent(context))
                     }
                     .font(.subheadline.weight(.semibold))
                     .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TrailingValue(state: context.state, tint: tint(context))
+                    TrailingValue(state: context.state, tint: accent(context))
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .padding(.trailing, 4)
                 }
@@ -56,26 +56,26 @@ struct LCLiveActivityWidget: Widget {
                         }
                         if let progress = clampedProgress(context.state) {
                             ProgressView(value: progress)
-                                .tint(tint(context))
+                                .tint(accent(context))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: symbol(context))
-                    .foregroundStyle(tint(context))
+                Image(systemName: iconName(context))
+                    .foregroundStyle(accent(context))
             } compactTrailing: {
-                CompactTrailing(state: context.state, tint: tint(context))
+                CompactTrailing(state: context.state, tint: accent(context))
             } minimal: {
                 if let progress = clampedProgress(context.state) {
-                    ProgressRing(progress: progress, tint: tint(context))
+                    ProgressRing(progress: progress, tint: accent(context))
                 } else {
-                    Image(systemName: symbol(context))
-                        .foregroundStyle(tint(context))
+                    Image(systemName: iconName(context))
+                        .foregroundStyle(accent(context))
                 }
             }
-            .keylineTint(tint(context))
+            .keylineTint(accent(context))
             .widgetURL(context.attributes.launchURL)
         }
     }
@@ -89,11 +89,11 @@ private struct LockScreenView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: symbol(context))
+                Image(systemName: iconName(context))
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint(context))
+                    .foregroundStyle(accent(context))
                     .frame(width: 40, height: 40)
-                    .background(tint(context).opacity(0.18), in: Circle())
+                    .background(accent(context).opacity(0.18), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(context.attributes.appName)
                         .font(.caption)
@@ -110,12 +110,12 @@ private struct LockScreenView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                TrailingValue(state: context.state, tint: tint(context))
+                TrailingValue(state: context.state, tint: accent(context))
                     .font(.title2.weight(.semibold).monospacedDigit())
             }
             if let progress = clampedProgress(context.state) {
                 ProgressView(value: progress)
-                    .tint(tint(context))
+                    .tint(accent(context))
             }
         }
         .padding(16)
@@ -206,11 +206,11 @@ private func clampedProgress(_ state: LCLiveActivityAttributes.ContentState) -> 
     return min(max(progress, 0), 1)
 }
 
-private func symbol(_ context: ActivityViewContext<LCLiveActivityAttributes>) -> String {
+private func iconName(_ context: ActivityViewContext<LCLiveActivityAttributes>) -> String {
     context.state.systemImage ?? context.attributes.systemImage ?? "app.badge"
 }
 
-private func tint(_ context: ActivityViewContext<LCLiveActivityAttributes>) -> Color {
+private func accent(_ context: ActivityViewContext<LCLiveActivityAttributes>) -> Color {
     color(hex: context.state.tintHex) ?? color(hex: context.attributes.tintHex) ?? .accentColor
 }
 
