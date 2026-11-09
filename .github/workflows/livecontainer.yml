@@ -1,7 +1,8 @@
 name: Build LiveContainer (Shortcuts) IPA
 
 # LiveContainer（https://github.com/LiveContainer/LiveContainer，AGPL-3.0）
-# 加上捷徑動作：從清單開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳專用動作。
+# 加上捷徑動作：從清單開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳專用動作；
+# 以及給裡面的 App 用的即時動態（LiveActivityWidget/）。
 # 修改內容在 LiveContainer/overlay/，原始碼見 LiveContainer/README.md。
 on:
   workflow_dispatch:
@@ -70,6 +71,30 @@ jobs:
           tail -5 build.log
           exit $STATUS
 
+      - name: Build Live Activity widget
+        working-directory: toolbox/LiveContainer/LiveActivityWidget
+        run: |
+          # 裝在 LiveContainer 裡的 App 用 LCLiveActivityAttributes 開即時動態，
+          # 系統會用這個 LiveContainer 自己的 widget extension 來畫鎖定畫面和動態島
+          brew install xcodegen
+          xcodegen generate
+          STATUS=0
+          xcodebuild build -project LCLiveActivity.xcodeproj -target LCLiveActivityWidget \
+            -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO \
+            SYMROOT="$PWD/build" > widget.log 2>&1 || STATUS=$?
+          grep -E "error:" widget.log | sort -u | head -50 || true
+          tail -5 widget.log
+          [ $STATUS -eq 0 ] || exit $STATUS
+          APP="$GITHUB_WORKSPACE/src/$archive_path.xcarchive/Products/Applications/LiveContainer.app"
+          mkdir -p "$APP/PlugIns"
+          cp -R build/Release-iphoneos/LCLiveActivityWidget.appex "$APP/PlugIns/"
+          ls "$APP/PlugIns"
+          /usr/libexec/PlistBuddy -c "Add :NSSupportsLiveActivities bool true" "$APP/Info.plist" \
+            || /usr/libexec/PlistBuddy -c "Set :NSSupportsLiveActivities true" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSSupportsLiveActivitiesFrequentUpdates bool true" "$APP/Info.plist" \
+            || /usr/libexec/PlistBuddy -c "Set :NSSupportsLiveActivitiesFrequentUpdates true" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/PlugIns/LCLiveActivityWidget.appex/Info.plist"
+
       - name: Check App Intents metadata
         working-directory: src
         run: |
@@ -89,7 +114,9 @@ jobs:
         if: always()
         with:
           name: livecontainer-build-log
-          path: src/build.log
+          path: |
+            src/build.log
+            toolbox/LiveContainer/LiveActivityWidget/widget.log
 
       - name: Publish to "livecontainer-latest" release
         env:
@@ -106,5 +133,5 @@ jobs:
           gh release create livecontainer-latest $FILES -R "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "LiveContainer 捷徑版（上游 ${LC_SHA}）" \
-            --notes "LiveContainer（AGPL-3.0，上游 commit ${LC_SHA}）加上捷徑動作：開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳：從通知記帳／快速記一筆。修改的原始碼在 toolbox repo 的 LiveContainer/ 資料夾。用 SideStore 安裝 LiveContainer.ipa 時，選「保留 App 延伸功能」。" \
+            --notes "LiveContainer（AGPL-3.0，上游 commit ${LC_SHA}）加上捷徑動作：開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳：從通知記帳／快速記一筆；裝在裡面的 App 可以顯示即時動態（動態島）。修改的原始碼在 toolbox repo 的 LiveContainer/ 資料夾。用 SideStore 安裝 LiveContainer.ipa 時，選「保留 App 延伸功能」。" \
             --prerelease
