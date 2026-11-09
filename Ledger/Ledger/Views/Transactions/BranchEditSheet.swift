@@ -216,6 +216,7 @@ struct BranchEditSheet: View {
     }
 
     private func apply(name: String?, address: String?, latitude: Double?, longitude: Double?) {
+        BranchMatcher.markManual(entries)
         for e in entries {
             e.branch = name
             e.branchAddress = address

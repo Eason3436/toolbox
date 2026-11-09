@@ -155,8 +155,9 @@ enum ReceiptService {
         do {
             let r = try await session.respond(to: prompt, generating: AIReceipt.self).content
             let aiAddress: String = r.address.trimmingCharacters(in: .whitespaces)
-            // AI 沒抓到時，從辨識文字裡找地址或「○○門市／○○店」
-            let place: String? = aiAddress.isEmpty ? (BranchMatcher.address(in: text) ?? Self.branchName(in: text)) : aiAddress
+            // 發票上印的門市地址最準（辨識時數字常被拆開：「6 7 號」），其次是 AI 抓到的，再來是「○○門市／○○店」
+            let printed: String? = BranchMatcher.address(in: text.replacingOccurrences(of: " ", with: ""))
+            let place: String? = printed ?? (aiAddress.isEmpty ? Self.branchName(in: text) : aiAddress)
             let receipt = Receipt(store: r.store, invoiceNumber: r.invoiceNumber, date: r.date,
                                   items: r.items.map { .init(name: $0.name, quantity: $0.quantity, price: $0.price) },
                                   total: r.total,

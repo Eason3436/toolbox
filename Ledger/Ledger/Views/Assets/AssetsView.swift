@@ -126,6 +126,9 @@ struct AssetsView: View {
             MoneyText(value: total, hidden: hidden, font: .system(size: 48, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
+            if let day = dayChange {
+                todayRow(day)
+            }
 
             if positiveTotal > 0 {
                 GeometryReader { geo in
@@ -179,6 +182,58 @@ struct AssetsView: View {
             }
         }
         .cardStyle()
+    }
+
+    // MARK: 今日損益
+
+    private struct DayChange {
+        var amount: Double
+        var ratio: Double
+        var today: Bool
+        /// 還沒拿到成交時間（剛更新 App、報價還沒抓）
+        var known: Bool
+    }
+
+    /// 有自動報價的投資：今天（或上個交易日）漲跌了多少，換成主幣別
+    private var dayChange: DayChange? {
+        let list: [Asset] = assets.filter { a in
+            a.usesQuote && a.previousClose > 0 && a.lastPrice > 0 && (filter == nil || a.kind.group == filter)
+        }
+        guard !list.isEmpty else { return nil }
+        var amount = 0.0
+        var base = 0.0
+        for a in list {
+            let rate = QuoteService.rate(from: a.currency)
+            amount += (a.lastPrice - a.previousClose) * a.quantity * rate
+            base += a.previousClose * a.quantity * rate
+        }
+        let today = list.contains { QuoteService.tradedToday($0) }
+        let known = list.contains { QuoteService.marketTime(of: $0) != nil }
+        return DayChange(amount: amount, ratio: base > 0 ? amount / base : 0, today: today, known: known)
+    }
+
+    private func todayRow(_ d: DayChange) -> some View {
+        let up = d.amount >= 0
+        let color: Color = abs(d.amount) < 0.5 ? .secondary : (up ? .red : .green)
+        return HStack(spacing: 8) {
+            Text(d.today || !d.known ? "今日" : "上個交易日").foregroundStyle(.secondary)
+            Image(systemName: up ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(Money.format(d.amount, hidden: hidden, signed: true))
+                .foregroundStyle(color)
+                .contentTransition(.numericText(value: d.amount))
+            Text("(\(up ? "+" : "")\(Money.percent(d.ratio, digits: 2)))")
+                .foregroundStyle(color)
+            if d.known && !d.today {
+                Text("・今天沒開盤").foregroundStyle(.tertiary)
+            }
+        }
+        .font(.headline)
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .animation(.snappy, value: d.amount)
     }
 
     private var chips: some View {

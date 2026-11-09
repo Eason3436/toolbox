@@ -8,6 +8,8 @@ struct Quote: Sendable {
     var previousClose: Double
     var currency: String
     var name: String?
+    /// 這個報價的成交時間（判斷今天有沒有開盤）
+    var marketTime: Date? = nil
 }
 
 enum QuoteService {
@@ -39,7 +41,8 @@ enum QuoteService {
             ?? (meta["previousClose"] as? NSNumber)?.doubleValue ?? price
         let currency = (meta["currency"] as? String) ?? "USD"
         let name = (meta["shortName"] as? String) ?? (meta["longName"] as? String)
-        return Quote(symbol: s, price: price, previousClose: prev, currency: currency.uppercased(), name: name)
+        let time: Date? = (meta["regularMarketTime"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+        return Quote(symbol: s, price: price, previousClose: prev, currency: currency.uppercased(), name: name, marketTime: time)
     }
 
     /// 台股只輸入數字時，自動試 .TW（上市）與 .TWO（上櫃）
@@ -113,12 +116,26 @@ enum QuoteService {
     // MARK: 更新全部資產
 
     static let lastRefreshKey = "lastQuoteRefresh"
+    static let marketTimesKey = "quoteMarketTimes"
+
+    /// 這個資產最近一筆成交的時間
+    static func marketTime(of asset: Asset) -> Date? {
+        let d = UserDefaults.standard.dictionary(forKey: marketTimesKey) as? [String: Double] ?? [:]
+        return d[asset.id.uuidString].map { Date(timeIntervalSince1970: $0) }
+    }
+
+    /// 今天有開盤（今天有成交）
+    static func tradedToday(_ asset: Asset) -> Bool {
+        guard let t = marketTime(of: asset) else { return false }
+        return Calendar.current.isDateInToday(t)
+    }
 
     @MainActor
     static func refreshAll(context: ModelContext) async -> (updated: Int, failed: [String]) {
         let assets = (try? context.fetch(FetchDescriptor<Asset>())) ?? []
         var updated = 0
         var failed: [String] = []
+        var marketTimes = UserDefaults.standard.dictionary(forKey: marketTimesKey) as? [String: Double] ?? [:]
         await withTaskGroup(of: (UUID, Quote?).self) { group in
             for a in assets where a.usesQuote {
                 let id = a.id, ticker = a.ticker
@@ -131,12 +148,14 @@ enum QuoteService {
                     a.previousClose = q.previousClose
                     a.currency = q.currency
                     a.priceUpdatedAt = .now
+                    if let t = q.marketTime { marketTimes[a.id.uuidString] = t.timeIntervalSince1970 }
                     updated += 1
                 } else {
                     failed.append(a.name)
                 }
             }
         }
+        UserDefaults.standard.set(marketTimes, forKey: marketTimesKey)
         var currencies = Set(assets.map(\.currency))
         for acc in Store.accounts() { currencies.insert(acc.currency) }
         await updateRates(for: currencies)

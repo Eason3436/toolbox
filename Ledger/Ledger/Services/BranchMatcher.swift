@@ -128,12 +128,11 @@ enum BranchMatcher {
                 chosen = candidates[r.index]
             }
         }
+        // AI 選的店名稱跟商家對不上（例如全家選到隔壁的早餐店），就不算
+        if let c = chosen, !isSameBrand(c.name ?? "", merchant: merchant) { chosen = nil }
         if chosen == nil {
-            // 沒有 AI：名稱有包含就選最近的那家
-            chosen = candidates.first { c in
-                guard let n = c.name else { return false }
-                return n.localizedCaseInsensitiveContains(name) || name.localizedCaseInsensitiveContains(n)
-            }
+            // 沒有 AI：同一個品牌、最近的那家
+            chosen = candidates.first { isSameBrand($0.name ?? "", merchant: merchant) }
         }
         guard let c = chosen else { return nil }
         return Match(name: c.name ?? merchant,
@@ -155,39 +154,104 @@ enum BranchMatcher {
         await refineBranchName(entry)
     }
 
-    /// 發票上的店名＋地址／分店名 → 找到那一家店，存到這筆記帳（已經有位置就不動）
+    /// 發票上的店名＋地址／分店名 → 找到那一家店，存到這筆記帳。
+    /// 發票上的門市地址最準：就算之前用捷徑位置猜過分店，也以發票地址為準
     static func apply(receipt: Receipt, to entry: Entry) async {
-        guard entry.latitude == nil else { return }
+        let merchant: String = entry.title.isEmpty ? receipt.store : entry.title
         let store: String = searchName(receipt.store.isEmpty ? entry.title : receipt.store)
-        let place: String = receipt.address?.trimmingCharacters(in: .whitespaces) ?? ""
+        let place: String = cleanAddress(receipt.address ?? "")
         guard !place.isEmpty else { return }
-        var tries: [String] = ["\(store) \(place)"]
-        if place.count >= 6 { tries.append(place) }
-        for q in tries {
-            let req = MKLocalSearch.Request()
-            req.naturalLanguageQuery = q
-            req.resultTypes = [.pointOfInterest, .address]
-            req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
-                                            latitudinalMeters: 450_000, longitudinalMeters: 450_000)
-            guard let item = try? await MKLocalSearch(request: req).start().mapItems.first else { continue }
-            let c = item.location.coordinate
-            entry.latitude = c.latitude
-            entry.longitude = c.longitude
-            // 只有地址的話，再找附近同名的店當分店
-            if let m = await match(merchant: store, near: c) {
-                entry.branch = m.name
-                entry.branchAddress = m.address
-                entry.latitude = m.coordinate.latitude
-                entry.longitude = m.coordinate.longitude
-            } else if let name = item.name, item.pointOfInterestCategory != nil {
-                entry.branch = name
-                entry.branchAddress = item.address?.shortAddress
+
+        // 發票上是門牌地址：先找到地址的位置，再找這個地址上的同品牌店
+        if address(in: place) != nil {
+            guard let spot = await geocode(place) else { return }
+            let here = CLLocation(latitude: spot.latitude, longitude: spot.longitude)
+            // 已經是同品牌的分店，而且就在這個地址旁邊：保留，只補地址
+            if let lat = entry.latitude, let lon = entry.longitude,
+               CLLocation(latitude: lat, longitude: lon).distance(from: here) <= 120,
+               let b = entry.branch, !isBrandOnly(b, merchant: merchant), isSameBrand(b, merchant: merchant) {
+                entry.branchAddress = place
+                return
             }
-            await refineBranchName(entry)
+            entry.latitude = spot.latitude
+            entry.longitude = spot.longitude
+            entry.branchAddress = place
+            entry.branch = brandName(merchant)
+            if let m = await nameBranch(merchant: merchant, near: spot) {
+                entry.branch = m.name
+            } else if let known = knownBranch(merchant: merchant, near: here, excluding: entry) {
+                entry.branch = known
+            }
             return
         }
+
+        // 只有分店名（例如「信義店」）：搜尋「品牌＋分店名」，只接受同品牌的店
+        guard entry.latitude == nil else { return }
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = "\(store) \(place)"
+        req.resultTypes = .pointOfInterest
+        req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                        latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+        let items = (try? await MKLocalSearch(request: req).start().mapItems) ?? []
+        guard let item = items.first(where: { isSameBrand($0.name ?? "", merchant: merchant) }) else { return }
+        entry.latitude = item.location.coordinate.latitude
+        entry.longitude = item.location.coordinate.longitude
+        entry.branch = item.name
+        entry.branchAddress = item.address?.shortAddress
+        await refineBranchName(entry)
     }
 
+    /// 地址 → 座標
+    static func geocode(_ place: String) async -> CLLocationCoordinate2D? {
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = place
+        req.resultTypes = .address
+        req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 23.7, longitude: 120.96),
+                                        latitudinalMeters: 450_000, longitudinalMeters: 450_000)
+        return try? await MKLocalSearch(request: req).start().mapItems.first?.location.coordinate
+    }
+
+    /// 發票辨識出來的地址：去掉「地址：」、空白（「6 7 號」→「67號」），全形轉半形
+    static func cleanAddress(_ raw: String) -> String {
+        var t = raw.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? raw
+        for w in ["地址:", "地址", "門市地址:", "營業地址:"] where t.hasPrefix(w) { t = String(t.dropFirst(w.count)) }
+        t = t.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "\u{3000}", with: "")
+        // 門牌後面黏到的其他字（例如「67號營業人統編」）去掉
+        if let r = t.range(of: "號") { t = String(t[..<r.upperBound]) }
+        return t.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    /// 品牌名（沒有分店），例如「全家」
+    static func brandName(_ merchant: String) -> String {
+        BrandLogo.brand(for: merchant)?.name ?? searchName(merchant)
+    }
+
+    /// 店名是不是這個商家（同一個連鎖品牌）。「巨林美而美 平和店」「益利便利商店」都不是全家
+    static func isSameBrand(_ name: String, merchant: String) -> Bool {
+        let n = norm(name)
+        guard !n.isEmpty else { return false }
+        if let brand = BrandLogo.brand(for: merchant) {
+            if BrandLogo.brand(for: name)?.id == brand.id { return true }
+            return ([brand.name] + brand.keywords).contains { n.contains(norm($0)) }
+        }
+        let m = norm(searchName(merchant))
+        guard m.count >= 2 else { return false }
+        return n.contains(m) || m.contains(n)
+    }
+
+    /// 自己的紀錄裡，同一個品牌、就在附近（80 公尺內）已經標好的分店名
+    static func knownBranch(merchant: String, near here: CLLocation, excluding: Entry? = nil) -> String? {
+        let key = BrandLogo.groupKey(for: merchant)
+        let all = (try? Store.context.fetch(FetchDescriptor<Entry>())) ?? []
+        let hits = all.compactMap { e -> (String, Double)? in
+            guard e.id != excluding?.id, BrandLogo.groupKey(for: e.title) == key,
+                  let b = e.branch, !isBrandOnly(b, merchant: e.title), isSameBrand(b, merchant: e.title),
+                  let lat = e.latitude, let lon = e.longitude else { return nil }
+            let d = CLLocation(latitude: lat, longitude: lon).distance(from: here)
+            return d <= 80 ? (b, d) : nil
+        }
+        return hits.min { $0.1 < $1.1 }?.0
+    }
 
     // MARK: 只有品牌名時，找出分店名
 
@@ -232,9 +296,7 @@ enum BranchMatcher {
         func pick(_ items: [MKMapItem], within meters: Double) -> MKMapItem? {
             items.filter { item in
                 guard let n = item.name, !isBrandOnly(n, merchant: merchant) else { return false }
-                let sameBrand = BrandLogo.groupKey(for: n) == BrandLogo.groupKey(for: merchant)
-                    || n.localizedCaseInsensitiveContains(brandName)
-                return sameBrand && item.location.distance(from: here) <= meters
+                return isSameBrand(n, merchant: merchant) && item.location.distance(from: here) <= meters
             }
             .min { $0.location.distance(from: here) < $1.location.distance(from: here) }
         }
@@ -338,6 +400,9 @@ enum BranchMatcher {
         refining = true
         defer { refining = false }
         guard let all = try? context.fetch(FetchDescriptor<Entry>()) else { return }
+        var changed = false
+        if await fixWrongBrands(all) { changed = true }
+        if shareKnownBranches(all) { changed = true }
         var tried: Set<String> = Set(UserDefaults.standard.stringArray(forKey: triedKey) ?? [])
         var groups: [String: [Entry]] = [:]
         for e in all {
@@ -345,7 +410,6 @@ enum BranchMatcher {
             let key = BrandLogo.groupKey(for: e.title) + String(format: "|%.4f,%.4f", lat, lon)
             groups[key, default: []].append(e)
         }
-        var changed = false
         var looked = 0
         for (key, entries) in groups {
             // 地址當店名的一定要處理；只有品牌名的查過一次就不再查
@@ -369,5 +433,56 @@ enum BranchMatcher {
         }
         UserDefaults.standard.set(Array(tried), forKey: triedKey)
         if changed { try? context.save() }
+    }
+
+    // MARK: 修正之前配錯的分店
+
+    private static let wrongBrandFixKey = "branchWrongBrandFix1"
+    static let manualKey = "branchManualEntries"
+
+    /// 使用者自己在「修改分店」選的，不要自動改
+    static func markManual(_ entries: [Entry]) {
+        var set = Set(UserDefaults.standard.stringArray(forKey: manualKey) ?? [])
+        for e in entries { set.insert(e.id.uuidString) }
+        UserDefaults.standard.set(Array(set), forKey: manualKey)
+    }
+
+    /// 之前用附近店家猜分店時，可能把隔壁別家店（例如早餐店）當成全家的分店。
+    /// 連鎖店的分店名不是同一個品牌的：有發票地址就用發票地址重找，沒有就改回品牌名再找一次
+    static func fixWrongBrands(_ all: [Entry]) async -> Bool {
+        guard !UserDefaults.standard.bool(forKey: wrongBrandFixKey) else { return false }
+        let manual = Set(UserDefaults.standard.stringArray(forKey: manualKey) ?? [])
+        var changed = false
+        for e in all where !manual.contains(e.id.uuidString) && BrandLogo.brand(for: e.title) != nil {
+            guard let b = e.branch, !isBrandOnly(b, merchant: e.title), !isSameBrand(b, merchant: e.title) else { continue }
+            e.branch = brandName(e.title)
+            e.branchAddress = nil
+            changed = true
+            if let r = Receipt.from(e.receiptJSON), let a = r.address, address(in: cleanAddress(a)) != nil {
+                await apply(receipt: r, to: e)
+            }
+        }
+        // 有發票地址、但分店還沒對上地址的，也用發票地址重找一次
+        for e in all where !manual.contains(e.id.uuidString) && BrandLogo.brand(for: e.title) != nil {
+            guard let r = Receipt.from(e.receiptJSON), let a = r.address,
+                  address(in: cleanAddress(a)) != nil, e.branchAddress != cleanAddress(a) else { continue }
+            await apply(receipt: r, to: e)
+            changed = true
+        }
+        UserDefaults.standard.set(true, forKey: wrongBrandFixKey)
+        return changed
+    }
+
+    /// 同一個品牌、位置在 80 公尺內的紀錄，用已經標好的分店名（不用再查網路）
+    static func shareKnownBranches(_ all: [Entry]) -> Bool {
+        var changed = false
+        for e in all where e.kind == .expense && isBrandOnly(e.branch, merchant: e.title) {
+            guard BrandLogo.brand(for: e.title) != nil, let lat = e.latitude, let lon = e.longitude,
+                  let known = knownBranch(merchant: e.title, near: CLLocation(latitude: lat, longitude: lon), excluding: e)
+            else { continue }
+            e.branch = known
+            changed = true
+        }
+        return changed
     }
 }
