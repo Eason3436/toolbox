@@ -46,11 +46,80 @@ struct SavedHabits: Codable, Equatable {
     }
 }
 
+// MARK: - 本月重點：AI 寫，但只能用 App 算好的數字（寫錯的數字會被換掉）
+
+@Generable(description: "這個月的消費重點")
+struct AISpendingInsight {
+    @Guide(description: "一句話總結這個月的消費，25 字以內")
+    var headline: String
+    @Guide(description: "3 個最值得注意的重點，優先寫買了什麼東西的習慣和變化", .maximumCount(3))
+    var highlights: [AIInsightHighlight]
+    @Guide(description: "一個具體、做得到的小建議，30 字以內；沒有就填空字串")
+    var tip: String
+}
+
+@Generable
+struct AIInsightHighlight {
+    @Guide(description: "重點標題，16 字以內，例如「飲料比上月多花 120」")
+    var title: String
+    @Guide(description: "補充說明，30 字以內，例如「多在全家買，重乳奶茶最多」")
+    var detail: String
+    @Guide(description: "good 代表省錢或變好、bad 代表花更多、neutral 代表一般", .anyOf(["good", "bad", "neutral"]))
+    var tone: String
+    @Guide(description: "這個重點講的分類、商家或東西種類，照抄資料裡的名稱")
+    var subject: String
+}
+
+struct SavedInsight: Codable, Equatable {
+    struct Highlight: Codable, Equatable {
+        var title: String
+        var detail: String
+        var tone: String
+        var subject: String
+    }
+    var headline: String
+    var highlights: [Highlight]
+    var tip: String
+    var createdAt: Date
+
+    static func key(_ month: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month], from: month)
+        return "insight-v3-\(c.year ?? 0)-\(c.month ?? 0)"
+    }
+
+    static func load(_ month: Date) -> SavedInsight? {
+        guard let d = UserDefaults.standard.data(forKey: key(month)) else { return nil }
+        return try? JSONDecoder().decode(SavedInsight.self, from: d)
+    }
+
+    func save(_ month: Date) {
+        if let d = try? JSONEncoder().encode(self) { UserDefaults.standard.set(d, forKey: Self.key(month)) }
+    }
+}
+
+/// 檢查 AI 寫的句子裡的數字：每個數字都要是資料裡真的有的（差 1 以內），不然就不用
+enum NumberCheck {
+    static func numbers(in text: String) -> [Double] {
+        guard let re = try? NSRegularExpression(pattern: #"\d[\d,]*(?:\.\d+)?"#) else { return [] }
+        return re.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { m in
+            guard let r = Range(m.range, in: text) else { return nil }
+            return Double(text[r].replacingOccurrences(of: ",", with: ""))
+        }
+    }
+
+    static func ok(_ text: String, allowed: [Double]) -> Bool {
+        numbers(in: text).allSatisfy { n in
+            n <= 12 || allowed.contains { abs($0 - n) <= 1 }
+        }
+    }
+}
+
 struct SpendingInsightView: View {
     @Query(sort: \Entry.date, order: .reverse) private var entries: [Entry]
     @AppStorage(Prefs.hideAmountsKey) private var hidden = false
     @State private var anchor = Date.now
     @State private var habits: SavedHabits?
+    @State private var insight: SavedInsight?
     @State private var loadingAI = false
     @State private var pickedDay: Int?
     @State private var pieIncome = false
@@ -92,9 +161,6 @@ struct SpendingInsightView: View {
                 monthSwitcher(month)
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
                 aiCard(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
-                if loadingAI || habits != nil {
-                    habitCard(now: now, prev: prev)
-                }
                 CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
                                   title: "分類比例", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
@@ -108,7 +174,11 @@ struct SpendingInsightView: View {
             .animation(.snappy, value: anchor)
         }
         .background(Palette.background)
-        .task(id: month.start) { await runAI(names: names, monthStart: month.start) }
+        .softTopEdge()
+        .task(id: month.start) {
+            await runAI(names: names, monthStart: month.start, now: now, prev: prev,
+                        cats: cats, merchants: merchants, total: total, prevTotal: prevTotal)
+        }
         .navigationTitle("消費分析")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -205,26 +275,68 @@ struct SpendingInsightView: View {
     @ViewBuilder
     private func aiCard(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], items: [ItemStat],
                         total: Double, prevTotal: Double) -> some View {
-        let list = facts(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
         VStack(alignment: .leading, spacing: 14) {
-            Text("本月重點").font(.headline)
-            if list.isEmpty {
-                Text("這個月還沒有足夠的資料").font(.footnote).foregroundStyle(.secondary)
+            HStack {
+                Text("本月重點").font(.headline)
+                Spacer()
+                if loadingAI { ProgressView().controlSize(.small) }
             }
-            ForEach(list) { f in
-                HStack(spacing: 12) {
-                    Image(systemName: f.symbol)
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(f.color)
-                        .frame(width: 28)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(f.title).font(.subheadline.weight(.semibold))
-                        Text(f.detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            if let insight {
+                Text(insight.headline).font(.subheadline).foregroundStyle(.secondary)
+                ForEach(Array(insight.highlights.enumerated()), id: \.offset) { _, h in
+                    highlightRow(h, cat: cats.first { $0.name == h.subject })
+                }
+                if !insight.tip.isEmpty {
+                    Label(insight.tip, systemImage: "lightbulb")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                // 還沒有 AI 分析（或裝置不支援）：先用算好的重點
+                let list = facts(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
+                if list.isEmpty {
+                    Text(loadingAI ? "分析中…" : "這個月還沒有足夠的資料").font(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(list) { f in
+                    HStack(spacing: 12) {
+                        Image(systemName: f.symbol)
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(f.color)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(f.title).font(.subheadline.weight(.semibold))
+                            Text(f.detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
             }
         }
         .cardStyle()
+        .animation(.snappy, value: insight)
+    }
+
+    private func highlightRow(_ h: SavedInsight.Highlight, cat: Cat?) -> some View {
+        let color: Color = h.tone == "good" ? .green : (h.tone == "bad" ? .red : .blue)
+        let symbol: String = cat?.symbol ?? (h.tone == "good" ? "arrow.down.right" : (h.tone == "bad" ? "arrow.up.right" : "sparkle"))
+        return HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold)).foregroundStyle(cat?.color ?? color)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(h.title).font(.subheadline.weight(.semibold))
+                Text(h.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            if let cat {
+                // 上月 vs 本月 的小長條
+                let maxV: Double = max(cat.now, cat.prev, 1)
+                VStack(alignment: .trailing, spacing: 3) {
+                    miniBar(cat.prev / maxV, Color.secondary.opacity(0.35))
+                    miniBar(cat.now / maxV, color)
+                }
+                .frame(width: 56)
+            }
+        }
     }
 
     private func miniBar(_ ratio: Double, _ color: Color) -> some View {
@@ -514,9 +626,30 @@ struct SpendingInsightView: View {
         return Array(out.prefix(40))
     }
 
-    private func runAI(names: [String], monthStart: Date) async {
-        let saved = SavedHabits.load(monthStart)
+    private func runAI(names: [String], monthStart: Date, now: [Entry], prev: [Entry], cats: [Cat],
+                       merchants: [(name: String, total: Double, count: Int)], total: Double, prevTotal: Double) async {
         let isPast = !DateText.monthInterval(.now).contains(monthStart)
+        let savedInsight = SavedInsight.load(monthStart)
+        insight = savedInsight
+        if let savedInsight, isPast || Calendar.current.isDateInToday(savedInsight.createdAt) {
+            habits = SavedHabits.load(monthStart)
+            return
+        }
+        guard NoticeParser.aiAvailable else { return }
+        loadingAI = true
+        defer { loadingAI = false }
+        await groupThings(names: names, monthStart: monthStart, isPast: isPast)
+        guard total > 0 else { return }
+        let stats: [HabitStat] = habits.map { Self.habitStats($0, now: now, prev: prev) } ?? []
+        if let r = await writeInsight(cats: cats, merchants: merchants, stats: stats, total: total, prevTotal: prevTotal) {
+            r.save(monthStart)
+            withAnimation(.snappy) { insight = r }
+        }
+    }
+
+    /// 把買的東西依種類分組（例如奶茶、綠茶 → 飲料），給下面的重點用
+    private func groupThings(names: [String], monthStart: Date, isPast: Bool) async {
+        let saved = SavedHabits.load(monthStart)
         if let saved {
             let known: Set<String> = Set(saved.groups.flatMap(\.items))
             let missing = names.filter { !known.contains($0) }.count
@@ -526,9 +659,7 @@ struct SpendingInsightView: View {
             }
         }
         habits = saved
-        guard names.count >= 3, NoticeParser.aiAvailable else { return }
-        loadingAI = true
-        defer { loadingAI = false }
+        guard names.count >= 3 else { return }
         let session = LanguageModelSession(instructions: """
         你幫記帳 App 把使用者買過的東西分類。
         規則：
@@ -544,10 +675,79 @@ struct SpendingInsightView: View {
             let result = Self.validate(r, names: names)
             guard !result.groups.isEmpty else { return }
             result.save(monthStart)
-            withAnimation(.snappy) { habits = result }
+            habits = result
         } catch {
-            // 失敗就只顯示上面的統計
+            // 分不出來就只用分類和商家
         }
+    }
+
+    /// AI 寫本月重點：資料裡的數字全部由 App 算好，AI 只負責挑重點和說法；寫錯數字的句子換成算好的
+    private func writeInsight(cats: [Cat], merchants: [(name: String, total: Double, count: Int)], stats: [HabitStat],
+                              total: Double, prevTotal: Double) async -> SavedInsight? {
+        var allowed: [Double] = [total, prevTotal, abs(total - prevTotal)]
+        if prevTotal > 0 { allowed.append(abs(total - prevTotal) / prevTotal * 100) }
+        var catLines: [String] = []
+        for c in cats.prefix(8) {
+            allowed += [c.now, c.prev, abs(c.delta)]
+            let cs: String = c.delta >= 0 ? "+" : "-"
+            let cd: Int = Int(abs(c.delta).rounded())
+            catLines.append("\(c.name)：本月 \(Int(c.now.rounded()))、上月 \(Int(c.prev.rounded()))、差 \(cs)\(cd)")
+        }
+        var merLines: [String] = []
+        for m in merchants {
+            allowed += [m.total, Double(m.count)]
+            merLines.append("\(m.name)：\(Int(m.total.rounded()))，\(m.count) 次")
+        }
+        var thingLines: [String] = []
+        for st in stats.prefix(6) {
+            let diff: Double = st.total - st.prevTotal
+            allowed += [st.total, st.prevTotal, abs(diff), st.quantity]
+            var line = "\(st.type)：本月 \(Self.qtyText(st.quantity)) 個共 \(Int(st.total.rounded()))、上月 \(Int(st.prevTotal.rounded()))"
+            if !st.topThings.isEmpty { line += "；最多的是 \(st.topThings.joined(separator: "、"))" }
+            if let m = st.topMerchant { line += "；多在 \(m) 買" }
+            thingLines.append(line)
+        }
+        let session = LanguageModelSession(instructions: """
+        你是記帳 App 的消費分析助理，用繁體中文、口語、句子短。
+        根據資料挑出這個月最值得注意的三件事。有「買了什麼」的資料時優先用，例如「飲料買了 8 個，多在全家」比「便利商店花比較多」更有用。
+        數字一定要照抄資料裡的數字，不可以自己加減或估算，也不要寫資料裡沒有的分類、商家或東西。金額直接寫數字，不加 $ 或「元」。
+        subject 填重點講的分類、商家或東西種類名稱。
+        """)
+        let diffAll: Int = Int(abs(total - prevTotal).rounded())
+        let sign: String = total >= prevTotal ? "+" : "-"
+        var pct: String = ""
+        if prevTotal > 0 {
+            let p: Int = Int((abs(total - prevTotal) / prevTotal * 100).rounded())
+            pct = "（\(p)%）"
+        }
+        let catText: String = catLines.joined(separator: "\n")
+        let merText: String = merLines.isEmpty ? "無" : merLines.joined(separator: "\n")
+        let thingText: String = thingLines.isEmpty ? "沒有資料" : thingLines.joined(separator: "\n")
+        var prompt: String = "本月總支出 \(Int(total.rounded()))，上月 \(Int(prevTotal.rounded()))，差 \(sign)\(diffAll)\(pct)。\n"
+        prompt += "分類：\n\(catText)\n商家：\n\(merText)\n買了什麼（依種類）：\n\(thingText)"
+        guard let r = try? await session.respond(to: prompt, generating: AISpendingInsight.self,
+                                                 options: GenerationOptions(sampling: .greedy)).content else { return nil }
+        // 數字對不上的重點換掉，標題對不上就用算好的
+        var highlights: [SavedInsight.Highlight] = r.highlights.compactMap { h in
+            let ok = NumberCheck.ok(h.title, allowed: allowed) && NumberCheck.ok(h.detail, allowed: allowed)
+            guard ok, !h.title.isEmpty else { return nil }
+            return SavedInsight.Highlight(title: h.title, detail: h.detail, tone: h.tone, subject: h.subject)
+        }
+        if highlights.count < 2 {
+            let backup = facts(cats: cats, merchants: merchants, items: [], total: total, prevTotal: prevTotal)
+            for f in backup where highlights.count < 3 && !highlights.contains(where: { $0.title == f.title }) {
+                highlights.append(SavedInsight.Highlight(title: f.title, detail: f.detail,
+                                                         tone: f.color == .green ? "good" : (f.color == .red ? "bad" : "neutral"),
+                                                         subject: ""))
+            }
+        }
+        guard !highlights.isEmpty else { return nil }
+        var headline = r.headline.trimmingCharacters(in: .whitespacesAndNewlines)
+        if headline.isEmpty || !NumberCheck.ok(headline, allowed: allowed) {
+            headline = total >= prevTotal || prevTotal == 0 ? "這個月的花費重點" : "這個月比上月少花"
+        }
+        let tip: String = NumberCheck.ok(r.tip, allowed: allowed) ? r.tip.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return SavedInsight(headline: headline, highlights: highlights, tip: tip, createdAt: .now)
     }
 
     /// 只留清單裡真的有的名稱、合併同名的組；習慣句有數字就不用
@@ -619,48 +819,5 @@ struct SpendingInsightView: View {
             }
         }
         return stats.values.filter { $0.total > 0 }.sorted { $0.total > $1.total }
-    }
-
-    @ViewBuilder
-    private func habitCard(now: [Entry], prev: [Entry]) -> some View {
-        let stats: [HabitStat] = habits.map { Self.habitStats($0, now: now, prev: prev) } ?? []
-        let maxV: Double = stats.first?.total ?? 1
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("買了什麼").font(.headline)
-                Spacer()
-                if loadingAI { ProgressView().controlSize(.small) }
-            }
-            if let h = habits?.habit, !h.isEmpty {
-                Text(h).font(.subheadline).foregroundStyle(.secondary)
-            }
-            if stats.isEmpty && loadingAI {
-                Text("整理中…").font(.footnote).foregroundStyle(.secondary)
-            }
-            ForEach(stats.prefix(6)) { s in
-                habitRow(s, ratio: maxV > 0 ? s.total / maxV : 0)
-            }
-        }
-        .cardStyle()
-    }
-
-    private func habitRow(_ s: HabitStat, ratio: Double) -> some View {
-        let diff: Double = s.total - s.prevTotal
-        let diffText: String = s.prevTotal == 0 ? "上月沒買" : (diff >= 0 ? "+" : "−") + Money.format(abs(diff), hidden: hidden)
-        let diffColor: Color = s.prevTotal == 0 ? Color.secondary : (diff > 0 ? Color.red : Color.green)
-        var sub: String = s.topThings.joined(separator: "、")
-        if let m = s.topMerchant { sub += "・多在\(m)" }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(s.type).font(.subheadline.weight(.semibold))
-                Text("×\(Self.qtyText(s.quantity))").font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                Spacer()
-                Text(Money.format(s.total, hidden: hidden)).font(.subheadline.weight(.semibold)).monospacedDigit()
-                Text(diffText).font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(diffColor)
-                    .frame(minWidth: 56, alignment: .trailing)
-            }
-            Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            compareBar(ratio, Color.accentColor.opacity(0.7))
-        }
     }
 }

@@ -117,6 +117,7 @@ struct BillsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    PlanningLinks()
                     Picker("分頁", selection: $pageRaw) {
                         ForEach(BillPage.allCases) { Text($0.label).tag($0.rawValue) }
                     }
@@ -129,7 +130,6 @@ struct BillsView: View {
                     } else {
                         allPage
                     }
-                    PlanningSection()
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 24)
@@ -411,7 +411,7 @@ struct BillLogo: View {
     }
 }
 
-/// 一張卡片裡的帳單列表
+/// 帳單一張一張的小卡片，兩欄排列
 struct BillListCard: View {
     var items: [BillOccurrence]
     var hidden: Bool
@@ -420,63 +420,68 @@ struct BillListCard: View {
     var onToggle: (BillOccurrence) -> Void
     var onEdit: (Bill) -> Void
 
+    private let columns: [GridItem] = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { i, occ in
-                Button { onTap(occ) } label: { row(occ) }
-                    .buttonStyle(.plain)
+        LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(items) { occ in
+                Button { onTap(occ) } label: { BillTile(occ: occ, hidden: hidden, highlightSoon: highlightSoon) }
+                    .buttonStyle(PressableStyle())
                     .contextMenu {
                         Button(occ.paid ? "改為\(occ.bill.pendingLabel)" : "標記\(occ.bill.doneLabel)",
                                systemImage: occ.paid ? "arrow.uturn.backward" : "checkmark.circle") { onToggle(occ) }
                         Button("編輯", systemImage: "pencil") { onEdit(occ.bill) }
                     }
-                if i < items.count - 1 {
-                    Divider().padding(.leading, 74)
-                }
             }
         }
-        .padding(.vertical, 4)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 28, style: .continuous))
     }
+}
 
-    private func row(_ occ: BillOccurrence) -> some View {
+/// 一張訂閱小卡：logo、名稱、到期、金額
+struct BillTile: View {
+    var occ: BillOccurrence
+    var hidden: Bool
+    var highlightSoon: Bool
+
+    var body: some View {
         let d = BillDates.daysFromToday(occ.due)
         let overdue = d < 0 && !occ.paid
-        let soon = highlightSoon && !occ.paid && d >= 0 && d <= 3
+        let soon = (highlightSoon || d <= 1) && !occ.paid && d >= 0 && d <= 3
         let subColor: Color = overdue ? .red : (soon ? .orange : .secondary)
         let sign: String = occ.bill.receives ? "+" : ""
-        return HStack(spacing: 14) {
-            BillLogo(bill: occ.bill, size: 46)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text(occ.bill.name).font(.headline).lineLimit(1)
-                    if occ.bill.autoPay {
-                        Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
-                    }
+        let tint: Color = BillDates.color(occ.bill)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                BillLogo(bill: occ.bill, size: 38)
+                Spacer(minLength: 4)
+                if occ.paid {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                } else if occ.bill.autoPay {
+                    Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
                 }
-                Text(BillDates.dueText(occ))
-                    .font(.subheadline)
-                    .foregroundStyle(subColor)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(BillDates.dueText(occ)).font(.caption).foregroundStyle(subColor).lineLimit(1)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(sign + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
                     .font(.headline).monospacedDigit()
                     .foregroundStyle(occ.bill.receives ? Color.green : Color.primary)
-                HStack(spacing: 4) {
-                    if occ.paid {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    }
-                    Text(occ.bill.recurrence.label)
-                    Image(systemName: occ.bill.recurrence == .once ? "1.circle" : "repeat")
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Spacer(minLength: 2)
+                Text(occ.bill.recurrence.label).font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .contentShape(.rect)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground))
+            // 品牌色淡淡地從左上透出來
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(LinearGradient(colors: [tint.opacity(0.16), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+        }
+        .contentShape(.rect(cornerRadius: 22))
     }
 }
 
@@ -735,17 +740,6 @@ struct InactiveBillsView: View {
         }
         .navigationTitle("非使用中")
         .sheet(item: $editing) { BillEditor(bill: $0) }
-    }
-}
-
-/// 規劃：預算、儲蓄目標、借貸
-struct PlanningSection: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("規劃").font(.title2.weight(.bold)).padding(.leading, 6)
-            PlanningLinks()
-        }
-        .padding(.top, 6)
     }
 }
 
