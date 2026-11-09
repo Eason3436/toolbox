@@ -63,6 +63,7 @@ struct RootView: View {
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?
     @State private var shortcutResult: String?
+    @Namespace private var addNS
 
     var body: some View {
         // 系統原生 Liquid Glass 分頁列（按住可以左右拖曳切換）；新增是浮在分頁列右上方的小按鈕
@@ -83,16 +84,18 @@ struct RootView: View {
         })
         .overlay(alignment: .bottomTrailing) {
             AddFloatingButton { start in addStart = start; showAdd = true }
+                .matchedTransitionSource(id: "add", in: addNS)
                 .padding(.trailing, 20)
                 .padding(.bottom, 64)
                 .ignoresSafeArea(.keyboard)
         }
-        // 系統字級調很大時，卡片裡的字也不會跟著無限放大
-        .dynamicTypeSize(...DynamicTypeSize.large)
+        // 整個 App 固定用大一級的字（系統預設的字在這個 App 裡偏小），也不會跟著系統無限放大
+        .dynamicTypeSize(.xLarge)
         .sensoryFeedback(.selection, trigger: tab)
         .sheet(isPresented: $showAdd) {
-            // 一般的整頁卡片滑上／滑下：往下拉時整張卡片跟著手指走，不會縮成小方塊、內容也不會被裁掉
+            // 從＋按鈕放大出來；按住往下拉時整張卡片四角圓角、跟著手指縮小（像音樂 App 的播放畫面）
             addSheet
+                .navigationTransition(.zoom(sourceID: "add", in: addNS))
                 .environment(\.entrySavedHandler, { summary in
                     // 表單直接消失（不滑下去），換成卡片吸進動態島的動畫
                     var t = Transaction()
@@ -100,7 +103,7 @@ struct RootView: View {
                     withTransaction(t) { showAdd = false }
                     savedSummary = summary
                 })
-                .dynamicTypeSize(...DynamicTypeSize.large)
+                .dynamicTypeSize(.xLarge)
                 // 底色交給系統的卡片形狀畫（四角圓角），往下拉時底部不會露出直角
                 .presentationBackground(Palette.background)
                 .presentationDragIndicator(.visible)

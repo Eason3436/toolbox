@@ -177,17 +177,13 @@ struct SpendingInsightView: View {
                 monthSwitcher(month)
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
                 flowRow(income: income, expense: total)
-                if !yearly {
-                    aiCard(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
+                let snap = Snap(inRange: inRange, cats: cats, merchants: merchants, items: items,
+                                total: total, prevTotal: prevTotal, trend: trend, days: days, avg: avg,
+                                monthDays: cal.range(of: .day, in: .month, for: month.start)?.count ?? 31,
+                                weekdays: weekdays)
+                ForEach(cardOrder) { k in
+                    card(k, snap)
                 }
-                trendCard(trend)
-                CategoryDonutCard(entries: inRange, hidden: hidden,
-                                  title: "分類比例", income: $pieIncome)
-                if !cats.isEmpty { categoryCompareCard(cats) }
-                if !days.isEmpty { dailyCard(days, avg: avg, monthDays: cal.range(of: .day, in: .month, for: month.start)?.count ?? 31) }
-                if !weekdays.isEmpty { weekdayCard(weekdays) }
-                if !items.isEmpty { itemCard(items) }
-                if !merchants.isEmpty { merchantCard(merchants) }
             }
             .padding()
             .padding(.bottom, 40)
@@ -203,6 +199,66 @@ struct SpendingInsightView: View {
         }
         .navigationTitle("消費分析")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showOrder = true } label: { Image(systemName: "arrow.up.arrow.down") }
+                    .accessibilityLabel("卡片排序")
+            }
+        }
+        .sheet(isPresented: $showOrder) {
+            InsightCardOrderSheet(orderRaw: $orderRaw, hiddenRaw: $hiddenCardsRaw)
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    // MARK: 卡片排序
+
+    @AppStorage(InsightCard.orderKey) private var orderRaw = ""
+    @AppStorage(InsightCard.hiddenKey) private var hiddenCardsRaw = ""
+    @State private var showOrder = false
+
+    private var cardOrder: [InsightCard] {
+        let hiddenSet: Set<String> = Set(hiddenCardsRaw.split(separator: ",").map(String.init))
+        return InsightCard.ordered(orderRaw).filter { !hiddenSet.contains($0.rawValue) }
+    }
+
+    /// 一張卡片要用到的資料
+    private struct Snap {
+        var inRange: [Entry]
+        var cats: [Cat]
+        var merchants: [(name: String, total: Double, count: Int)]
+        var items: [ItemStat]
+        var total: Double
+        var prevTotal: Double
+        var trend: [TrendPoint]
+        var days: [(Int, Double)]
+        var avg: Double
+        var monthDays: Int
+        var weekdays: [(String, Double)]
+    }
+
+    @ViewBuilder
+    private func card(_ k: InsightCard, _ s: Snap) -> some View {
+        switch k {
+        case .ai:
+            if !yearly {
+                aiCard(cats: s.cats, merchants: s.merchants, items: s.items, total: s.total, prevTotal: s.prevTotal)
+            }
+        case .trend:
+            trendCard(s.trend)
+        case .donut:
+            CategoryDonutCard(entries: s.inRange, hidden: hidden, title: "分類比例", income: $pieIncome)
+        case .compare:
+            if !s.cats.isEmpty { categoryCompareCard(s.cats) }
+        case .daily:
+            if !s.days.isEmpty { dailyCard(s.days, avg: s.avg, monthDays: s.monthDays) }
+        case .weekday:
+            if !s.weekdays.isEmpty { weekdayCard(s.weekdays) }
+        case .items:
+            if !s.items.isEmpty { itemCard(s.items) }
+        case .merchants:
+            if !s.merchants.isEmpty { merchantCard(s.merchants) }
+        }
     }
 
     // MARK: 月份
@@ -295,6 +351,48 @@ struct SpendingInsightView: View {
         }
     }
 
+    /// 一個月：支出長條（上面標金額）、支出和收入兩條線（收入點下面標金額）
+    @ChartContentBuilder
+    private func trendMarks(_ p: TrendPoint) -> some ChartContent {
+        BarMark(x: .value("月", p.month, unit: .month), y: .value("支出", p.expense), width: .ratio(0.5))
+            .foregroundStyle(Color.red.opacity(0.22).gradient)
+            .cornerRadius(3)
+            .annotation(position: .top, spacing: 4) {
+                if p.expense > 0 {
+                    Text(Self.short(p.expense, hidden: hidden))
+                        .font(.caption2.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(.red)
+                }
+            }
+        LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.expense), series: .value("類型", "支出"))
+            .foregroundStyle(.red)
+            .symbol(.circle)
+            .interpolationMethod(.monotone)
+        LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income), series: .value("類型", "收入"))
+            .foregroundStyle(.green)
+            .symbol(.circle)
+            .interpolationMethod(.monotone)
+        PointMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income))
+            .foregroundStyle(.clear)
+            .annotation(position: p.income > p.expense ? .top : .bottom, spacing: 4) {
+                if p.income > 0 {
+                    Text(Self.short(p.income, hidden: hidden))
+                        .font(.caption2.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(.green)
+                }
+            }
+    }
+
+    /// 短金額：1.2萬、3,450
+    static func short(_ v: Double, hidden: Bool) -> String {
+        if hidden { return "•••" }
+        if v >= 10_000 {
+            let w: Double = v / 10_000
+            return (w >= 100 ? String(Int(w.rounded())) : String(format: "%.1f", w)) + "萬"
+        }
+        return Money.format(v, hidden: false)
+    }
+
     private func trendCard(_ t: [TrendPoint]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -303,28 +401,20 @@ struct SpendingInsightView: View {
                 legendDot(.red, "支出")
                 legendDot(.green, "收入")
             }
+            let peak: Double = t.reduce(1.0) { max($0, $1.expense, $1.income) }
             Chart {
                 ForEach(t) { p in
-                    BarMark(x: .value("月", p.month, unit: .month), y: .value("支出", p.expense), width: .ratio(0.5))
-                        .foregroundStyle(Color.red.opacity(0.25).gradient)
-                        .cornerRadius(3)
-                    LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.expense), series: .value("類型", "支出"))
-                        .foregroundStyle(.red)
-                        .symbol(.circle)
-                        .interpolationMethod(.catmullRom)
-                    LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income), series: .value("類型", "收入"))
-                        .foregroundStyle(.green)
-                        .symbol(.circle)
-                        .interpolationMethod(.catmullRom)
+                    trendMarks(p)
                 }
             }
+            .chartYScale(domain: 0...(peak * 1.3))
             .chartXAxis {
                 AxisMarks(values: .stride(by: .month)) { _ in
                     AxisValueLabel(format: .dateTime.month(.narrow))
                 }
             }
             .chartYAxis(.hidden)
-            .frame(height: 170)
+            .frame(height: 200)
         }
         .cardStyle()
     }
@@ -938,5 +1028,115 @@ struct SpendingInsightView: View {
             }
         }
         return stats.values.filter { $0.total > 0 }.sorted { $0.total > $1.total }
+    }
+}
+
+
+/// 消費分析的卡片（可以自己排順序、隱藏）
+enum InsightCard: String, CaseIterable, Identifiable {
+    case ai, trend, donut, compare, daily, weekday, items, merchants
+    var id: String { rawValue }
+
+    static let orderKey = "insightCardOrder"
+    static let hiddenKey = "insightCardHidden"
+
+    var label: String {
+        switch self {
+        case .ai: "本月重點"
+        case .trend: "收支走勢"
+        case .donut: "分類比例"
+        case .compare: "分類比較"
+        case .daily: "每天花多少"
+        case .weekday: "星期幾花最多"
+        case .items: "常買的東西"
+        case .merchants: "花最多的商家"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .ai: "sparkles"
+        case .trend: "chart.xyaxis.line"
+        case .donut: "chart.pie"
+        case .compare: "chart.bar"
+        case .daily: "calendar"
+        case .weekday: "calendar.day.timeline.left"
+        case .items: "cart"
+        case .merchants: "storefront"
+        }
+    }
+
+    /// 存的順序＋之後新加的卡片（放最後）
+    static func ordered(_ raw: String) -> [InsightCard] {
+        var out: [InsightCard] = raw.split(separator: ",").compactMap { InsightCard(rawValue: String($0)) }
+        for c in allCases where !out.contains(c) { out.append(c) }
+        return out
+    }
+}
+
+struct InsightCardOrderSheet: View {
+    @Binding var orderRaw: String
+    @Binding var hiddenRaw: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var order: [InsightCard] = []
+    @State private var hiddenSet: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(order) { c in
+                        row(c)
+                    }
+                    .onMove { from, to in
+                        order.move(fromOffsets: from, toOffset: to)
+                        save()
+                    }
+                } footer: {
+                    Text("拖曳調整順序，點眼睛可以隱藏")
+                }
+                Section {
+                    Button("恢復預設") {
+                        order = InsightCard.allCases.map { $0 }
+                        hiddenSet = []
+                        save()
+                    }
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("卡片排序")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(role: .confirm) { dismiss() }
+                }
+            }
+        }
+        .onAppear {
+            order = InsightCard.ordered(orderRaw)
+            hiddenSet = Set(hiddenRaw.split(separator: ",").map(String.init))
+        }
+    }
+
+    private func row(_ c: InsightCard) -> some View {
+        let isHidden: Bool = hiddenSet.contains(c.rawValue)
+        return HStack(spacing: 12) {
+            Image(systemName: c.symbol).foregroundStyle(Color.accentColor).frame(width: 26)
+            Text(c.label).foregroundStyle(isHidden ? Color.secondary : Color.primary)
+            Spacer()
+            Button {
+                if isHidden { hiddenSet.remove(c.rawValue) } else { hiddenSet.insert(c.rawValue) }
+                save()
+            } label: {
+                Image(systemName: isHidden ? "eye.slash" : "eye")
+                    .foregroundStyle(isHidden ? Color.secondary : Color.accentColor)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private func save() {
+        orderRaw = order.map(\.rawValue).joined(separator: ",")
+        hiddenRaw = hiddenSet.sorted().joined(separator: ",")
     }
 }
