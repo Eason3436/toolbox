@@ -63,34 +63,14 @@ struct RootView: View {
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?
     @State private var shortcutResult: String?
-    @State private var slideForward = true
-    @State private var hasSwitched = false
-
-    /// 換分頁前先記下方向（往右邊的分頁就從右邊滑進來）
-    private var tabBinding: Binding<AppTab> {
-        Binding(get: { tab }, set: { new in setTab(new) })
-    }
-
-    private func setTab(_ new: AppTab) {
-        let all: [AppTab] = AppTab.allCases.map { $0 }
-        let a: Int = all.firstIndex(of: tab) ?? 0
-        let b: Int = all.firstIndex(of: new) ?? 0
-        if a != b {
-            slideForward = b > a
-            hasSwitched = true
-        }
-        tab = new
-    }
 
     var body: some View {
         // 系統原生 Liquid Glass 分頁列（按住可以左右拖曳切換）；新增是浮在分頁列右上方的小按鈕
-        TabView(selection: tabBinding) {
+        TabView(selection: $tab) {
             ForEach(AppTab.allCases, id: \.self) { t in
                 // 分頁列只顯示圖示，不顯示文字
                 Tab(value: t) {
                     page(t)
-                        // 點分頁列時頁面左右滑動
-                        .tabSlideIn(forward: slideForward, enabled: hasSwitched)
                 } label: {
                     Image(systemName: t.symbol)
                         .accessibilityLabel(Text(t.label))
