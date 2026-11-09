@@ -27,6 +27,8 @@ struct LedgerIcon: View {
     }
 
     static func pulso(for symbol: String) -> PulsoIcon? {
+        // 新增的圖示直接存成「pulso:圖示名稱」
+        if symbol.hasPrefix("pulso:") { return PulsoIcon.byKey(String(symbol.dropFirst(6))) }
         guard let key = map[symbol] else { return nil }
         return PulsoIcon.byKey(key)
     }
@@ -70,5 +72,44 @@ struct LedgerIcon: View {
         "fish.fill": "fish", "cloud.fill": "cloud", "globe": "globe", "ticket.fill": "ticket",
         "calendar": "calendar", "clock.fill": "clock", "storefront.fill": "store", "storefront": "store",
         "bitcoinsign.circle.fill": "bitcoin",
+    ]
+}
+
+/// 新增／編輯分類時可以選的圖示，依用途分組（全部是 PulsoIcon 線條圖示）
+enum IconCatalog {
+    struct Group {
+        var title: String
+        var symbols: [String]
+    }
+
+    static let groups: [Group] = raw.map { g in
+        Group(title: g.0, symbols: g.1.filter { LedgerIcon.pulso(for: $0) != nil })
+    }
+
+    private static let raw: [(String, [String])] = [
+        ("飲食", ["fork.knife", "sunrise.fill", "moon.stars.fill", "cup.and.saucer.fill", "takeoutbag.and.cup.and.straw.fill",
+                "pulso:milk", "wineglass.fill", "pulso:beer", "pulso:hamburger", "pulso:pizza", "pulso:sandwich", "pulso:soup",
+                "pulso:salad", "pulso:egg-fried", "pulso:croissant", "birthday.cake.fill", "pulso:cookie", "pulso:candy",
+                "pulso:ice-cream-cone", "pulso:apple", "carrot.fill", "fish.fill", "leaf.fill", "cart.fill", "basket.fill", "storefront"]),
+        ("交通", ["car.fill", "pulso:car-front", "bus.fill", "tram.fill", "pulso:train-front", "airplane", "pulso:plane-takeoff",
+                "fuelpump.fill", "parkingsign.circle.fill", "pulso:motorbike", "scooter", "bicycle", "ferry.fill", "pulso:truck", "pulso:map-pin"]),
+        ("居家", ["house.fill", "key.fill", "bolt.fill", "drop.fill", "flame.fill", "lightbulb.fill", "pulso:plug", "wifi", "phone.fill",
+                "iphone", "sofa.fill", "bed.double.fill", "washer.fill", "pulso:bath", "pulso:shower-head", "hammer.fill",
+                "wrench.and.screwdriver.fill", "pulso:package"]),
+        ("購物與娛樂", ["bag.fill", "tshirt.fill", "pulso:glasses", "sparkles", "scissors", "gift.fill", "pulso:party-popper",
+                   "gamecontroller.fill", "film.fill", "pulso:clapperboard", "play.tv.fill", "sparkles.tv.fill", "music.note",
+                   "headphones", "camera.fill", "ticket.fill", "laptopcomputer", "desktopcomputer", "book.fill", "pencil.and.ruler.fill",
+                   "pulso:pencil", "graduationcap.fill", "newspaper.fill", "globe"]),
+        ("健康與生活", ["cross.case.fill", "pills.fill", "stethoscope", "pulso:hospital", "pulso:heart-pulse", "dumbbell.fill",
+                   "figure.run", "sportscourt.fill", "pawprint.fill", "pulso:dog", "pulso:cat", "figure.and.child.holdinghands",
+                   "person.2.fill", "heart.fill", "pulso:hand-heart", "pulso:umbrella", "pulso:tree-palm", "pulso:tent", "pulso:mountain"]),
+        ("金錢", ["banknote.fill", "dollarsign.circle.fill", "pulso:wallet", "pulso:piggy-bank", "pulso:coins", "pulso:hand-coins",
+                "creditcard.fill", "pulso:receipt", "pulso:receipt-text", "pulso:calculator", "pulso:badge-dollar-sign",
+                "pulso:banknote-arrow-down", "pulso:banknote-arrow-up", "chart.line.uptrend.xyaxis", "pulso:trending-down",
+                "pulso:chart-line", "pulso:chart-column", "pulso:vault", "pulso:gem", "building.columns.fill", "percent",
+                "shield.lefthalf.filled", "pulso:shield-check", "briefcase.fill", "pulso:briefcase-business", "pulso:handshake",
+                "pulso:heart-handshake", "bitcoinsign.circle.fill"]),
+        ("其他", ["arrow.triangle.2.circlepath", "arrow.uturn.backward", "plus.circle.fill", "star.fill", "tag.fill",
+                "calendar", "clock.fill", "envelope.fill", "cloud.fill", "square.grid.2x2.fill"]),
     ]
 }

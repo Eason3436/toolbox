@@ -143,6 +143,11 @@ struct EntriesView: View {
         NavigationStack {
             List {
                 Section {
+                    WeekNetStrip(entries: allEntries, account: selectedAccount, hidden: hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
+                        .listRowBackground(Color.clear)
+                }
+                Section {
                     summary
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
@@ -205,10 +210,19 @@ struct EntriesView: View {
             .ledgerNavigation(accountTitle)
             .toolbar {
                 HeaderTitle(title: accountTitle) {
-                    Picker("帳戶", selection: $accountFilter) {
-                        Text("全部帳戶").tag(UUID?.none)
-                        ForEach(accounts.filter { !$0.archived }) { a in
-                            Label(a.name, systemImage: a.kind.symbol).tag(Optional(a.id))
+                    // 帳戶名稱下面附上餘額
+                    Button {
+                        withAnimation(.snappy) { accountFilter = nil }
+                    } label: {
+                        Label("全部帳戶", systemImage: accountFilter == nil ? "checkmark" : "tray.full")
+                        Text(Money.format(totalBalance, hidden: hidden))
+                    }
+                    ForEach(accounts.filter { !$0.archived }) { a in
+                        Button {
+                            withAnimation(.snappy) { accountFilter = a.id }
+                        } label: {
+                            Label(a.name, systemImage: accountFilter == a.id ? "checkmark" : a.kind.symbol)
+                            Text(Money.format(a.balance, currency: a.currency, hidden: hidden))
                         }
                     }
                 }
@@ -270,9 +284,19 @@ struct EntriesView: View {
         }
     }
 
+    private var selectedAccount: Account? { accounts.first { $0.id == accountFilter } }
+
+    /// 全部帳戶的餘額（換成主幣別）
+    private var totalBalance: Double {
+        accounts.filter { !$0.archived }.reduce(0) { $0 + $1.balance * QuoteService.rate(from: $1.currency) }
+    }
+
+    /// 選了單一帳戶就只算那個帳戶（含轉進轉出），全部帳戶就算全部的收入和支出
     private var summary: some View {
-        let expense = monthEntries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
-        let income = monthEntries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
+        let values: [Double] = selectedAccount.map { acc in monthEntries.map { $0.signedAmount(for: acc) } }
+            ?? monthEntries.filter { $0.kind != .transfer }.map(\.signedAmount)
+        let expense: Double = abs(values.filter { $0 < 0 }.reduce(0, +))
+        let income: Double = values.filter { $0 > 0 }.reduce(0, +)
 
         return VStack(alignment: .leading, spacing: 14) {
             Text(allTime ? "全部支出" : "本月支出").foregroundStyle(.secondary).font(.title3)
@@ -280,7 +304,7 @@ struct EntriesView: View {
                 MoneyText(value: expense, hidden: hidden, font: .system(size: 44, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                if income > 0 {
+                if income > 0 || selectedAccount != nil {
                     Pill(text: "結餘 \(Money.format(income - expense, hidden: hidden, signed: true))", tint: income >= expense ? .green : .red)
                 }
                 Spacer()
@@ -353,5 +377,89 @@ struct EntryRow: View {
         f.dateFormat = showsDate ? "M/d HH:mm" : "HH:mm"
         parts.append(f.string(from: entry.date))
         return parts.joined(separator: " · ")
+    }
+}
+
+/// 明細最上面：一週的日曆，每天下面標當天收支（收入多綠色、支出多紅色，不加正負號）。左右滑看前幾週
+struct WeekNetStrip: View {
+    var entries: [Entry]
+    var account: Account?
+    var hidden: Bool
+
+    private static let weeks = 6
+
+    var body: some View {
+        let cal = BillDates.calendar
+        let thisWeek: Date = cal.dateInterval(of: .weekOfYear, for: .now)?.start ?? cal.startOfDay(for: .now)
+        let starts: [Date] = (0..<Self.weeks).reversed().compactMap { cal.date(byAdding: .weekOfYear, value: -$0, to: thisWeek) }
+        let nets: [Date: Double] = dailyNets(since: starts.first ?? thisWeek)
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 0) {
+                ForEach(starts, id: \.self) { start in
+                    week(start, nets: nets)
+                        .containerRelativeFrame(.horizontal)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .defaultScrollAnchor(.trailing)
+        .frame(height: 92)
+    }
+
+    private func week(_ start: Date, nets: [Date: Double]) -> some View {
+        let cal = BillDates.calendar
+        let names = ["一", "二", "三", "四", "五", "六", "日"]
+        return HStack(spacing: 0) {
+            ForEach(0..<7, id: \.self) { i in
+                let day: Date = cal.date(byAdding: .day, value: i, to: start) ?? start
+                VStack(spacing: 6) {
+                    Text(names[i]).font(.caption).foregroundStyle(.secondary)
+                    DayNumber(date: day, size: 32, font: .callout.weight(.semibold), dimmed: day > .now)
+                    amountLabel(nets[day])
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func amountLabel(_ net: Double?) -> some View {
+        if let net, abs(net) >= 0.5 {
+            Text(hidden ? "••" : Self.short(abs(net)))
+                .font(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .foregroundStyle(net > 0 ? Color.green : Color.red)
+                .padding(.horizontal, 4)
+                .frame(height: 16)
+        } else {
+            Color.clear.frame(height: 16)
+        }
+    }
+
+    /// 1234 → 1,234；一萬以上 1.2萬
+    static func short(_ v: Double) -> String {
+        if v >= 10_000 {
+            return (v / 10_000).formatted(.number.precision(.fractionLength(0...1))) + "萬"
+        }
+        return v.formatted(.number.precision(.fractionLength(0)))
+    }
+
+    private func dailyNets(since start: Date) -> [Date: Double] {
+        let cal = Calendar.current
+        var d: [Date: Double] = [:]
+        for e in entries where e.date >= start {
+            let v: Double
+            if let account {
+                v = e.signedAmount(for: account)
+            } else {
+                v = e.signedAmount
+            }
+            guard v != 0 else { continue }
+            d[cal.startOfDay(for: e.date), default: 0] += v
+        }
+        return d
     }
 }

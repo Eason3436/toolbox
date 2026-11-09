@@ -140,28 +140,48 @@ struct SpendingInsightView: View {
         var delta: Double { now - prev }
     }
 
+    @State private var yearly = false
+
+    /// 月或年的區間
+    private func period(_ d: Date) -> DateInterval {
+        cal.dateInterval(of: yearly ? .year : .month, for: d) ?? DateText.monthInterval(d)
+    }
+
     var body: some View {
-        let month = DateText.monthInterval(anchor)
-        let prevMonth = DateText.monthInterval(cal.date(byAdding: .month, value: -1, to: anchor) ?? anchor)
-        let now = entries.filter { $0.kind == .expense && month.contains($0.date) }
+        let unit: Calendar.Component = yearly ? .year : .month
+        let month: DateInterval = period(anchor)
+        let prevMonth: DateInterval = period(cal.date(byAdding: unit, value: -1, to: anchor) ?? anchor)
+        let inRange: [Entry] = entries.filter { month.contains($0.date) }
+        let now = inRange.filter { $0.kind == .expense }
         let prev = entries.filter { $0.kind == .expense && prevMonth.contains($0.date) }
         let total = now.reduce(0) { $0 + $1.amount }
+        let income: Double = inRange.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
         let prevTotal = prev.reduce(0) { $0 + $1.amount }
         let cats = categoryCompare(now, prev)
-        let days = dailyTotals(now, in: month)
-        let avg = days.isEmpty ? 0 : days.map(\.1).reduce(0, +) / Double(max(elapsedDays(month), 1))
+        let days: [(Int, Double)] = yearly ? [] : dailyTotals(now, in: month)
+        let avg: Double = periodAverage(total: total, period: month)
         let weekdays = weekdayTotals(now)
         let merchants = topMerchants(now)
         let items: [ItemStat] = Self.itemStats(now)
         let prevItems: [ItemStat] = Self.itemStats(prev)
         let names: [String] = Self.thingNames(now: now, prev: prev, items: items, prevItems: prevItems)
+        let trend: [TrendPoint] = trendPoints(month)
 
         ScrollView {
             VStack(spacing: 16) {
+                Picker("期間", selection: $yearly) {
+                    Text("月").tag(false)
+                    Text("年").tag(true)
+                }
+                .pickerStyle(.segmented)
                 monthSwitcher(month)
                 kpiRow(total: total, prevTotal: prevTotal, avg: avg, count: now.count)
-                aiCard(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
-                CategoryDonutCard(entries: entries.filter { month.contains($0.date) }, hidden: hidden,
+                flowRow(income: income, expense: total)
+                if !yearly {
+                    aiCard(cats: cats, merchants: merchants, items: items, total: total, prevTotal: prevTotal)
+                }
+                trendCard(trend)
+                CategoryDonutCard(entries: inRange, hidden: hidden,
                                   title: "分類比例", income: $pieIncome)
                 if !cats.isEmpty { categoryCompareCard(cats) }
                 if !days.isEmpty { dailyCard(days, avg: avg, monthDays: cal.range(of: .day, in: .month, for: month.start)?.count ?? 31) }
@@ -172,35 +192,44 @@ struct SpendingInsightView: View {
             .padding()
             .padding(.bottom, 40)
             .animation(.snappy, value: anchor)
+            .animation(.snappy, value: yearly)
         }
         .background(Palette.background)
         .softTopEdge()
         .task(id: month.start) {
+            guard !yearly else { return }
             await runAI(names: names, monthStart: month.start, now: now, prev: prev,
                         cats: cats, merchants: merchants, total: total, prevTotal: prevTotal)
         }
         .navigationTitle("消費分析")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { StatsView() } label: { Image(systemName: "chart.bar.xaxis") }
-                    .accessibilityLabel("月／年統計")
-            }
-        }
     }
 
     // MARK: 月份
 
+    private var thisLabel: String { yearly ? "今年" : "本月" }
+    private var lastLabel: String { yearly ? "去年" : "上月" }
+
+    private func periodTitle(_ p: DateInterval) -> String {
+        if yearly { return "\(String(cal.component(.year, from: p.start)))年" }
+        return DateText.monthTitle(p.start)
+    }
+
+    private func step(_ v: Int) {
+        let unit: Calendar.Component = yearly ? .year : .month
+        anchor = cal.date(byAdding: unit, value: v, to: anchor) ?? anchor
+    }
+
     private func monthSwitcher(_ month: DateInterval) -> some View {
         HStack {
-            Button { anchor = cal.date(byAdding: .month, value: -1, to: anchor) ?? anchor } label: {
+            Button { step(-1) } label: {
                 Image(systemName: "chevron.left").frame(width: 34, height: 34)
             }
             .buttonStyle(.glass).buttonBorderShape(.circle)
             Spacer()
-            Text(DateText.monthTitle(month.start)).font(.headline).contentTransition(.numericText())
+            Text(periodTitle(month)).font(.headline).contentTransition(.numericText())
             Spacer()
-            Button { anchor = cal.date(byAdding: .month, value: 1, to: anchor) ?? anchor } label: {
+            Button { step(1) } label: {
                 Image(systemName: "chevron.right").frame(width: 34, height: 34)
             }
             .buttonStyle(.glass).buttonBorderShape(.circle)
@@ -208,15 +237,107 @@ struct SpendingInsightView: View {
         }
     }
 
+    /// 月：日均；年：月均（今年只算到這個月）
+    private func periodAverage(total: Double, period: DateInterval) -> Double {
+        if !yearly { return total / Double(max(elapsedDays(period), 1)) }
+        let months: Int = period.contains(.now) ? cal.component(.month, from: .now) : 12
+        return total / Double(max(months, 1))
+    }
+
+    // MARK: 收入／結餘
+
+    private func flowRow(income: Double, expense: Double) -> some View {
+        let net: Double = income - expense
+        let netColor: Color = net >= 0 ? .green : .red
+        return HStack(spacing: 10) {
+            flowTile("收入", income, .green)
+            flowTile("結餘", net, netColor)
+        }
+    }
+
+    private func flowTile(_ title: String, _ v: Double, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            MoneyText(value: v, hidden: hidden, font: .headline).foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle(padding: 14)
+    }
+
+    // MARK: 收支走勢
+
+    struct TrendPoint: Identifiable {
+        var month: Date
+        var expense: Double
+        var income: Double
+        var id: Date { month }
+    }
+
+    /// 月：到這個月為止的近 6 個月；年：這一年的 12 個月
+    private func trendPoints(_ p: DateInterval) -> [TrendPoint] {
+        var starts: [Date] = []
+        if yearly {
+            for i in 0..<12 {
+                if let d = cal.date(byAdding: .month, value: i, to: p.start), d <= .now { starts.append(d) }
+            }
+        } else {
+            for i in (0..<6).reversed() {
+                if let d = cal.date(byAdding: .month, value: -i, to: p.start) { starts.append(d) }
+            }
+        }
+        return starts.map { s in
+            let m: DateInterval = DateText.monthInterval(s)
+            let es: [Entry] = entries.filter { m.contains($0.date) }
+            let ex: Double = es.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
+            let inc: Double = es.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
+            return TrendPoint(month: m.start, expense: ex, income: inc)
+        }
+    }
+
+    private func trendCard(_ t: [TrendPoint]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(yearly ? "每月收支" : "近 6 個月收支").font(.headline)
+                Spacer()
+                legendDot(.red, "支出")
+                legendDot(.green, "收入")
+            }
+            Chart {
+                ForEach(t) { p in
+                    BarMark(x: .value("月", p.month, unit: .month), y: .value("支出", p.expense), width: .ratio(0.5))
+                        .foregroundStyle(Color.red.opacity(0.25).gradient)
+                        .cornerRadius(3)
+                    LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.expense), series: .value("類型", "支出"))
+                        .foregroundStyle(.red)
+                        .symbol(.circle)
+                        .interpolationMethod(.catmullRom)
+                    LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income), series: .value("類型", "收入"))
+                        .foregroundStyle(.green)
+                        .symbol(.circle)
+                        .interpolationMethod(.catmullRom)
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .month)) { _ in
+                    AxisValueLabel(format: .dateTime.month(.narrow))
+                }
+            }
+            .chartYAxis(.hidden)
+            .frame(height: 170)
+        }
+        .cardStyle()
+    }
+
     // MARK: 指標
 
     private func kpiRow(total: Double, prevTotal: Double, avg: Double, count: Int) -> some View {
         let change = prevTotal > 0 ? (total - prevTotal) / prevTotal : nil
         return HStack(spacing: 10) {
-            kpi("本月支出", Money.format(total, hidden: hidden),
-                change.map { "\($0 >= 0 ? "▲" : "▼") \(Money.percent(abs($0))) vs 上月" } ?? "上月無資料",
+            kpi(thisLabel + "支出", Money.format(total, hidden: hidden),
+                change.map { "\($0 >= 0 ? "▲" : "▼") \(Money.percent(abs($0))) vs " + lastLabel } ?? lastLabel + "無資料",
                 (change ?? 0) > 0 ? .red : .green)
-            kpi("日均", Money.format(avg, hidden: hidden), "\(count) 筆交易", .secondary)
+            kpi(yearly ? "月均" : "日均", Money.format(avg, hidden: hidden), "\(count) 筆交易", .secondary)
         }
     }
 
@@ -299,8 +420,7 @@ struct SpendingInsightView: View {
                 }
                 ForEach(list) { f in
                     HStack(spacing: 12) {
-                        Image(systemName: f.symbol)
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(f.color)
+                        LedgerIcon(symbol: f.symbol, size: 18, color: f.color)
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(f.title).font(.subheadline.weight(.semibold))
@@ -319,8 +439,7 @@ struct SpendingInsightView: View {
         let color: Color = h.tone == "good" ? .green : (h.tone == "bad" ? .red : .blue)
         let symbol: String = cat?.symbol ?? (h.tone == "good" ? "arrow.down.right" : (h.tone == "bad" ? "arrow.up.right" : "sparkle"))
         return HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold)).foregroundStyle(cat?.color ?? color)
+            LedgerIcon(symbol: symbol, size: 18, color: cat?.color ?? color)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(h.title).font(.subheadline.weight(.semibold))
@@ -356,8 +475,8 @@ struct SpendingInsightView: View {
             HStack {
                 Text("分類比較").font(.headline)
                 Spacer()
-                legendDot(Color.secondary.opacity(0.4), "上月")
-                legendDot(Color.primary, "本月")
+                legendDot(Color.secondary.opacity(0.4), lastLabel)
+                legendDot(Color.primary, thisLabel)
             }
             ForEach(top) { c in
                 compareRow(c, maxV: maxV)

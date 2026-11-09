@@ -2,7 +2,7 @@ import Foundation
 
 /// 主頁的功能卡片，可以排序、顯示或隱藏
 enum HomeSection: String, CaseIterable, Identifiable {
-    case insights, upcomingBills, transactions, balanceChart, categoryPie, merchants, transfer, accountCard, budgets, goals, loans
+    case insights, upcomingBills, transactions, categoryPie, merchants, transfer, accountCard, budgets, goals, loans
 
     var id: String { rawValue }
 
@@ -11,7 +11,6 @@ enum HomeSection: String, CaseIterable, Identifiable {
         case .insights: "消費分析"
         case .upcomingBills: "即將到期"
         case .transactions: "本月交易"
-        case .balanceChart: "餘額走勢"
         case .categoryPie: "分類比例"
         case .merchants: "常去商家"
         case .transfer: "轉帳"
@@ -27,7 +26,6 @@ enum HomeSection: String, CaseIterable, Identifiable {
         case .insights: "chart.bar.fill"
         case .upcomingBills: "calendar.badge.exclamationmark"
         case .transactions: "list.bullet.rectangle"
-        case .balanceChart: "chart.xyaxis.line"
         case .categoryPie: "chart.pie.fill"
         case .merchants: "storefront.fill"
         case .transfer: "arrow.left.arrow.right"

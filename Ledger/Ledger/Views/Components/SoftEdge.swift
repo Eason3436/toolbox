@@ -4,7 +4,7 @@ import UIKit
 /// 頁面頂部的柔和邊緣：往上越來越模糊（模糊半徑隨位置變大），再疊一層淡淡的底色讓標題清楚。
 /// 用系統的 variableBlur 濾鏡；拿不到時退回「材質＋漸層遮罩」
 struct SoftTopEdge: ViewModifier {
-    var extra: CGFloat = 24
+    var extra: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
@@ -22,14 +22,14 @@ struct SoftTopEdge: ViewModifier {
 }
 
 extension View {
-    func softTopEdge(extra: CGFloat = 24) -> some View { modifier(SoftTopEdge(extra: extra)) }
+    func softTopEdge(extra: CGFloat = 0) -> some View { modifier(SoftTopEdge(extra: extra)) }
 }
 
 struct SoftEdgeBlur: View {
     var body: some View {
         ZStack {
             if VariableBlurView.isSupported {
-                VariableBlurView(maxRadius: 14)
+                VariableBlurView(maxRadius: 10)
             } else {
                 Rectangle().fill(.regularMaterial)
                     .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
@@ -38,8 +38,8 @@ struct SoftEdgeBlur: View {
             }
             // 底色：上面濃、往下淡出，跟模糊一起漸變
             LinearGradient(stops: [.init(color: Palette.background.opacity(0.6), location: 0),
-                                   .init(color: Palette.background.opacity(0.3), location: 0.5),
-                                   .init(color: Palette.background.opacity(0), location: 1)],
+                                   .init(color: Palette.background.opacity(0.2), location: 0.4),
+                                   .init(color: Palette.background.opacity(0), location: 0.8)],
                            startPoint: .top, endPoint: .bottom)
         }
     }
@@ -86,7 +86,9 @@ final class VariableBlurUIView: UIVisualEffectView {
                                   space: space, bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return nil }
         for y in 0..<h {
             // y = 0 是圖片底部；越往上越不透明，用平滑曲線
-            let t = CGFloat(y) / CGFloat(h - 1)
+            // 下面 30% 完全不模糊，碰到內容的地方就不會糊掉卡片
+            let raw = (CGFloat(y) / CGFloat(h - 1) - 0.3) / 0.7
+            let t = min(max(raw, 0), 1)
             let a = t * t * (3 - 2 * t)
             ctx.setFillColor(gray: 0, alpha: a)
             ctx.fill(CGRect(x: 0, y: y, width: 1, height: 1))

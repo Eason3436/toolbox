@@ -23,7 +23,7 @@ struct AccountsView: View {
     @State private var addingAccount = false
     @State private var editingEntry: Entry?
     @State private var showAllEntries = false
-    @State private var chartRange: PriceRange = .m1
+    @State private var showDetail = false
     @State private var pieIncome = false
 
     private var accounts: [Account] { allAccounts.filter { !$0.archived } }
@@ -50,7 +50,9 @@ struct AccountsView: View {
                                 selectedID = acc.id.uuidString
                             }
                         } label: {
+                            // 帳戶名稱下面附上餘額
                             Label(acc.name, systemImage: acc.id == account?.id ? "checkmark" : acc.kind.symbol)
+                            Text(Money.format(acc.balance, currency: acc.currency, hidden: hidden))
                         }
                     }
                     Divider()
@@ -89,6 +91,9 @@ struct AccountsView: View {
             .accountDeleteDialog($deletingAccount)
             .sheet(isPresented: $addingAccount) { AccountEditor(account: nil) }
             .sheet(item: $editingEntry) { EntryDetailView(entry: $0) }
+            .navigationDestination(isPresented: $showDetail) {
+                if let account { AccountDetailPage(account: account) }
+            }
         }
     }
 
@@ -100,11 +105,10 @@ struct AccountsView: View {
         let items = HomeLayout.decode(layoutRaw).filter(\.visible)
 
         VStack(spacing: 16) {
-            if accounts.count > 1 {
-                AccountCarousel(accounts: accounts, selectedID: $selectedID, hidden: hidden)
-                    .appearEffect()
-            }
+            // 點餘額卡片：看餘額走勢和帳戶資料
             summary(account, month: month, monthEntries: monthEntries)
+                .contentShape(.rect)
+                .onTapGesture { showDetail = true }
                 .appearEffect()
             ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                 section(item.section, account: account, monthEntries: monthEntries)
@@ -130,7 +134,11 @@ struct AccountsView: View {
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("目前餘額").font(.subheadline).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text("目前餘額")
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
                     MoneyText(value: account.balance, currency: cur, hidden: hidden,
                               font: .system(size: 40, weight: .bold, design: .rounded))
                         .lineLimit(1)
@@ -186,9 +194,6 @@ struct AccountsView: View {
         case .insights: InsightLinkCard(entries: monthEntries.filter { $0.kind == .expense }, hidden: hidden)
         case .upcomingBills: UpcomingBillsCard(hidden: hidden)
         case .transactions: transactions(account, monthEntries: monthEntries)
-        case .balanceChart:
-            ValueLineCard(title: "餘額走勢", points: History.accountHistory(account, range: chartRange),
-                          currency: account.currency, hidden: hidden, range: $chartRange)
         case .categoryPie:
             CategoryDonutCard(entries: monthEntries.filter { $0.account?.id == account.id },
                               currency: account.currency, hidden: hidden, title: "本月分類比例", income: $pieIncome)
@@ -292,8 +297,7 @@ struct AccountsView: View {
                             MerchantDetailView(merchant: m.name)
                         } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: m.symbol)
-                                    .font(.subheadline).foregroundStyle(.white)
+                                LedgerIcon(symbol: m.symbol, size: 17, color: .white)
                                     .frame(width: 34, height: 34)
                                     .background(m.color.gradient, in: .circle)
                                 VStack(alignment: .leading, spacing: 5) {
@@ -748,5 +752,65 @@ struct InsightLinkCard: View {
         guard total > 0 else { return 3 }
         let w: CGFloat = (full - 16) * CGFloat(part / total)
         return max(3, w)
+    }
+}
+
+// MARK: - 帳戶詳情（點首頁餘額卡片進來）
+
+struct AccountDetailPage: View {
+    var account: Account
+    @AppStorage(Prefs.hideAmountsKey) private var hidden = false
+    @State private var range: PriceRange = .m3
+    @State private var editing = false
+
+    var body: some View {
+        let month = DateText.monthInterval(.now)
+        let monthEntries: [Entry] = ((account.entries ?? []) + (account.incomingTransfers ?? [])).filter { month.contains($0.date) }
+        let values: [Double] = monthEntries.map { $0.signedAmount(for: account) }
+        let inflow: Double = values.filter { $0 > 0 }.reduce(0, +)
+        let spent: Double = abs(values.filter { $0 < 0 }.reduce(0, +))
+        let count: Int = (account.entries?.count ?? 0) + (account.incomingTransfers?.count ?? 0)
+        ScrollView {
+            VStack(spacing: 16) {
+                AccountCard(account: account, hidden: hidden)
+                ValueLineCard(title: "餘額走勢", points: History.accountHistory(account, range: range),
+                              currency: account.currency, hidden: hidden, range: $range)
+                VStack(spacing: 12) {
+                    row("目前餘額", Money.format(account.balance, currency: account.currency, hidden: hidden))
+                    Divider()
+                    row("本月收入", Money.format(inflow, currency: account.currency, hidden: hidden))
+                    row("本月支出", Money.format(spent, currency: account.currency, hidden: hidden))
+                    row("月初餘額", Money.format(account.balance(before: month.start), currency: account.currency, hidden: hidden))
+                    Divider()
+                    row("類型", account.kind.label)
+                    row("幣別", account.currency)
+                    if !account.cardLast4.isEmpty { row("卡號末四碼", account.cardLast4) }
+                    row("初始餘額", Money.format(account.initialBalance, currency: account.currency, hidden: hidden))
+                    row("交易筆數", "\(count) 筆")
+                }
+                .cardStyle()
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 24)
+        }
+        .background(Palette.background)
+        .softTopEdge()
+        .navigationTitle(account.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("編輯") { editing = true }
+            }
+        }
+        .sheet(isPresented: $editing) { AccountEditor(account: account) }
+    }
+
+    private func row(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).monospacedDigit()
+        }
+        .font(.subheadline)
     }
 }
