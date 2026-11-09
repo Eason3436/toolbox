@@ -1,10 +1,9 @@
 import SwiftUI
-import UIKit
 
-/// 頁面頂部的柔和邊緣：往上越來越模糊（模糊半徑隨位置變大），再疊一層淡淡的底色讓標題清楚。
-/// 用系統的 variableBlur 濾鏡；拿不到時退回「材質＋漸層遮罩」
+/// 頁面頂部的柔和邊緣：標題列底下是模糊＋底色，往下慢慢淡掉，沒有硬邊。
+/// 只用 SwiftUI 的材質和漸層遮罩（之前用私有的可變模糊濾鏡，在部分系統版本會變成一整塊硬邊）
 struct SoftTopEdge: ViewModifier {
-    var extra: CGFloat = 0
+    var extra: CGFloat = 16
 
     func body(content: Content) -> some View {
         content
@@ -22,77 +21,26 @@ struct SoftTopEdge: ViewModifier {
 }
 
 extension View {
-    func softTopEdge(extra: CGFloat = 0) -> some View { modifier(SoftTopEdge(extra: extra)) }
+    func softTopEdge(extra: CGFloat = 16) -> some View { modifier(SoftTopEdge(extra: extra)) }
 }
 
 struct SoftEdgeBlur: View {
     var body: some View {
         ZStack {
-            if VariableBlurView.isSupported {
-                VariableBlurView(maxRadius: 10)
-            } else {
-                Rectangle().fill(.regularMaterial)
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
-                                                 .init(color: .clear, location: 1)],
-                                         startPoint: .top, endPoint: .bottom))
-            }
-            // 底色：上面濃、往下淡出，跟模糊一起漸變
-            LinearGradient(stops: [.init(color: Palette.background.opacity(0.6), location: 0),
-                                   .init(color: Palette.background.opacity(0.2), location: 0.4),
-                                   .init(color: Palette.background.opacity(0), location: 0.8)],
+            // 兩層材質，遮罩長度不同，疊起來上面比較糊、往下越來越清楚
+            Rectangle().fill(.ultraThinMaterial)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
+                                             .init(color: .clear, location: 1)],
+                                     startPoint: .top, endPoint: .bottom))
+            Rectangle().fill(.ultraThinMaterial)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.3),
+                                             .init(color: .clear, location: 0.75)],
+                                     startPoint: .top, endPoint: .bottom))
+            // 底色：上面濃、往下淡出，讓標題清楚
+            LinearGradient(stops: [.init(color: Palette.background.opacity(0.75), location: 0),
+                                   .init(color: Palette.background.opacity(0.45), location: 0.5),
+                                   .init(color: Palette.background.opacity(0), location: 1)],
                            startPoint: .top, endPoint: .bottom)
         }
-    }
-}
-
-/// 從上到下模糊半徑由大變小的模糊
-struct VariableBlurView: UIViewRepresentable {
-    var maxRadius: CGFloat
-
-    static var isSupported: Bool { NSClassFromString("CAFilter") != nil }
-
-    func makeUIView(context: Context) -> VariableBlurUIView { VariableBlurUIView(maxRadius: maxRadius) }
-    func updateUIView(_ uiView: VariableBlurUIView, context: Context) {}
-}
-
-final class VariableBlurUIView: UIVisualEffectView {
-    init(maxRadius: CGFloat) {
-        super.init(effect: UIBlurEffect(style: .regular))
-        guard let cls = NSClassFromString("CAFilter") as? NSObject.Type,
-              let made = cls.perform(NSSelectorFromString("filterWithType:"), with: "variableBlur")?.takeUnretainedValue(),
-              let filter = made as? NSObject,
-              let mask = Self.maskImage() else { return }
-        filter.setValue(maxRadius, forKey: "inputRadius")
-        filter.setValue(mask, forKey: "inputMaskImage")
-        filter.setValue(true, forKey: "inputNormalizeEdges")
-        // 第一層是背景模糊，換成可變模糊；其他層（色調）拿掉
-        subviews.first?.layer.filters = [filter]
-        for v in subviews.dropFirst() { v.alpha = 0 }
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        guard let window, let backdrop = subviews.first?.layer else { return }
-        backdrop.setValue(window.screen.scale, forKey: "scale")
-    }
-
-    /// 上面全黑（最模糊）、往下漸漸透明（不模糊）
-    private static func maskImage() -> CGImage? {
-        let h = 100
-        let space = CGColorSpaceCreateDeviceGray()
-        guard let ctx = CGContext(data: nil, width: 1, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: space, bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return nil }
-        for y in 0..<h {
-            // y = 0 是圖片底部；越往上越不透明，用平滑曲線
-            // 下面 30% 完全不模糊，碰到內容的地方就不會糊掉卡片
-            let raw = (CGFloat(y) / CGFloat(h - 1) - 0.3) / 0.7
-            let t = min(max(raw, 0), 1)
-            let a = t * t * (3 - 2 * t)
-            ctx.setFillColor(gray: 0, alpha: a)
-            ctx.fill(CGRect(x: 0, y: y, width: 1, height: 1))
-        }
-        return ctx.makeImage()
     }
 }

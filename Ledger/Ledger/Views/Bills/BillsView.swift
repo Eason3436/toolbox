@@ -421,17 +421,30 @@ struct BillListCard: View {
     private let columns: [GridItem] = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(items) { occ in
-                Button { onTap(occ) } label: { BillTile(occ: occ, hidden: hidden, highlightSoon: highlightSoon) }
-                    .buttonStyle(PressableStyle())
-                    .contextMenu {
-                        Button(occ.paid ? "改為\(occ.bill.pendingLabel)" : "標記\(occ.bill.doneLabel)",
-                               systemImage: occ.paid ? "arrow.uturn.backward" : "checkmark.circle") { onToggle(occ) }
-                        Button("編輯", systemImage: "pencil") { onEdit(occ.bill) }
+        // 兩欄排列；單數時最後一張改成整列寬的橫向卡片，畫面才不會一邊空著
+        let paired: Int = items.count - items.count % 2
+        VStack(spacing: 12) {
+            if paired > 0 {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(items.prefix(paired)) { occ in
+                        tile(occ, wide: false)
                     }
+                }
+            }
+            if let last = items.last, items.count % 2 == 1 {
+                tile(last, wide: true)
             }
         }
+    }
+
+    private func tile(_ occ: BillOccurrence, wide: Bool) -> some View {
+        Button { onTap(occ) } label: { BillTile(occ: occ, hidden: hidden, highlightSoon: highlightSoon, wide: wide) }
+            .buttonStyle(PressableStyle())
+            .contextMenu {
+                Button(occ.paid ? "改為\(occ.bill.pendingLabel)" : "標記\(occ.bill.doneLabel)",
+                       systemImage: occ.paid ? "arrow.uturn.backward" : "checkmark.circle") { onToggle(occ) }
+                Button("編輯", systemImage: "pencil") { onEdit(occ.bill) }
+            }
     }
 }
 
@@ -440,6 +453,8 @@ struct BillTile: View {
     var occ: BillOccurrence
     var hidden: Bool
     var highlightSoon: Bool
+    /// 整列寬：橫向排（logo、名稱、金額同一行）
+    var wide: Bool = false
 
     var body: some View {
         let d = BillDates.daysFromToday(occ.due)
@@ -448,27 +463,35 @@ struct BillTile: View {
         let subColor: Color = overdue ? .red : (soon ? .orange : .secondary)
         let sign: String = occ.bill.receives ? "+" : ""
         let tint: Color = BillDates.color(occ.bill)
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                BillLogo(bill: occ.bill, size: 38)
-                Spacer(minLength: 4)
-                if occ.paid {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                } else if occ.bill.autoPay {
-                    Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
+        let amountText: String = sign + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden)
+        let amountColor: Color = occ.bill.receives ? Color.green : Color.primary
+        Group {
+            if wide {
+                HStack(spacing: 12) {
+                    BillLogo(bill: occ.bill, size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(occ.bill.name).font(.body.weight(.semibold)).lineLimit(1)
+                        Text(BillDates.dueText(occ)).font(.footnote).foregroundStyle(subColor).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(amountText)
+                            .font(.system(.title2, design: .rounded).weight(.bold)).monospacedDigit()
+                            .foregroundStyle(amountColor)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        HStack(spacing: 4) {
+                            if occ.paid {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            } else if occ.bill.autoPay {
+                                Image(systemName: "bolt.fill").foregroundStyle(.secondary)
+                            }
+                            Text(occ.bill.recurrence.label).foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
                 }
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(BillDates.dueText(occ)).font(.caption).foregroundStyle(subColor).lineLimit(1)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(sign + Money.format(occ.bill.amount, currency: occ.bill.currency, hidden: hidden))
-                    .font(.headline).monospacedDigit()
-                    .foregroundStyle(occ.bill.receives ? Color.green : Color.primary)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Spacer(minLength: 2)
-                Text(occ.bill.recurrence.label).font(.caption2).foregroundStyle(.secondary)
+            } else {
+                narrow(subColor: subColor, amountText: amountText, amountColor: amountColor)
             }
         }
         .padding(14)
@@ -480,6 +503,32 @@ struct BillTile: View {
                 .fill(LinearGradient(colors: [tint.opacity(0.16), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
         }
         .contentShape(.rect(cornerRadius: 22))
+    }
+
+    private func narrow(subColor: Color, amountText: String, amountColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                BillLogo(bill: occ.bill, size: 38)
+                Spacer(minLength: 4)
+                if occ.paid {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                } else if occ.bill.autoPay {
+                    Image(systemName: "bolt.fill").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(occ.bill.name).font(.body.weight(.semibold)).lineLimit(1)
+                Text(BillDates.dueText(occ)).font(.footnote).foregroundStyle(subColor).lineLimit(1)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(amountText)
+                    .font(.system(.title2, design: .rounded).weight(.bold)).monospacedDigit()
+                    .foregroundStyle(amountColor)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Spacer(minLength: 2)
+                Text(occ.bill.recurrence.label).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
