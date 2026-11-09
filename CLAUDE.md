@@ -65,7 +65,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - 更新日誌：`Ledger/Ledger/Views/Settings/ChangelogView.swift`（設定 → 版本）。每次更新加一筆並同步改 `Ledger/project.yml` 的 `MARKETING_VERSION`：大改版動第一碼、新功能動第二碼、只有修正動第三碼
 
 ### LiveContainer 捷徑版（`LiveContainer/`）
-[LiveContainer](https://github.com/LiveContainer/LiveContainer)（AGPL-3.0）的修改版。使用者把自己的 App 裝在 LiveContainer 裡跑，但裝在裡面的 App 的捷徑動作系統看不到，所以在 LiveContainer 自己的 App Intents 延伸功能加了動作：開啟裡面的 App、傳資料到 App 收件匣、記帳：從通知記帳／快速記一筆。背景動作把 JSON 放到 `<guest home>/Library/LCShortcutInbox/`，Ledger 回到前景時讀取（`Ledger/Ledger/Services/LiveContainerInbox.swift`）。另加「App 更新」：比對 GitHub release asset 的 `updated_at`，一鍵更新上面這些 App。
+[LiveContainer](https://github.com/LiveContainer/LiveContainer)（AGPL-3.0）的修改版。使用者把自己的 App 裝在 LiveContainer 裡跑，但裝在裡面的 App 的捷徑動作系統看不到，所以在 LiveContainer 自己的 App Intents 延伸功能加了動作：開啟裡面的 App、傳資料到 App 收件匣、記帳：從通知記帳／快速記一筆。背景動作把 JSON 放到 `<guest home>/Library/LCShortcutInbox/`，Ledger 回到前景時讀取（`Ledger/Ledger/Services/LiveContainerInbox.swift`）。另加「App 更新」：比對 GitHub release asset 的 `updated_at`，一鍵更新上面這些 App。另加即時動態：裡面的 App 用通用格式 `LCLiveActivityAttributes` 開即時動態，由 `LiveContainer/LiveActivityWidget/`（CI 另外用 XcodeGen 編、複製進 PlugIns）畫在動態島。
 - 新檔案放 `overlay/`（複製進上游），修改用 `patches/*.patch`（git apply）；上游 commit 釘在 `9108ae6`，可用 workflow_dispatch 輸入換
 - Bundle ID 跟官方一樣（`com.kdt.livecontainer`），會覆蓋原本的；安裝時要選「保留 App 延伸功能」
 - 細節見 `LiveContainer/README.md`

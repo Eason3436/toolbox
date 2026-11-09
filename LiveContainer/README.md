@@ -44,8 +44,36 @@ App 在變成前景時讀取這個資料夾（`FileManager.default.urls(for: .li
 - `ledger.logNotification`：`text` 是通知全文，`params.accountName` 選填
 - `ledger.quickAdd`：`params.merchant`、`params.amount`（數字），`params.accountName` 選填
 
+## 即時動態（動態島）
+
+裝在 LiveContainer 裡的 App 跑在 LiveContainer 的程序裡，系統會把它開的即時動態當成 LiveContainer 的，並用 LiveContainer 自己的 widget extension 來畫。LiveContainer 不認得每個 App 自己的 `ActivityAttributes`，所以這個版本內建一個通用的格式 `LCLiveActivityAttributes`，App 用它就能顯示在鎖定畫面和動態島：
+
+- widget extension：`LiveActivityWidget/`（CI 用 XcodeGen 另外編好，複製進 `LiveContainer.app/PlugIns`，Bundle ID `com.kdt.livecontainer.LiveActivity`）
+- 格式：`overlay/LiveContainerSwiftUI/LCLiveActivityAttributes.swift`
+- 測試：LiveContainer → App 更新 → 即時動態 → 顯示測試即時動態
+
+App 這邊要做的：
+
+1. 把 `LCLiveActivityAttributes.swift` 原封不動複製進 App（ActivityKit 用型別名稱配對，名字和欄位不能改）
+2. App 的 Info.plist 保留 `NSSupportsLiveActivities = YES`
+3. 在 LiveContainer 裡時改用這個格式：
+
+```swift
+if LCLiveActivityAttributes.isInsideLiveContainer {
+    let activity = try Activity.request(
+        attributes: LCLiveActivityAttributes.forCurrentApp(systemImage: "waveform", tintHex: "#FF3B30"),
+        content: ActivityContent(state: .init(title: "錄音中", subtitle: "第 3 段", timerStart: startedAt), staleDate: nil),
+        pushType: nil)
+    // 之後用 activity.update(...) / activity.end(...)，跟一般即時動態一樣
+}
+```
+
+`ContentState` 欄位（除了 `title` 都可省略）：`subtitle`、`systemImage`（SF Symbol）、`progress`（0–1，顯示進度條／圓環）、`timerStart`（正數計時）、`timerEnd`（倒數）、`compactText`（動態島右邊的短字）、`tintHex`。點即時動態會打開 LiveContainer 裡的這個 App；`forCurrentApp(openURL:)` 可以指定點了之後交給 App 的網址。
+
+限制：動態島上不能放執行 App 程式碼的按鈕（按鈕的 App Intent 會跑在 LiveContainer，不是 App 裡）。
+
 ## 安裝注意
 
-- 用 SideStore 安裝時要保留 App 延伸功能（Keep App Extensions），捷徑動作在延伸功能裡。
+- 用 SideStore 安裝時要保留 App 延伸功能（Keep App Extensions），捷徑動作和即時動態都在延伸功能裡。即時動態的 widget 是多一個延伸功能，免費帳號會多用一個 App ID。
 - 裝好後先打開一次 LiveContainer，捷徑才拿得到 App 清單。
 - Bundle ID 和官方版一樣（`com.kdt.livecontainer`），會直接覆蓋原本的 LiveContainer，裡面的 App 和資料會保留。
