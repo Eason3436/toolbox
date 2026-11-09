@@ -153,7 +153,14 @@ struct CalendarView: View {
                 }
             }
             .sheet(item: $editing) { EntryDetailView(entry: $0) }
-            .sheet(isPresented: $showStats) { NavigationStack { StatsView() } }
+            .sheet(isPresented: $showStats) {
+                NavigationStack {
+                    SpendingInsightView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button(role: .close) { showStats = false } }
+                        }
+                }
+            }
             .sensoryFeedback(.selection, trigger: selectedDay)
         }
     }

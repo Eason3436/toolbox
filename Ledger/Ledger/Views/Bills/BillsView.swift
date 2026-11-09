@@ -399,9 +399,7 @@ struct BillLogo: View {
                 let color: Color = bill.category?.color ?? .orange
                 ZStack {
                     Circle().fill(color.opacity(0.22))
-                    Image(systemName: bill.category?.symbol ?? "arrow.triangle.2.circlepath")
-                        .font(.system(size: size * 0.42, weight: .semibold))
-                        .foregroundStyle(color)
+                    LedgerIcon(symbol: bill.category?.symbol ?? "arrow.triangle.2.circlepath", size: size * 0.5, color: color)
                 }
             }
         }

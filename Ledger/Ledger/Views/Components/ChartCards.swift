@@ -268,8 +268,8 @@ struct CategoryDonutCard: View {
         .chartBackground { _ in
             VStack(spacing: 2) {
                 if let picked {
-                    Image(systemName: picked.symbol).font(.title3).foregroundStyle(picked.color)
-                        .contentTransition(.symbolEffect(.replace))
+                    LedgerIcon(symbol: picked.symbol, size: 22, color: picked.color)
+                        .id(picked.symbol)
                 }
                 Text(picked?.name ?? (income ? "總收入" : "總支出"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -400,7 +400,7 @@ private struct CategoryBreakdown: View {
                     ForEach(list) { s in
                         VStack(spacing: 5) {
                             HStack(spacing: 8) {
-                                Image(systemName: s.symbol).font(.caption).foregroundStyle(s.color).frame(width: 18)
+                                LedgerIcon(symbol: s.symbol, size: 14, color: s.color).frame(width: 18)
                                 Text(s.name).font(.subheadline).lineLimit(1)
                                 Text("\(s.count) 筆").font(.caption).foregroundStyle(.secondary)
                                 Spacer()

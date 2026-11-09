@@ -373,12 +373,6 @@ struct CategoryEditor: View {
     @State private var color = Color.orange
     @State private var parentID: UUID?
 
-    private let symbols = ["fork.knife", "cup.and.saucer.fill", "cart.fill", "bag.fill", "basket.fill", "car.fill", "bus.fill", "tram.fill",
-                           "airplane", "fuelpump.fill", "house.fill", "bolt.fill", "drop.fill", "wifi", "iphone", "tv.fill",
-                           "gamecontroller.fill", "film.fill", "music.note", "book.fill", "graduationcap.fill", "stethoscope", "pills.fill", "cross.case.fill",
-                           "dumbbell.fill", "tshirt.fill", "sparkles", "gift.fill", "pawprint.fill", "figure.2.and.child.holdinghands", "briefcase.fill", "doc.text.fill",
-                           "arrow.triangle.2.circlepath", "banknote.fill", "chart.line.uptrend.xyaxis", "creditcard.fill", "heart.fill", "star.fill", "tag.fill", "square.grid.2x2.fill"]
-
     var body: some View {
         NavigationStack {
             Form {
@@ -401,18 +395,24 @@ struct CategoryEditor: View {
                         }
                     }
                 }
-                Section("圖示") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 14) {
-                        ForEach(symbols, id: \.self) { s in
-                            Image(systemName: s)
-                                .font(.title3)
-                                .frame(width: 44, height: 44)
-                                .foregroundStyle(symbol == s ? .white : color)
-                                .background(symbol == s ? color : color.opacity(0.12), in: .rect(cornerRadius: 12))
-                                .onTapGesture { symbol = s }
+                ForEach(IconCatalog.groups, id: \.title) { g in
+                    Section(g.title) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
+                            ForEach(g.symbols, id: \.self) { sym in
+                                let on: Bool = symbol == sym && emoji.isEmpty
+                                Button {
+                                    symbol = sym
+                                    emoji = ""
+                                } label: {
+                                    LedgerIcon(symbol: sym, size: 22, color: on ? .white : color)
+                                        .frame(width: 44, height: 44)
+                                        .background(on ? color : color.opacity(0.12), in: .rect(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
                 }
             }
             .navigationTitle(category == nil ? "新增分類" : "編輯分類")

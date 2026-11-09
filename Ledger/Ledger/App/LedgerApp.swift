@@ -63,16 +63,34 @@ struct RootView: View {
     @State private var locked = UserDefaults.standard.bool(forKey: "lockEnabled")
     @State private var openResult: String?
     @State private var shortcutResult: String?
+    @State private var slideForward = true
+    @State private var hasSwitched = false
+
+    /// 換分頁前先記下方向（往右邊的分頁就從右邊滑進來）
+    private var tabBinding: Binding<AppTab> {
+        Binding(get: { tab }, set: { new in setTab(new) })
+    }
+
+    private func setTab(_ new: AppTab) {
+        let all: [AppTab] = AppTab.allCases.map { $0 }
+        let a: Int = all.firstIndex(of: tab) ?? 0
+        let b: Int = all.firstIndex(of: new) ?? 0
+        if a != b {
+            slideForward = b > a
+            hasSwitched = true
+        }
+        tab = new
+    }
 
     var body: some View {
         // 系統原生 Liquid Glass 分頁列（按住可以左右拖曳切換）；新增是浮在分頁列右上方的小按鈕
-        TabView(selection: $tab) {
+        TabView(selection: tabBinding) {
             ForEach(AppTab.allCases, id: \.self) { t in
                 // 分頁列只顯示圖示，不顯示文字
                 Tab(value: t) {
                     page(t)
                         // 點分頁列時頁面左右滑動
-                        .background(TabSlideHook().frame(width: 0, height: 0))
+                        .tabSlideIn(forward: slideForward, enabled: hasSwitched)
                 } label: {
                     Image(systemName: t.symbol)
                         .accessibilityLabel(Text(t.label))
@@ -228,11 +246,8 @@ struct AddFloatingButton: View {
     @State private var bounce = 0
 
     var body: some View {
-        Menu {
-            Button("記一筆", systemImage: "square.and.pencil") { pick(.normal) }
-            Button("一句話記帳", systemImage: "text.bubble") { pick(.sentence) }
-            Button("掃發票", systemImage: "doc.viewfinder") { pick(.scan) }
-        } label: {
+        // 點一下直接記一筆；一句話記帳、掃發票在記帳畫面裡面選
+        Button { pick(.normal) } label: {
             Image(systemName: "plus")
                 .font(.system(size: 22, weight: .semibold))
                 .symbolEffect(.bounce, value: bounce)
@@ -240,7 +255,6 @@ struct AddFloatingButton: View {
                 .frame(width: 52, height: 52)
                 .contentShape(.circle)
         }
-        .menuOrder(.fixed)
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
         .sensoryFeedback(.impact(weight: .medium), trigger: bounce)
