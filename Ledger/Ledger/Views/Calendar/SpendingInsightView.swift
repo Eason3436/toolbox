@@ -254,7 +254,7 @@ struct SpendingInsightView: View {
         case .daily:
             if !s.days.isEmpty { dailyCard(s.days, avg: s.avg, monthDays: s.monthDays) }
         case .weekday:
-            if !s.weekdays.isEmpty { weekdayCard(s.weekdays) }
+            if !yearly && !s.weekdays.isEmpty { weekdayCard(s.weekdays) }
         case .items:
             if !s.items.isEmpty { itemCard(s.items) }
         case .merchants:

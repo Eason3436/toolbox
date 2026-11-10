@@ -87,6 +87,9 @@ struct SettingsView: View {
                     NavigationLink { ContentView() } label: {
                         Label("數字動效示範", systemImage: "textformat.123")
                     }
+                    NavigationLink { StorageView() } label: {
+                        Label("儲存空間", systemImage: "internaldrive")
+                    }
                 }
 
                 Section {
