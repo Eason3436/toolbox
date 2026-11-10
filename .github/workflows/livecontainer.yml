@@ -14,6 +14,8 @@ on:
   push:
     paths:
       - "LiveContainer/**"
+      - "Recap/Recap/Services/LCLiveActivityAttributes.swift"
+      - "Toolbox/Services/LCLiveActivityAttributes.swift"
       - ".github/workflows/livecontainer.yml"
 
 permissions:
@@ -54,6 +56,13 @@ jobs:
             git -C src apply "$GITHUB_WORKSPACE/$p"
           done
           git -C src status --short
+
+      - name: Check LCLiveActivityAttributes copies
+        run: |
+          # Recap、Toolbox 裡的副本要跟 LiveContainer 的一模一樣（ActivityKit 靠型別名稱和欄位配對）
+          for f in toolbox/Recap/Recap/Services/LCLiveActivityAttributes.swift toolbox/Toolbox/Services/LCLiveActivityAttributes.swift; do
+            cmp toolbox/LiveContainer/overlay/LiveContainerSwiftUI/LCLiveActivityAttributes.swift "$f" || { echo "::error::$f 跟 LiveContainer 的版本不同"; exit 1; }
+          done
 
       - name: Show Xcode
         run: |
