@@ -1,0 +1,32 @@
+# 只用來編譯 LiveContainer 的即時動態 widget extension。
+# livecontainer.yml 會把編好的 LCLiveActivityWidget.appex 複製進 LiveContainer.app/PlugIns。
+name: LCLiveActivity
+options:
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+targets:
+  LCLiveActivityWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LCLiveActivityWidget.swift
+      - path: ../overlay/LiveContainerSwiftUI/LCLiveActivityAttributes.swift
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: LiveContainer
+        CFBundleName: LCLiveActivityWidget
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kdt.livecontainer.LiveActivity
+        SKIP_INSTALL: YES

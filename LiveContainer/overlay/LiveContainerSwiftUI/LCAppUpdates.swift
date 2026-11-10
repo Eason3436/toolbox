@@ -355,6 +355,11 @@ struct LCAppUpdatesView: View {
                 } footer: {
                     Text("點 App 可以設定它的下載連結（例如 GitHub Releases 的 .ipa 連結）。每次打開 LiveContainer 都會檢查連結上的檔案是不是比裝好的版本新。")
                 }
+                Section {
+                    NavigationLink(destination: LCLiveActivityTestView()) {
+                        Label("即時動態", systemImage: "rectangle.topthird.inset.filled")
+                    }
+                }
             }
             .navigationTitle("App 更新")
             .navigationBarTitleDisplayMode(.inline)
