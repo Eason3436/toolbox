@@ -24,14 +24,11 @@ struct HapticsSettingsView: View {
                             Spacer()
                             Text(strengthLabel).foregroundStyle(.secondary).monospacedDigit()
                         }
-                        Slider(value: $strength, in: Haptics.strengthRange, step: 0.1) {
-                            Text("強度")
-                        } minimumValueLabel: {
+                        HStack(spacing: 10) {
                             Image(systemName: "iphone.gen3").font(.footnote).foregroundStyle(.secondary)
-                        } maximumValueLabel: {
+                            Slider(value: $strength, in: Haptics.strengthRange, step: 0.1,
+                                   onEditingChanged: sliderChanged)
                             Image(systemName: "iphone.gen3.radiowaves.left.and.right").foregroundStyle(.secondary)
-                        } onEditingChanged: { editing in
-                            if !editing { Haptics.shared.sample(nil) }
                         }
                     }
                     .padding(.vertical, 4)
@@ -56,6 +53,10 @@ struct HapticsSettingsView: View {
         .navigationTitle("觸覺回饋")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.snappy, value: enabled)
+    }
+
+    private func sliderChanged(_ editing: Bool) {
+        if !editing { Haptics.shared.sample(nil) }
     }
 
     private var strengthLabel: String {
