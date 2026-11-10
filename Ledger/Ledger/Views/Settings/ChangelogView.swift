@@ -14,6 +14,10 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.16.0", date: "2026-11-10", title: "儲存空間", items: [
+            "設定 → 儲存空間：看 App 用了多少空間（記帳資料、快取、暫存檔等），可以一鍵清除快取",
+            "消費分析切到「年」時不再顯示「星期幾花最多」",
+        ]),
         Release(version: "1.15.2", date: "2026-11-10", title: "收入結餘、收支走勢重新排版", items: [
             "消費分析：收入和結餘合成一張卡片，數字放大，下面用橫條比較收入和支出",
             "收支走勢：金額只標在最高的月份，不再擠成一團；點一下月份，上方顯示那個月的支出和收入",
