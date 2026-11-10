@@ -10,6 +10,10 @@ enum Changelog {
     }
 
     static let entries: [Entry] = [
+        Entry(date: "2026-11-10", title: "在 LiveContainer 裡顯示即時動態", items: [
+            "裝在 LiveContainer 裡時，錄音的即時動態改用 LiveContainer 的格式，一樣會出現在動態島和鎖定畫面",
+            "LiveContainer 裡的即時動態沒有暫停、停止按鈕，點一下會打開 Recap",
+        ]),
         Entry(date: "2026-11-06", title: "移除小米健康同步", items: [
             "免費開發者帳號拿不到 Apple 健康權限，捷徑也寫不進睡眠分期，先拿掉這個功能",
         ]),

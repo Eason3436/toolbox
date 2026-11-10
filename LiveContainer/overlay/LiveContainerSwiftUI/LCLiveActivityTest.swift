@@ -27,6 +27,8 @@ struct LCLiveActivityTestView: View {
                 Button("顯示測試即時動態") { start() }
                 Button("更新進度") { advance() }
                     .disabled(running.isEmpty)
+                Button("顯示完成狀態") { finish() }
+                    .disabled(running.isEmpty)
                 Button("全部結束", role: .destructive) { endAll() }
                     .disabled(running.isEmpty)
             } footer: {
@@ -97,9 +99,24 @@ struct LCLiveActivityTestView: View {
             let next = (state.progress ?? 0) + 0.2
             state.progress = next > 1.0001 ? 0 : next
             state.subtitle = "進度更新於 \(Date.now.formatted(date: .omitted, time: .shortened))"
+            state.detail = "第 \(Int((state.progress ?? 0) * 5 + 0.5))/5 個"
             Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
         }
         message = "已更新"
+    }
+
+    private func finish() {
+        guard #available(iOS 16.2, *) else { return }
+        for activity in Activity<LCLiveActivityAttributes>.activities {
+            var state = activity.content.state
+            state.title = "完成"
+            state.isFinished = true
+            state.pausedElapsed = Date.now.timeIntervalSince(state.timerStart ?? .now)
+            state.tintHex = "#34C759"
+            Task { await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(.now.addingTimeInterval(5 * 60))) }
+        }
+        message = "已結束，鎖定畫面會留 5 分鐘"
+        refresh()
     }
 
     private func endAll() {

@@ -21,6 +21,9 @@
 //  All fields except `title` are optional, so older and newer copies of this
 //  file stay compatible with each other.
 //
+//  Copies of this file live in Recap/Recap/Services and Toolbox/Services in
+//  the toolbox repo. Keep them identical (CI checks this).
+//
 
 import ActivityKit
 import Foundation
@@ -44,10 +47,19 @@ struct LCLiveActivityAttributes: ActivityAttributes {
         var compactText: String?
         /// Accent color as hex ("#FF3B30"); falls back to the attributes' tint.
         var tintHex: String?
+        /// Paused: shows this many seconds, not running, instead of the timer.
+        var pausedElapsed: Double?
+        /// The work is done: shows a checkmark and the final value.
+        var isFinished: Bool?
+        /// Small supporting text, e.g. "第 2/5 個" or "3 段".
+        var detail: String?
+        /// Recent audio levels (0...1) drawn as a small waveform in the compact island.
+        var levels: [Double]?
 
         init(title: String, subtitle: String? = nil, systemImage: String? = nil,
              progress: Double? = nil, timerStart: Date? = nil, timerEnd: Date? = nil,
-             compactText: String? = nil, tintHex: String? = nil) {
+             compactText: String? = nil, tintHex: String? = nil, pausedElapsed: Double? = nil,
+             isFinished: Bool? = nil, detail: String? = nil, levels: [Double]? = nil) {
             self.title = title
             self.subtitle = subtitle
             self.systemImage = systemImage
@@ -56,6 +68,10 @@ struct LCLiveActivityAttributes: ActivityAttributes {
             self.timerEnd = timerEnd
             self.compactText = compactText
             self.tintHex = tintHex
+            self.pausedElapsed = pausedElapsed
+            self.isFinished = isFinished
+            self.detail = detail
+            self.levels = levels
         }
     }
 

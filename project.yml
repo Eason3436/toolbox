@@ -51,6 +51,9 @@ targets:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
           - com.eason3436.toolbox.process.*
+        # 裝在 LiveContainer 裡時用 LiveContainer 的即時動態顯示處理進度
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
         LSSupportsOpeningDocumentsInPlace: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: 媒體與文件

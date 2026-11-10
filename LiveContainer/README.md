@@ -68,7 +68,26 @@ if LCLiveActivityAttributes.isInsideLiveContainer {
 }
 ```
 
-`ContentState` 欄位（除了 `title` 都可省略）：`subtitle`、`systemImage`（SF Symbol）、`progress`（0–1，顯示進度條／圓環）、`timerStart`（正數計時）、`timerEnd`（倒數）、`compactText`（動態島右邊的短字）、`tintHex`。點即時動態會打開 LiveContainer 裡的這個 App；`forCurrentApp(openURL:)` 可以指定點了之後交給 App 的網址。
+`ContentState` 欄位（除了 `title` 都可省略）：
+
+| 欄位 | 顯示 |
+|---|---|
+| `subtitle` | 第二行，例如狀態或最新一句字幕 |
+| `systemImage` | SF Symbol（動態島左邊、鎖定畫面左邊的圓） |
+| `progress` | 0–1，鎖定畫面進度條、動態島圓環 |
+| `timerStart` / `timerEnd` | 正數計時／倒數，顯示在右邊 |
+| `pausedElapsed` | 暫停：顯示固定的秒數，圖示換成暫停 |
+| `isFinished` | 完成：打勾、顯示最後的值 |
+| `detail` | 小字補充，例如「第 2/5 個」 |
+| `levels` | 最近幾秒音量（0–1），動態島左邊畫波形 |
+| `compactText` | 沒有計時和進度時，動態島右邊的短字 |
+| `tintHex` | 顏色 |
+
+點即時動態會打開 LiveContainer 裡的這個 App；`forCurrentApp(openURL:)` 可以指定點了之後交給 App 的網址。超過 90 秒沒更新時可以用 `staleDate` 讓它顯示「可能不是最新狀態」。
+
+已經使用的 App：Recap（錄音）、Toolbox（背景處理檔案的進度）。它們各有一份 `LCLiveActivityAttributes.swift` 副本，CI 會檢查跟這裡的一模一樣。
+
+排版照 Apple 的即時動態設計規範：動態島左邊放辨識用的圖示或波形、右邊只放一個重點數值；展開時圖示和數值留在兩側，標題和細節放下面；鎖定畫面 14 pt 邊距、高度精簡，有完成狀態和過期提示。
 
 限制：動態島上不能放執行 App 程式碼的按鈕（按鈕的 App Intent 會跑在 LiveContainer，不是 App 裡）。
 
