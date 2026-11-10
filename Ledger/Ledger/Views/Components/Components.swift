@@ -126,6 +126,15 @@ struct Chip: View {
         }
         .contentShape(.capsule)
         .animation(Motion.chip, value: selected)
+        .onChange(of: selected) {
+            // 線條圖示自己會跟著動畫震；其他（emoji、SF Symbol）彈一下
+            if !usesPulso { Haptics.shared.symbolBounce(size: 17) }
+        }
+    }
+
+    private var usesPulso: Bool {
+        guard let shownSymbol, !removable else { return false }
+        return LedgerIcon.pulso(for: shownSymbol) != nil
     }
 }
 
@@ -265,7 +274,7 @@ struct SummaryRow: View {
             Text(title).foregroundStyle(.secondary)
             Spacer()
             if let amount {
-                MoneyText(value: amount, currency: currency, hidden: hidden, font: .body.weight(.semibold))
+                MoneyText(value: amount, currency: currency, hidden: hidden, font: .body.weight(.semibold), haptics: false)
             } else {
                 Text(value).font(.body.weight(.semibold)).monospacedDigit()
             }

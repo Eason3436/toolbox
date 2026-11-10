@@ -134,7 +134,7 @@ struct AssetDetailView: View {
             }
             .confirmationDialog("刪除「\(asset.name)」？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    context.delete(asset)
+                    Haptics.shared.trash(); context.delete(asset)
                     try? context.save()
                     dismiss()
                 }
@@ -523,7 +523,7 @@ struct LotEditor: View {
                 if lot != nil {
                     Section {
                         Button("刪除這筆", role: .destructive) {
-                            if let lot { context.delete(lot) }
+                            if let lot { Haptics.shared.trash(); context.delete(lot) }
                             asset.lots?.removeAll { $0.id == lot?.id }
                             asset.recomputeFromLots()
                             try? context.save()

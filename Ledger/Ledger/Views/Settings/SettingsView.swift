@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var exportURL: URL?
     @State private var csvURL: URL?
     @AppStorage("lockEnabled") private var lockEnabled = false
+    @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @State private var importResult: String?
     @State private var importError: String?
     @State private var deletingAccount: Account?
@@ -189,6 +190,17 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle(isOn: $hapticsEnabled) {
+                        Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                    }
+                    .onChange(of: hapticsEnabled) { _, on in
+                        if on { Haptics.shared.icon(.bellRing, size: 28) }
+                    }
+                } footer: {
+                    Text("數字滾動、圖示動畫、鍵盤、刪除和記帳完成時的震動。")
+                }
+
+                Section {
                     NavigationLink { ChangelogView() } label: {
                         LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
                     }
@@ -335,7 +347,7 @@ struct CategoryManagerView: View {
                 try? context.save()
             }
             .onDelete { idx in
-                for i in idx { context.delete(list[i]) }
+                for i in idx { Haptics.shared.trash(); context.delete(list[i]) }
                 try? context.save()
             }
         }

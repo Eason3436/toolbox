@@ -112,7 +112,6 @@ struct EntryEditor: View {
                         .disabled((Money.parse(amountText) ?? 0) <= 0)
                 }
             }
-            .sensoryFeedback(.selection, trigger: category?.id)
             .onChange(of: kind) { _, newKind in
                 if let c = category, c.isIncome != (newKind == .income) { category = nil }
             }
@@ -122,7 +121,7 @@ struct EntryEditor: View {
             }
             .confirmationDialog("確定刪除？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    if let entry { context.delete(entry); try? context.save() }
+                    if let entry { Haptics.shared.trash(); context.delete(entry); try? context.save() }
                     dismiss()
                 }
             }

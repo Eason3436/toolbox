@@ -57,7 +57,7 @@ struct ValueLineCard: View {
                         .contentTransition(.opacity)
                     if let selected {
                         MoneyText(value: selected.value, currency: currency, hidden: hidden,
-                                  font: .title3.weight(.semibold), rollsOnAppear: false)
+                                  font: .title3.weight(.semibold), rollsOnAppear: false, haptics: false)
                     } else {
                         HStack(spacing: 4) {
                             Text(Money.format(change, currency: currency, hidden: hidden, signed: true))
@@ -274,7 +274,7 @@ struct CategoryDonutCard: View {
                 Text(picked?.name ?? (income ? "總收入" : "總支出"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 MoneyText(value: picked?.total ?? total, currency: currency, hidden: hidden,
-                          font: .headline.weight(.bold), rollsOnAppear: false)
+                          font: .headline.weight(.bold), rollsOnAppear: false, haptics: false)
                     .lineLimit(1).minimumScaleFactor(0.6)
             }
             .padding(.horizontal, 60)
@@ -386,7 +386,7 @@ private struct CategoryBreakdown: View {
                 }
                 Spacer()
                 MoneyText(value: slice.total, currency: currency, hidden: hidden,
-                          font: .headline, rollsOnAppear: false)
+                          font: .headline, rollsOnAppear: false, haptics: false)
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)
