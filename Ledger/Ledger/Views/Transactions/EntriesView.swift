@@ -338,7 +338,7 @@ struct EntryRow: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(entry.title).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if let pm = entry.payMethod {
                         PayBadge(method: pm, compact: true)
                     } else if entry.source == .shortcut {
@@ -350,18 +350,18 @@ struct EntryRow: View {
                         Image(systemName: "doc.text").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
             let value = perspective.map { entry.signedAmount(for: $0) } ?? entry.signedAmount
             Text(entry.kind == .transfer && perspective == nil
                  ? Money.format(entry.amount, hidden: hidden)
                  : Money.format(value, currency: entry.account?.currency ?? Prefs.mainCurrency, hidden: hidden, signed: true))
-                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(value > 0 ? .green : .primary)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .contentShape(.rect)
     }
 
@@ -404,7 +404,7 @@ struct WeekNetStrip: View {
         }
         .scrollTargetBehavior(.paging)
         .defaultScrollAnchor(.trailing)
-        .frame(height: 104)
+        .frame(height: 92)
     }
 
     private func week(_ start: Date, nets: [Date: Double]) -> some View {
@@ -433,9 +433,9 @@ struct WeekNetStrip: View {
                 .minimumScaleFactor(0.6)
                 .foregroundStyle(net > 0 ? Color.green : Color.red)
                 .padding(.horizontal, 4)
-                .frame(height: 18)
+                .frame(height: 16)
         } else {
-            Color.clear.frame(height: 18)
+            Color.clear.frame(height: 16)
         }
     }
 

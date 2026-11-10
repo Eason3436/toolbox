@@ -89,8 +89,8 @@ struct RootView: View {
                 .padding(.bottom, 64)
                 .ignoresSafeArea(.keyboard)
         }
-        // 整個 App 固定用大一級的字（系統預設的字在這個 App 裡偏小），也不會跟著系統無限放大
-        .dynamicTypeSize(.xLarge)
+        // 系統字級調很大時，卡片裡的字也不會跟著無限放大
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .sensoryFeedback(.selection, trigger: tab)
         .sheet(isPresented: $showAdd) {
             // 從＋按鈕放大出來；按住往下拉時整張卡片四角圓角、跟著手指縮小（像音樂 App 的播放畫面）
@@ -103,7 +103,7 @@ struct RootView: View {
                     withTransaction(t) { showAdd = false }
                     savedSummary = summary
                 })
-                .dynamicTypeSize(.xLarge)
+                .dynamicTypeSize(...DynamicTypeSize.large)
                 // 底色交給系統的卡片形狀畫（四角圓角），往下拉時底部不會露出直角
                 .presentationBackground(Palette.background)
                 .presentationDragIndicator(.visible)
