@@ -123,6 +123,7 @@ struct SpendingInsightView: View {
     @State private var loadingAI = false
     @State private var pickedDay: Int?
     @State private var pieIncome = false
+    @State private var trendSel: Date?
 
     private let cal = Calendar.current
 
@@ -302,23 +303,49 @@ struct SpendingInsightView: View {
 
     // MARK: 收入／結餘
 
+    /// 一張卡：收入、結餘並排（大字），下面兩條橫條比較收入和支出
     private func flowRow(income: Double, expense: Double) -> some View {
         let net: Double = income - expense
         let netColor: Color = net >= 0 ? .green : .red
-        return HStack(spacing: 10) {
-            flowTile("收入", income, .green)
-            flowTile("結餘", net, netColor)
+        let top: Double = max(income, expense, 1)
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 0) {
+                flowValue("收入", income, .green, signed: false)
+                Divider().frame(height: 52).padding(.horizontal, 14)
+                flowValue("結餘", net, netColor, signed: true)
+            }
+            VStack(spacing: 6) {
+                flowBar("收入", income / top, .green)
+                flowBar("支出", expense / top, .red)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
     }
 
-    private func flowTile(_ title: String, _ v: Double, _ color: Color) -> some View {
+    private func flowValue(_ title: String, _ v: Double, _ color: Color, signed: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            MoneyText(value: v, hidden: hidden, font: .headline).foregroundStyle(color)
+            MoneyText(value: v, hidden: hidden, signed: signed && v > 0, font: .title2.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(color)
                 .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle(padding: 14)
+    }
+
+    private func flowBar(_ title: String, _ ratio: Double, _ color: Color) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.caption2).foregroundStyle(.secondary).frame(width: 26, alignment: .leading)
+            GeometryReader { g in
+                Capsule().fill(Color.secondary.opacity(0.12))
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(color.gradient)
+                            .frame(width: max(ratio > 0 ? 6 : 0, g.size.width * min(ratio, 1)))
+                    }
+            }
+            .frame(height: 8)
+        }
     }
 
     // MARK: 收支走勢
@@ -351,14 +378,14 @@ struct SpendingInsightView: View {
         }
     }
 
-    /// 一個月：支出長條（上面標金額）、支出和收入兩條線（收入點下面標金額）
+    /// 一個月：支出長條、支出和收入兩條線。金額只標在最高的月份，點月份時改在上方顯示
     @ChartContentBuilder
-    private func trendMarks(_ p: TrendPoint) -> some ChartContent {
+    private func trendMarks(_ p: TrendPoint, labelExpense: Bool, labelIncome: Bool, dimmed: Bool) -> some ChartContent {
         BarMark(x: .value("月", p.month, unit: .month), y: .value("支出", p.expense), width: .ratio(0.5))
-            .foregroundStyle(Color.red.opacity(0.22).gradient)
+            .foregroundStyle(Color.red.opacity(dimmed ? 0.08 : 0.22).gradient)
             .cornerRadius(3)
             .annotation(position: .top, spacing: 4) {
-                if p.expense > 0 {
+                if labelExpense && p.expense > 0 {
                     Text(Self.short(p.expense, hidden: hidden))
                         .font(.caption2.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(.red)
@@ -367,15 +394,17 @@ struct SpendingInsightView: View {
         LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.expense), series: .value("類型", "支出"))
             .foregroundStyle(.red)
             .symbol(.circle)
+            .symbolSize(24)
             .interpolationMethod(.monotone)
         LineMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income), series: .value("類型", "收入"))
             .foregroundStyle(.green)
             .symbol(.circle)
+            .symbolSize(24)
             .interpolationMethod(.monotone)
         PointMark(x: .value("月", p.month, unit: .month), y: .value("金額", p.income))
             .foregroundStyle(.clear)
-            .annotation(position: p.income > p.expense ? .top : .bottom, spacing: 4) {
-                if p.income > 0 {
+            .annotation(position: .top, spacing: 6) {
+                if labelIncome && p.income > 0 {
                     Text(Self.short(p.income, hidden: hidden))
                         .font(.caption2.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(.green)
@@ -394,29 +423,65 @@ struct SpendingInsightView: View {
     }
 
     private func trendCard(_ t: [TrendPoint]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let sel: TrendPoint? = trendSel.flatMap { d in t.first { cal.isDate($0.month, equalTo: d, toGranularity: .month) } }
+        let peak: Double = t.reduce(1.0) { max($0, $1.expense, $1.income) }
+        let peakEx: Date? = t.filter { $0.expense > 0 }.max { $0.expense < $1.expense }?.month
+        let peakIn: Date? = t.filter { $0.income > 0 }.max { $0.income < $1.income }?.month
+        let sumEx: Double = t.reduce(0) { $0 + $1.expense }
+        let sumIn: Double = t.reduce(0) { $0 + $1.income }
+        let headTitle: String = sel.map { "\(cal.component(.month, from: $0.month))月" } ?? (yearly ? "全年合計" : "6 個月合計")
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(yearly ? "每月收支" : "近 6 個月收支").font(.headline)
                 Spacer()
                 legendDot(.red, "支出")
                 legendDot(.green, "收入")
             }
-            let peak: Double = t.reduce(1.0) { max($0, $1.expense, $1.income) }
+            trendHeader(headTitle, expense: sel?.expense ?? sumEx, income: sel?.income ?? sumIn)
             Chart {
                 ForEach(t) { p in
-                    trendMarks(p)
+                    trendMarks(p,
+                               labelExpense: sel == nil && p.month == peakEx,
+                               labelIncome: sel == nil && p.month == peakIn,
+                               dimmed: sel != nil && sel?.month != p.month)
+                }
+                if let s = sel {
+                    RuleMark(x: .value("月", s.month, unit: .month))
+                        .foregroundStyle(Color.secondary.opacity(0.25))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
             }
-            .chartYScale(domain: 0...(peak * 1.3))
+            .chartXSelection(value: $trendSel)
+            .chartYScale(domain: 0...(peak * 1.25))
             .chartXAxis {
                 AxisMarks(values: .stride(by: .month)) { _ in
-                    AxisValueLabel(format: .dateTime.month(.narrow))
+                    AxisValueLabel(format: .dateTime.month(.defaultDigits))
                 }
             }
             .chartYAxis(.hidden)
             .frame(height: 200)
+            .animation(.snappy, value: trendSel)
         }
         .cardStyle()
+    }
+
+    /// 走勢卡上方：合計或點到的月份
+    private func trendHeader(_ title: String, expense: Double, income: Double) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            HStack(spacing: 4) {
+                Text("支出").font(.caption2).foregroundStyle(.secondary)
+                Text(Money.format(expense, hidden: hidden)).font(.subheadline.weight(.semibold)).foregroundStyle(.red)
+            }
+            HStack(spacing: 4) {
+                Text("收入").font(.caption2).foregroundStyle(.secondary)
+                Text(Money.format(income, hidden: hidden)).font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+            }
+        }
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 
     // MARK: 指標
