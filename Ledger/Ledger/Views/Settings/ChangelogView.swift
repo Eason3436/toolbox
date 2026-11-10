@@ -14,6 +14,9 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.16.1", date: "2026-11-10", title: "修正儲存空間", items: [
+            "修正：儲存空間的「記帳資料」顯示 0 KB，改成直接量資料庫檔案",
+        ]),
         Release(version: "1.16.0", date: "2026-11-10", title: "儲存空間", items: [
             "設定 → 儲存空間：看 App 用了多少空間（記帳資料、快取、暫存檔等），可以一鍵清除快取",
             "消費分析切到「年」時不再顯示「星期幾花最多」",

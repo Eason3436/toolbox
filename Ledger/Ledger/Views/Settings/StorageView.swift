@@ -94,7 +94,8 @@ struct StorageView: View {
     private func refresh() async {
         loading = true
         entryCount = (try? context.fetchCount(FetchDescriptor<Entry>())) ?? 0
-        let result: [Part] = await Task.detached(priority: .userInitiated) { Self.measure() }.value
+        let storeURL: URL? = Store.container.configurations.first?.url
+        let result: [Part] = await Task.detached(priority: .userInitiated) { Self.measure(store: storeURL) }.value
         withAnimation(.snappy) {
             parts = result
             loading = false
@@ -118,7 +119,7 @@ struct StorageView: View {
         cleared = "已清出 \(Self.format(max(before - after, 0)))"
     }
 
-    nonisolated static func measure() -> [Part] {
+    nonisolated static func measure(store: URL?) -> [Part] {
         let fm = FileManager.default
         let home = URL(fileURLWithPath: NSHomeDirectory())
         let support: URL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -127,12 +128,15 @@ struct StorageView: View {
         let docs: URL = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
         let app: Int64 = size(of: Bundle.main.bundleURL)
-        let db: Int64 = size(of: support)
+        // 資料庫實際位置由 SwiftData 決定（裝在 LiveContainer 裡時不一定在 App 自己的資料夾）
+        let db: Int64 = store.map(storeSize) ?? size(of: support)
+        let homePath: String = home.standardizedFileURL.resolvingSymlinksInPath().path
+        let dbInHome: Bool = store.map { $0.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(homePath) } ?? true
         let cache: Int64 = size(of: caches)
         let temp: Int64 = size(of: tmp)
         let doc: Int64 = size(of: docs)
         let all: Int64 = size(of: home)
-        let other: Int64 = max(all - db - cache - temp - doc, 0)
+        let other: Int64 = max(all - (dbInHome ? db : 0) - cache - temp - doc, 0)
 
         return [
             Part(id: "app", name: "App 本身", symbol: "app.fill", color: .gray, bytes: app, note: "安裝檔"),
@@ -144,7 +148,26 @@ struct StorageView: View {
         ]
     }
 
+    /// 資料庫檔案本身，加上 -wal、-shm 和存大型欄位的 .xxx_SUPPORT 資料夾
+    nonisolated static func storeSize(_ url: URL) -> Int64 {
+        let dir: URL = url.deletingLastPathComponent()
+        let name: String = url.lastPathComponent
+        let base: String = url.deletingPathExtension().lastPathComponent
+        let items: [URL] = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        var total: Int64 = 0
+        for f in items {
+            let n: String = f.lastPathComponent
+            guard n.hasPrefix(name) || n == "." + base + "_SUPPORT" else { continue }
+            total += size(of: f)
+        }
+        return total
+    }
+
     nonisolated static func size(of url: URL) -> Int64 {
+        let one: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isRegularFileKey]
+        if let v = try? url.resourceValues(forKeys: one), v.isRegularFile == true {
+            return Int64(v.totalFileAllocatedSize ?? v.fileAllocatedSize ?? 0)
+        }
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isRegularFileKey]
         guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
         var total: Int64 = 0
