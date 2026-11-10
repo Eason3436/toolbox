@@ -14,6 +14,10 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.15.2", date: "2026-11-10", title: "收入結餘、收支走勢重新排版", items: [
+            "消費分析：收入和結餘合成一張卡片，數字放大，下面用橫條比較收入和支出",
+            "收支走勢：金額只標在最高的月份，不再擠成一團；點一下月份，上方顯示那個月的支出和收入",
+        ]),
         Release(version: "1.15.1", date: "2026-11-10", title: "字改回原本大小", items: [
             "整個 App 的字、記帳紀錄和訂閱卡片的字改回原本的大小",
         ]),
