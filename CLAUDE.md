@@ -100,4 +100,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - 盡量用 Apple 原生框架，不加第三方套件（例外要先問使用者，例如 PulsoIcon）
 - App 圖示用 Icon Composer 格式（`AppIcon.icon`，Liquid Glass）
 - 使用者喜歡 Apple 原生、HIG 風格的介面，不要「AI 感」
+- 動畫要有目的（回饋、引導、維持空間脈絡），時間要短，而且可以中斷（用 SwiftUI 的 spring／`withAnimation`，不要用固定延遲串動畫）
+- 方向用 leading／trailing，不要用 left／right；有方向性的圖示（返回、播放進度、箭頭）要能在 RTL 語系鏡像。數字、金額、日期與時間軸用 `formatted()`／`FormatStyle` 依語系處理，不要手動拼字串
+- 觸覺回饋用系統的 `sensoryFeedback`／`UIFeedbackGenerator`（success、warning、error、selection、impact），要跟視覺事件同步，不要過度使用
 - Bundle ID 前綴 `com.eason3436.`

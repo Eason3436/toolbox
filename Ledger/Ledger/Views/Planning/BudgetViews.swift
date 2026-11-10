@@ -133,11 +133,11 @@ struct BudgetDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 HStack {
-                    Button { withAnimation(.snappy) { offset -= 1 } } label: { Image(systemName: "chevron.left").frame(width: 40, height: 40) }
+                    Button { withAnimation(.snappy) { offset -= 1 } } label: { Image(systemName: "chevron.backward").frame(width: 40, height: 40) }
                     Spacer()
                     Text(label(interval)).font(.headline).contentTransition(.numericText())
                     Spacer()
-                    Button { withAnimation(.snappy) { offset = min(offset + 1, 0) } } label: { Image(systemName: "chevron.right").frame(width: 40, height: 40) }
+                    Button { withAnimation(.snappy) { offset = min(offset + 1, 0) } } label: { Image(systemName: "chevron.forward").frame(width: 40, height: 40) }
                         .disabled(offset >= 0)
                 }
                 .padding(.horizontal, 8)
@@ -204,14 +204,11 @@ struct BudgetDetailView: View {
     }
 
     private func label(_ iv: DateInterval) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
         switch budget.period {
-        case .weekly: f.dateFormat = "M/d"
-        case .monthly: f.dateFormat = "M月"
-        case .yearly: f.dateFormat = "yyyy"
+        case .weekly: DateText.localized(iv.start, "Md")
+        case .monthly: DateText.month(iv.start)
+        case .yearly: DateText.localized(iv.start, "y")
         }
-        return f.string(from: iv.start)
     }
 }
 

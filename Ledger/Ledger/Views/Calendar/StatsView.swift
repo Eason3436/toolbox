@@ -65,13 +65,13 @@ struct StatsView: View {
 
                 HStack {
                     Button { withAnimation(.snappy) { anchor = cal.date(byAdding: yearly ? .year : .month, value: -1, to: anchor)! } } label: {
-                        Image(systemName: "chevron.left").frame(width: 40, height: 40)
+                        Image(systemName: "chevron.backward").frame(width: 40, height: 40)
                     }
                     Spacer()
                     Text(title).font(.headline).contentTransition(.numericText())
                     Spacer()
                     Button { withAnimation(.snappy) { anchor = cal.date(byAdding: yearly ? .year : .month, value: 1, to: anchor)! } } label: {
-                        Image(systemName: "chevron.right").frame(width: 40, height: 40)
+                        Image(systemName: "chevron.forward").frame(width: 40, height: 40)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -190,8 +190,7 @@ struct StatsView: View {
     }
 
     private var title: String {
-        let c = cal.dateComponents([.year, .month], from: anchor)
-        return yearly ? "\(String(c.year ?? 2026))年" : "\(String(c.year ?? 2026))年\(c.month ?? 1)月"
+        DateText.localized(anchor, yearly ? "y" : "yMMMM")
     }
 
     private func tile(_ title: String, _ v: Double, _ color: Color) -> some View {

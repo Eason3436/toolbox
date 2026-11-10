@@ -166,8 +166,7 @@ struct CalendarView: View {
     }
 
     private func yearMonth(_ d: Date) -> String {
-        let c = cal.dateComponents([.year, .month], from: d)
-        return "\(String(c.year ?? 2026))年\(c.month ?? 1)月"
+        DateText.monthTitle(d)
     }
 
     private func legend(maxAbs: Double) -> some View {
@@ -301,10 +300,7 @@ struct CalendarView: View {
     }
 
     private func dayTitle(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
-        f.dateFormat = "EEE, M月d日"
-        return f.string(from: d)
+        DateText.dueText(d)
     }
 }
 
@@ -409,10 +405,10 @@ struct HeatStrip: View {
     private func monthLabel(_ weeks: [[Date]], _ i: Int) -> String {
         // 這一週包含某月 1 號就標示月份
         guard let first = weeks[i].first(where: { cal.component(.day, from: $0) == 1 && range.contains($0) }) else {
-            if i == 0, let d = weeks[0].first(where: { range.contains($0) }) { return "\(cal.component(.month, from: d))月" }
+            if i == 0, let d = weeks[0].first(where: { range.contains($0) }) { return DateText.month(d) }
             return ""
         }
-        return "\(cal.component(.month, from: first))月"
+        return DateText.month(first)
     }
 
     private func isCurrentMonthLabel(_ weeks: [[Date]], _ i: Int) -> Bool {

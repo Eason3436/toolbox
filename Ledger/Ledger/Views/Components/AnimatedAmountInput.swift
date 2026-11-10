@@ -184,7 +184,7 @@ struct AmountKeypad: View {
         case .decimal:
             Text(Locale.current.decimalSeparator ?? ".").font(.system(size: 30, weight: .medium, design: .rounded))
         case .delete:
-            Image(systemName: "delete.left").font(.system(size: 24, weight: .medium))
+            Image(systemName: "delete.backward").font(.system(size: 24, weight: .medium))
         }
     }
 
