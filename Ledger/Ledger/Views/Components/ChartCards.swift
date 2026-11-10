@@ -124,7 +124,7 @@ struct ValueLineCard: View {
             .frame(height: 170)
             .opacity(points.count > 1 ? 1 : 0.3)
             .animation(.easeInOut(duration: 0.35), value: points)
-            .sensoryFeedback(.selection, trigger: selected?.date)
+            .selectionHaptic(trigger: selected?.date)
 
             RangeButtons(range: $range)
         }
@@ -233,7 +233,7 @@ struct CategoryDonutCard: View {
         .cardStyle()
         .animation(.snappy, value: income)
         .animation(.spring(duration: 0.4, bounce: 0.25), value: selectedID)
-        .sensoryFeedback(.selection, trigger: selectedID)
+        .selectionHaptic(trigger: selectedID)
         .onChange(of: income) { selectedID = nil }
         .sheet(item: $opened) { EntryDetailView(entry: $0) }
     }

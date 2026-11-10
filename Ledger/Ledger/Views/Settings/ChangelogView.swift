@@ -14,6 +14,12 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.13.0", date: "2026-11-10", title: "觸覺回饋設定", items: [
+            "設定 → 觸覺回饋：可以調整強度，放開滑桿會試震",
+            "數字滾動、圖示動畫、金額鍵盤、記帳完成、刪除、選取與切換、其他，各自可以開關",
+            "預設震動加強，強度調高時手感也更清楚",
+            "切換分頁、拖曳圖表、選日期的震動也跟著強度設定",
+        ]),
         Release(version: "1.12.0", date: "2026-11-10", title: "擬真觸覺回饋", items: [
             "數字滾動時會像機械計數器一樣一格一格地震，停住時「喀」一聲",
             "線條圖示播動畫時跟著震：鈴鐺左右敲、愛心撲通撲通、蓋章重重一下、掉下來「咚」…每個圖示依自己的動作",

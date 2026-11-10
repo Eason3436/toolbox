@@ -332,7 +332,7 @@ struct SpendingInsightView: View {
             .chartYAxis(.hidden)
             .chartXAxis { AxisMarks(values: [1, 8, 15, 22, 29]) { AxisValueLabel() } }
             .frame(height: 150)
-            .sensoryFeedback(.selection, trigger: pickedDay)
+            .selectionHaptic(trigger: pickedDay)
         }
         .cardStyle()
     }

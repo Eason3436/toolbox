@@ -631,7 +631,7 @@ struct AccountCarousel: View {
             .padding(.horizontal, 2).padding(.vertical, 2)
         }
         .scrollClipDisabled()
-        .sensoryFeedback(.selection, trigger: selectedID)
+        .selectionHaptic(trigger: selectedID)
     }
 }
 
