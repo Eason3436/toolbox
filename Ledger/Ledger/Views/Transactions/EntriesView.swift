@@ -179,7 +179,7 @@ struct EntriesView: View {
                                 .buttonStyle(.plain)
                                 .swipeActions {
                                     Button("刪除", systemImage: "trash", role: .destructive) {
-                                        context.delete(e)
+                                        Haptics.shared.trash(); context.delete(e)
                                         try? context.save()
                                     }
                                 }

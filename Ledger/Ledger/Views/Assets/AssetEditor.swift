@@ -133,7 +133,7 @@ struct AssetEditor: View {
             }
             .confirmationDialog("確定刪除？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    if let asset { context.delete(asset); try? context.save() }
+                    if let asset { Haptics.shared.trash(); context.delete(asset); try? context.save() }
                     dismiss()
                 }
             }

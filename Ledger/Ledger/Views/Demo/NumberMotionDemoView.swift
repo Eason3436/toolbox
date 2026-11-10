@@ -30,7 +30,6 @@ struct ContentView: View {
                         demoButton("+137") { counter += 137 }
                         demoButton("隨機") { counter = Double(Int.random(in: 0...99_999)) }
                     }
-                    .sensoryFeedback(.selection, trigger: counter)
                 }
                 .cardStyle()
             }
