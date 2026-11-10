@@ -14,6 +14,9 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.15.1", date: "2026-11-10", title: "字改回原本大小", items: [
+            "整個 App 的字、記帳紀錄和訂閱卡片的字改回原本的大小",
+        ]),
         Release(version: "1.15.0", date: "2026-11-09", title: "字變大、卡片排序", items: [
             "整個 App 的字放大一級；記帳紀錄的名稱和金額更大、更清楚",
             "消費分析的收支走勢直接標出每個月的支出和收入金額",

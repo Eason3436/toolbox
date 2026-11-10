@@ -470,13 +470,13 @@ struct BillTile: View {
                 HStack(spacing: 12) {
                     BillLogo(bill: occ.bill, size: 44)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(occ.bill.name).font(.body.weight(.semibold)).lineLimit(1)
-                        Text(BillDates.dueText(occ)).font(.footnote).foregroundStyle(subColor).lineLimit(1)
+                        Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(BillDates.dueText(occ)).font(.caption).foregroundStyle(subColor).lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(amountText)
-                            .font(.system(.title2, design: .rounded).weight(.bold)).monospacedDigit()
+                            .font(.headline).monospacedDigit()
                             .foregroundStyle(amountColor)
                             .lineLimit(1).minimumScaleFactor(0.7)
                         HStack(spacing: 4) {
@@ -517,16 +517,16 @@ struct BillTile: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(occ.bill.name).font(.body.weight(.semibold)).lineLimit(1)
-                Text(BillDates.dueText(occ)).font(.footnote).foregroundStyle(subColor).lineLimit(1)
+                Text(occ.bill.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(BillDates.dueText(occ)).font(.caption).foregroundStyle(subColor).lineLimit(1)
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(amountText)
-                    .font(.system(.title2, design: .rounded).weight(.bold)).monospacedDigit()
+                    .font(.headline).monospacedDigit()
                     .foregroundStyle(amountColor)
                     .lineLimit(1).minimumScaleFactor(0.7)
                 Spacer(minLength: 2)
-                Text(occ.bill.recurrence.label).font(.caption).foregroundStyle(.secondary)
+                Text(occ.bill.recurrence.label).font(.caption2).foregroundStyle(.secondary)
             }
         }
     }
