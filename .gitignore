@@ -7,3 +7,5 @@ xcuserdata/
 Screenshots/Screenshots.xcodeproj/
 Ledger/Ledger.xcodeproj/
 Ledger/Ledger/Info.plist
+LiveContainer/LiveActivityWidget/LCLiveActivity.xcodeproj/
+LiveContainer/LiveActivityWidget/Info.plist
