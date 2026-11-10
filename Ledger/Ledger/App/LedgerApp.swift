@@ -89,7 +89,7 @@ struct RootView: View {
         }
         // 系統字級調很大時，卡片裡的字也不會跟著無限放大
         .dynamicTypeSize(...DynamicTypeSize.large)
-        .sensoryFeedback(.selection, trigger: tab)
+        .selectionHaptic(trigger: tab)
         .sheet(isPresented: $showAdd) {
             // 一般的整頁卡片滑上／滑下：往下拉時整張卡片跟著手指走，不會縮成小方塊、內容也不會被裁掉
             addSheet
@@ -241,11 +241,11 @@ struct AddFloatingButton: View {
         .menuOrder(.fixed)
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
-        .sensoryFeedback(.impact(weight: .medium), trigger: bounce)
         .accessibilityLabel("新增")
     }
 
     private func pick(_ start: AddStart) {
+        Haptics.shared.press()
         bounce += 1
         action(start)
     }

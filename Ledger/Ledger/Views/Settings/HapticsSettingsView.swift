@@ -1,0 +1,90 @@
+import SwiftUI
+
+/// 設定 → 觸覺回饋：總開關、強度、各項開關（打開時會試震一下）
+struct HapticsSettingsView: View {
+    @AppStorage(Haptics.enabledKey) private var enabled = true
+    @AppStorage(Haptics.strengthKey) private var strength = Haptics.defaultStrength
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(isOn: $enabled) {
+                    Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                }
+                .onChange(of: enabled) { _, on in
+                    if on { Haptics.shared.sample(nil) }
+                }
+            }
+
+            if enabled {
+                Section {
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("強度")
+                            Spacer()
+                            Text(strengthLabel).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        Slider(value: $strength, in: Haptics.strengthRange, step: 0.1) {
+                            Text("強度")
+                        } minimumValueLabel: {
+                            Image(systemName: "iphone.gen3").font(.footnote).foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Image(systemName: "iphone.gen3.radiowaves.left.and.right").foregroundStyle(.secondary)
+                        } onEditingChanged: { editing in
+                            if !editing { Haptics.shared.sample(nil) }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Button("試震") { Haptics.shared.sample(nil) }
+                    if strength != Haptics.defaultStrength {
+                        Button("回復預設強度") {
+                            strength = Haptics.defaultStrength
+                            Haptics.shared.sample(nil)
+                        }
+                    }
+                } footer: {
+                    Text("放開滑桿會試震一下。")
+                }
+
+                Section("各項震動") {
+                    ForEach(HapticKind.allCases) { kind in
+                        HapticKindToggle(kind: kind)
+                    }
+                }
+            }
+        }
+        .navigationTitle("觸覺回饋")
+        .navigationBarTitleDisplayMode(.inline)
+        .animation(.snappy, value: enabled)
+    }
+
+    private var strengthLabel: String {
+        "\(Int((strength / Haptics.defaultStrength * 100).rounded()))%"
+    }
+}
+
+private struct HapticKindToggle: View {
+    var kind: HapticKind
+    @AppStorage private var on: Bool
+
+    init(kind: HapticKind) {
+        self.kind = kind
+        _on = AppStorage(wrappedValue: true, kind.key)
+    }
+
+    var body: some View {
+        Toggle(isOn: $on) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(kind.label)
+                    Text(kind.detail).font(.caption).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: kind.symbol)
+            }
+        }
+        .onChange(of: on) { _, isOn in
+            if isOn { Haptics.shared.sample(kind) }
+        }
+    }
+}

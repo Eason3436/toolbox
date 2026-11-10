@@ -124,7 +124,7 @@ struct ThemePicker: View {
             }
         }
         .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: picked)
+        .selectionHaptic(trigger: picked)
     }
 }
 

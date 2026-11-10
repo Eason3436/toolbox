@@ -190,14 +190,13 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle(isOn: $hapticsEnabled) {
-                        Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                    NavigationLink { HapticsSettingsView() } label: {
+                        LabeledContent {
+                            Text(hapticsEnabled ? "開啟" : "關閉")
+                        } label: {
+                            Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                        }
                     }
-                    .onChange(of: hapticsEnabled) { _, on in
-                        if on { Haptics.shared.icon(.bellRing, size: 28) }
-                    }
-                } footer: {
-                    Text("數字滾動、圖示動畫、鍵盤、刪除和記帳完成時的震動。")
                 }
 
                 Section {

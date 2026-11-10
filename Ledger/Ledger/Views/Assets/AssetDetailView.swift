@@ -338,7 +338,7 @@ struct AssetDetailView: View {
                 .animation(.easeInOut(duration: 0.35), value: points.count)
             }
             .frame(height: 220)
-            .sensoryFeedback(.selection, trigger: selectedPoint?.date)
+            .selectionHaptic(trigger: selectedPoint?.date)
 
             HStack(spacing: 6) {
                 ForEach(PriceRange.allCases) { r in
