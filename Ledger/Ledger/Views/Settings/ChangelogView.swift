@@ -14,6 +14,12 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.11.2", date: "2026-11-10", title: "日期、箭頭與觸覺回饋", items: [
+            "日期和月份依手機語系顯示，時間跟著 12／24 小時制設定",
+            "上個月／下個月和列表箭頭改用會跟語言方向翻轉的圖示",
+            "標記帳單已繳時有成功的震動；一句話記帳看不出金額時有提醒震動",
+            "開啟「減少動態效果」時，記帳完成改成淡出，不飛進動態島",
+        ]),
         Release(version: "1.11.1", date: "2026-11-10", title: "移除自動推測備註", items: [
             "從通知記帳不再自動在備註加上「推測：…」；分類一樣會參考以前同一家店的紀錄",
         ]),

@@ -31,6 +31,8 @@ struct IslandSuckView: View {
     private enum Stage { case card, flying, island, expanded, gone }
     @State private var stage: Stage = .card
     @State private var bump = 0
+    @State private var faded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 有動態島的機型，上方安全區域大約 54pt 以上
     private var topInset: CGFloat {
@@ -88,6 +90,7 @@ struct IslandSuckView: View {
             .position(x: W / 2, y: frame.y)
             .opacity(stage == .gone && !hasIsland ? 0 : 1)
         }
+        .opacity(faded ? 0 : 1)
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .sensoryFeedback(.success, trigger: bump)
@@ -95,6 +98,15 @@ struct IslandSuckView: View {
     }
 
     private func run() async {
+        // 減少動態效果：不飛，只淡出，觸覺回饋照樣給
+        if reduceMotion {
+            bump += 1
+            try? await Task.sleep(for: .milliseconds(500))
+            withAnimation(.easeOut(duration: 0.2)) { faded = true }
+            try? await Task.sleep(for: .milliseconds(200))
+            onFinish()
+            return
+        }
         try? await Task.sleep(for: .milliseconds(60))
         // 先往上加速縮小
         withAnimation(.timingCurve(0.5, 0, 0.85, 0.4, duration: 0.32)) { stage = .flying }
@@ -105,7 +117,7 @@ struct IslandSuckView: View {
         // 島展開顯示「已記帳」
         bump += 1
         withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { stage = .expanded }
-        try? await Task.sleep(for: .milliseconds(1000))
+        try? await Task.sleep(for: .milliseconds(800))
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { stage = .gone }
         try? await Task.sleep(for: .milliseconds(400))
         onFinish()

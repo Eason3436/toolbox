@@ -149,6 +149,7 @@ struct PortfolioInsightView: View {
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "arrow.turn.down.right")
+                                .flipsForRightToLeftLayoutDirection(true)
                             Text(q).multilineTextAlignment(.leading)
                         }
                         .font(.subheadline.weight(.semibold))

@@ -227,7 +227,7 @@ struct MerchantSummaryCard: View {
                         }
                         Text("在「\(displayName)」").font(.headline).lineLimit(1)
                         Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        Image(systemName: "chevron.forward").foregroundStyle(.secondary)
                     }
                     HStack(alignment: .top) {
                         stat(totalTitle, total)
@@ -254,7 +254,7 @@ struct MerchantSummaryCard: View {
                 }
                 Text(displayName).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.forward").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
             }
             Spacer(minLength: 6)
             VStack(alignment: .leading, spacing: 2) {
@@ -447,7 +447,7 @@ struct MerchantDetailView: View {
             .mapValues { $0.reduce(0) { $0 + $1.amount } }
         let byMonth: [(label: String, total: Double, current: Bool)] = (0..<6).reversed().compactMap { back in
             guard let m = cal.date(byAdding: .month, value: -back, to: thisMonth) else { return nil }
-            return ("\(cal.component(.month, from: m))月", sums[m] ?? 0, back == 0)
+            return (DateText.month(m), sums[m] ?? 0, back == 0)
         }
         return VStack(alignment: .leading, spacing: 8) {
             Text("最近 6 個月").font(.caption).foregroundStyle(.secondary)

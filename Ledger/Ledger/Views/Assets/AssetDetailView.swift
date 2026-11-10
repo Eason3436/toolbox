@@ -91,7 +91,7 @@ struct AssetDetailView: View {
                                     Text("解讀這檔和你的整體配置").font(.subheadline).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                                Image(systemName: "chevron.forward").foregroundStyle(.secondary)
                             }
                             .foregroundStyle(.primary)
                             .cardStyle(padding: 18)
