@@ -14,6 +14,9 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.11.1", date: "2026-11-10", title: "移除自動推測備註", items: [
+            "從通知記帳不再自動在備註加上「推測：…」；分類一樣會參考以前同一家店的紀錄",
+        ]),
         Release(version: "1.11.0", date: "2026-11-08", title: "地點搜尋、連鎖店圖示", items: [
             "更改地點的搜尋改成邊打邊出結果，找不到也可以直接用打的名稱當分店名",
             "修正：有時打開更改地點後無法搜尋",
