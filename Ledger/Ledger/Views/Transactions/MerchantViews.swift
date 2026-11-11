@@ -303,6 +303,8 @@ struct MerchantDetailView: View {
     @State private var opened: Entry?
     /// 空字串＝全部分店
     @State private var branch = ""
+    /// 月份長條選中的月（空字串＝這個月）
+    @State private var pickedMonth = ""
 
     private static let noBranch = "未標注"
 
@@ -440,36 +442,20 @@ struct MerchantDetailView: View {
     }
 
     private func monthChart(_ spent: [Entry]) -> some View {
-        // 最近 6 個月（沒花的月份補 0），用「10月」這種文字當橫軸，柱子固定寬度
+        // 最近 6 個月（沒花的月份補 0），預設選這個月，點長條看其他月
         let cal = Calendar.current
         let thisMonth = DateText.monthInterval(.now).start
         let sums = Dictionary(grouping: spent) { DateText.monthInterval($0.date).start }
             .mapValues { $0.reduce(0) { $0 + $1.amount } }
-        let byMonth: [(label: String, total: Double, current: Bool)] = (0..<6).reversed().compactMap { back in
+        let bars: [CapsuleBar] = (0..<6).reversed().compactMap { back in
             guard let m = cal.date(byAdding: .month, value: -back, to: thisMonth) else { return nil }
-            return (DateText.month(m), sums[m] ?? 0, back == 0)
+            return CapsuleBar(id: back == 0 ? "" : DateText.month(m), label: DateText.month(m), value: sums[m] ?? 0)
         }
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("最近 6 個月").font(.caption).foregroundStyle(.secondary)
-            Chart(byMonth, id: \.label) { m in
-                BarMark(x: .value("月份", m.label), y: .value("金額", m.total), width: .fixed(22))
-                    .foregroundStyle(m.current ? Color.accentColor : Color.accentColor.opacity(0.35))
-                    .cornerRadius(6)
-                    .annotation(position: .top, spacing: 4) {
-                        if m.total > 0 {
-                            Text(Money.format(m.total, hidden: hidden))
-                                .font(.caption2.weight(.semibold)).monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-            }
-            .chartYAxis(.hidden)
-            .chartXAxis {
-                AxisMarks { _ in AxisValueLabel().font(.caption2) }
-            }
-            .frame(height: 120)
+        let name = displayName
+        return CapsuleBarCard(bars: bars, selection: $pickedMonth, hidden: hidden) { bar in
+            bar.id.isEmpty ? "這個月在\(name)" : "\(bar.label)在\(name)"
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
 
     private func branchRow(_ b: BranchStat, maxTotal: Double) -> some View {
