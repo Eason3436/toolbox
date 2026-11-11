@@ -293,7 +293,7 @@ struct BudgetEditor: View {
             }
             .confirmationDialog("確定刪除預算？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    if let budget { context.delete(budget); try? context.save() }
+                    if let budget { Haptics.shared.trash(); context.delete(budget); try? context.save() }
                     dismiss()
                 }
             }

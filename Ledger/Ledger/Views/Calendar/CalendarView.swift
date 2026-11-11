@@ -154,7 +154,7 @@ struct CalendarView: View {
             }
             .sheet(item: $editing) { EntryDetailView(entry: $0) }
             .sheet(isPresented: $showStats) { NavigationStack { StatsView() } }
-            .sensoryFeedback(.selection, trigger: selectedDay)
+            .selectionHaptic(trigger: selectedDay)
         }
     }
 

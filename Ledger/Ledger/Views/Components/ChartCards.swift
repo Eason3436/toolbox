@@ -57,7 +57,7 @@ struct ValueLineCard: View {
                         .contentTransition(.opacity)
                     if let selected {
                         MoneyText(value: selected.value, currency: currency, hidden: hidden,
-                                  font: .title3.weight(.semibold), rollsOnAppear: false)
+                                  font: .title3.weight(.semibold), rollsOnAppear: false, haptics: false)
                     } else {
                         HStack(spacing: 4) {
                             Text(Money.format(change, currency: currency, hidden: hidden, signed: true))
@@ -124,7 +124,7 @@ struct ValueLineCard: View {
             .frame(height: 170)
             .opacity(points.count > 1 ? 1 : 0.3)
             .animation(.easeInOut(duration: 0.35), value: points)
-            .sensoryFeedback(.selection, trigger: selected?.date)
+            .selectionHaptic(trigger: selected?.date)
 
             RangeButtons(range: $range)
         }
@@ -233,7 +233,7 @@ struct CategoryDonutCard: View {
         .cardStyle()
         .animation(.snappy, value: income)
         .animation(.spring(duration: 0.4, bounce: 0.25), value: selectedID)
-        .sensoryFeedback(.selection, trigger: selectedID)
+        .selectionHaptic(trigger: selectedID)
         .onChange(of: income) { selectedID = nil }
         .sheet(item: $opened) { EntryDetailView(entry: $0) }
     }
@@ -274,7 +274,7 @@ struct CategoryDonutCard: View {
                 Text(picked?.name ?? (income ? "總收入" : "總支出"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 MoneyText(value: picked?.total ?? total, currency: currency, hidden: hidden,
-                          font: .headline.weight(.bold), rollsOnAppear: false)
+                          font: .headline.weight(.bold), rollsOnAppear: false, haptics: false)
                     .lineLimit(1).minimumScaleFactor(0.6)
             }
             .padding(.horizontal, 60)
@@ -386,7 +386,7 @@ private struct CategoryBreakdown: View {
                 }
                 Spacer()
                 MoneyText(value: slice.total, currency: currency, hidden: hidden,
-                          font: .headline, rollsOnAppear: false)
+                          font: .headline, rollsOnAppear: false, haptics: false)
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)

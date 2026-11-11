@@ -84,7 +84,7 @@ struct EntryDetailView: View {
             }
             .confirmationDialog("確定刪除這筆？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    context.delete(entry)
+                    Haptics.shared.trash(); context.delete(entry)
                     try? context.save()
                     dismiss()
                 }

@@ -130,7 +130,7 @@ struct BillEditor: View {
             }
             .confirmationDialog("確定刪除這個帳單？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    if let bill { context.delete(bill); try? context.save() }
+                    if let bill { Haptics.shared.trash(); context.delete(bill); try? context.save() }
                     dismiss()
                 }
             } message: {

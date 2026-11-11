@@ -13,6 +13,8 @@ struct AnimatedNumberText<F: FormatStyle>: View where F.FormatInput == Double, F
     var font: Font = .body
     var countsDown: Bool = false
     var rollsOnAppear: Bool = false
+    /// 滾動時跟著震（齒輪一格一格的手感）；列表裡的小數字、被圖表拖曳帶動的數字關掉
+    var haptics: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown: Double?
@@ -29,14 +31,22 @@ struct AnimatedNumberText<F: FormatStyle>: View where F.FormatInput == Double, F
             .onAppear {
                 guard rollsOnAppear else { return }
                 withAnimation(.snappy(duration: 0.6)) { shown = value }
+                rollHaptic(from: 0, to: value, duration: 0.6)
             }
             .onDisappear {
                 if rollsOnAppear { shown = 0 }
             }
-            .onChange(of: value) { _, newValue in
+            .onChange(of: value) { oldValue, newValue in
+                rollHaptic(from: oldValue, to: newValue, duration: 0.35)
                 guard rollsOnAppear else { return }
                 withAnimation(.snappy(duration: 0.35)) { shown = newValue }
             }
+    }
+
+    private func rollHaptic(from old: Double, to new: Double, duration: Double) {
+        guard haptics else { return }
+        // 減少動態效果時數字不滾，只輕輕一下
+        Haptics.shared.numberRoll(from: old, to: new, duration: reduceMotion ? 0.05 : duration)
     }
 
     private var transition: ContentTransition {
@@ -47,9 +57,9 @@ struct AnimatedNumberText<F: FormatStyle>: View where F.FormatInput == Double, F
 
 extension AnimatedNumberText where F == FloatingPointFormatStyle<Double> {
     /// 預設：千分位整數
-    init(value: Double, font: Font = .body, countsDown: Bool = false, rollsOnAppear: Bool = false) {
+    init(value: Double, font: Font = .body, countsDown: Bool = false, rollsOnAppear: Bool = false, haptics: Bool = true) {
         self.init(value: value, format: .number.precision(.fractionLength(0)).grouping(.automatic),
-                  font: font, countsDown: countsDown, rollsOnAppear: rollsOnAppear)
+                  font: font, countsDown: countsDown, rollsOnAppear: rollsOnAppear, haptics: haptics)
     }
 }
 
@@ -71,17 +81,21 @@ struct MoneyText: View {
     var signed: Bool = false
     var font: Font = .body
     var rollsOnAppear: Bool = true
+    var haptics: Bool = true
 
     /// 設定裡可以關掉「進頁面時數字從 0 滾上來」
     @AppStorage(HomeLayout.rollNumbersKey) private var rollPref = true
 
     var body: some View {
-        if hidden {
-            Text("••••").font(font).contentTransition(.opacity)
-        } else {
-            AnimatedNumberText(value: value, format: MoneyFormatStyle(currency: currency, signed: signed),
-                               font: font, rollsOnAppear: rollsOnAppear && rollPref)
+        Group {
+            if hidden {
+                Text("••••").font(font).contentTransition(.opacity)
+            } else {
+                AnimatedNumberText(value: value, format: MoneyFormatStyle(currency: currency, signed: signed),
+                                   font: font, rollsOnAppear: rollsOnAppear && rollPref, haptics: haptics)
+            }
         }
+        .onChange(of: hidden) { Haptics.shared.shutter() }
     }
 }
 

@@ -302,7 +302,7 @@ struct AccountsView: View {
                                         Text("\(m.count) 次").font(.caption).foregroundStyle(.secondary)
                                         Spacer()
                                         MoneyText(value: m.total, currency: account.currency, hidden: hidden,
-                                                  font: .subheadline.weight(.semibold))
+                                                  font: .subheadline.weight(.semibold), haptics: false)
                                     }
                                     GeometryReader { g in
                                         Capsule().fill(m.color.opacity(0.85))
@@ -631,7 +631,7 @@ struct AccountCarousel: View {
             .padding(.horizontal, 2).padding(.vertical, 2)
         }
         .scrollClipDisabled()
-        .sensoryFeedback(.selection, trigger: selectedID)
+        .selectionHaptic(trigger: selectedID)
     }
 }
 

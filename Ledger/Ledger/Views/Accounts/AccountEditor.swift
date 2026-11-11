@@ -82,11 +82,11 @@ struct AccountEditor: View {
             }
             .confirmationDialog("刪除「\(account?.name ?? "")」？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("只刪帳戶，保留交易", role: .destructive) {
-                    if let account { Store.delete(account, withEntries: false, context: context) }
+                    if let account { Haptics.shared.trash(); Store.delete(account, withEntries: false, context: context) }
                     dismiss()
                 }
                 Button("連同 \(account?.entries?.count ?? 0) 筆交易一起刪除", role: .destructive) {
-                    if let account { Store.delete(account, withEntries: true, context: context) }
+                    if let account { Haptics.shared.trash(); Store.delete(account, withEntries: true, context: context) }
                     dismiss()
                 }
             } message: {
@@ -204,11 +204,11 @@ struct AccountDeleteDialog: ViewModifier {
                                    isPresented: Binding(get: { account != nil }, set: { if !$0 { account = nil } }),
                                    titleVisibility: .visible) {
             Button("只刪帳戶，保留交易", role: .destructive) {
-                if let account { withAnimation { Store.delete(account, withEntries: false, context: context) } }
+                if let account { withAnimation { Haptics.shared.trash(); Store.delete(account, withEntries: false, context: context) } }
                 account = nil
             }
             Button("連同 \(account?.entries?.count ?? 0) 筆交易一起刪除", role: .destructive) {
-                if let account { withAnimation { Store.delete(account, withEntries: true, context: context) } }
+                if let account { withAnimation { Haptics.shared.trash(); Store.delete(account, withEntries: true, context: context) } }
                 account = nil
             }
         } message: {
