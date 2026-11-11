@@ -124,14 +124,14 @@ struct SpendingInsightView: View {
     private func monthSwitcher(_ month: DateInterval) -> some View {
         HStack {
             Button { anchor = cal.date(byAdding: .month, value: -1, to: anchor) ?? anchor } label: {
-                Image(systemName: "chevron.left").frame(width: 34, height: 34)
+                Image(systemName: "chevron.backward").frame(width: 34, height: 34)
             }
             .buttonStyle(.glass).buttonBorderShape(.circle)
             Spacer()
             Text(DateText.monthTitle(month.start)).font(.headline).contentTransition(.numericText())
             Spacer()
             Button { anchor = cal.date(byAdding: .month, value: 1, to: anchor) ?? anchor } label: {
-                Image(systemName: "chevron.right").frame(width: 34, height: 34)
+                Image(systemName: "chevron.forward").frame(width: 34, height: 34)
             }
             .buttonStyle(.glass).buttonBorderShape(.circle)
             .disabled(month.contains(.now))
