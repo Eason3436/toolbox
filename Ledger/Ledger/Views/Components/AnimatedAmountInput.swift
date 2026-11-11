@@ -268,9 +268,6 @@ struct AmountKeypadPanel: View {
     @Binding var pad: AmountPad
     var submit: KeypadSubmit? = nil
 
-    @State private var submitFrame: CGRect = .zero
-    @State private var touch: CGPoint?
-
     var body: some View {
         VStack(spacing: 6) {
             Button {
@@ -286,7 +283,7 @@ struct AmountKeypadPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel("收合鍵盤")
             AmountKeypad(onKey: press)
-            if let submit { submitButton(submit) }
+            if let submit { KeypadSubmitButton(submit: submit).padding(.top, 4) }
         }
         .padding(.horizontal, 14)
         .padding(.top, 4)
@@ -301,27 +298,6 @@ struct AmountKeypadPanel: View {
         }
     }
 
-    private func submitButton(_ submit: KeypadSubmit) -> some View {
-        Button {
-            // 等同一次觸控的點擊手勢也記下位置後再送出
-            DispatchQueue.main.async {
-                let frame = submitFrame
-                let point = touch ?? CGPoint(x: frame.midX, y: frame.midY)
-                touch = nil
-                submit.action(frame, point)
-            }
-        } label: {
-            Text(submit.title)
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 34)
-        }
-        .buttonStyle(.glassProminent)
-        .disabled(!submit.enabled)
-        .padding(.top, 4)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { submitFrame = $0 }
-        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { touch = $0.location })
-    }
-
     private func press(_ key: AmountInputLogic.Key) {
         var l = AmountInputLogic(text: text)
         if l.press(key) {
@@ -334,12 +310,46 @@ struct AmountKeypadPanel: View {
     }
 }
 
+/// 「記下」這種寬按鈕；量自己的螢幕位置，連同手指位置交給 action
+struct KeypadSubmitButton: View {
+    var submit: KeypadSubmit
+
+    @State private var frame: CGRect = .zero
+    @State private var touch: CGPoint?
+
+    var body: some View {
+        Button {
+            // 等同一次觸控的點擊手勢也記下位置後再送出
+            DispatchQueue.main.async {
+                let f = frame
+                let point = touch ?? CGPoint(x: f.midX, y: f.midY)
+                touch = nil
+                submit.action(f, point)
+            }
+        } label: {
+            Text(submit.title)
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(!submit.enabled)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { touch = $0.location })
+    }
+}
+
 extension View {
     /// 把金額鍵盤貼在畫面底部（ScrollView / Form 上用）；submit 會在鍵盤下方加一顆寬按鈕
     func amountKeypad(text: Binding<String>, pad: Binding<AmountPad>, submit: KeypadSubmit? = nil) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             if pad.wrappedValue.visible {
                 AmountKeypadPanel(text: text, pad: pad, submit: submit)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let submit {
+                // 鍵盤收起來時，按鈕自己留在底部
+                KeypadSubmitButton(submit: submit)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
