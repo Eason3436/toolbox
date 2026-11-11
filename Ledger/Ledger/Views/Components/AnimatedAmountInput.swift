@@ -184,7 +184,7 @@ struct AmountKeypad: View {
         case .decimal:
             Text(Locale.current.decimalSeparator ?? ".").font(.system(size: 30, weight: .medium, design: .rounded))
         case .delete:
-            Image(systemName: "delete.left").font(.system(size: 24, weight: .medium))
+            Image(systemName: "delete.backward").font(.system(size: 24, weight: .medium))
         }
     }
 
@@ -234,15 +234,15 @@ struct AnimatedAmountInput: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .sensoryFeedback(.selection, trigger: text)
-        .sensoryFeedback(.error, trigger: errorCount)
     }
 
     private func press(_ key: AmountInputLogic.Key) {
         var l = logic
         if l.press(key) {
+            Haptics.shared.key(key)
             withAnimation(.snappy(duration: 0.3)) { text = l.text }
         } else {
+            Haptics.shared.reject()
             errorCount += 1
         }
     }
@@ -274,6 +274,7 @@ struct AmountKeypadPanel: View {
     var body: some View {
         VStack(spacing: 6) {
             Button {
+                Haptics.shared.slide(up: false)
                 withAnimation(.snappy(duration: 0.3)) { pad.visible = false }
             } label: {
                 Image(systemName: "chevron.compact.down")
@@ -298,8 +299,6 @@ struct AmountKeypadPanel: View {
                 .shadow(color: .black.opacity(0.08), radius: 12, y: -2)
                 .ignoresSafeArea(edges: .bottom)
         }
-        .sensoryFeedback(.selection, trigger: text)
-        .sensoryFeedback(.error, trigger: pad.errors)
     }
 
     private func submitButton(_ submit: KeypadSubmit) -> some View {
@@ -326,8 +325,10 @@ struct AmountKeypadPanel: View {
     private func press(_ key: AmountInputLogic.Key) {
         var l = AmountInputLogic(text: text)
         if l.press(key) {
+            Haptics.shared.key(key)
             withAnimation(.snappy(duration: 0.3)) { text = l.text }
         } else {
+            Haptics.shared.reject()
             pad.errors += 1
         }
     }
@@ -353,6 +354,7 @@ struct AmountField: View {
 
     var body: some View {
         Button {
+            Haptics.shared.slide(up: !pad.visible)
             withAnimation(.snappy(duration: 0.3)) { pad.visible.toggle() }
         } label: {
             AmountDisplay(logic: AmountInputLogic(text: text), currencyCode: currencyCode, errorCount: pad.errors)

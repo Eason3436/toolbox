@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var exportURL: URL?
     @State private var csvURL: URL?
     @AppStorage("lockEnabled") private var lockEnabled = false
+    @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @State private var importResult: String?
     @State private var importError: String?
     @State private var deletingAccount: Account?
@@ -189,6 +190,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink { HapticsSettingsView() } label: {
+                        LabeledContent {
+                            Text(hapticsEnabled ? "開啟" : "關閉")
+                        } label: {
+                            Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                        }
+                    }
+                }
+
+                Section {
                     NavigationLink { ChangelogView() } label: {
                         LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
                     }
@@ -335,7 +346,7 @@ struct CategoryManagerView: View {
                 try? context.save()
             }
             .onDelete { idx in
-                for i in idx { context.delete(list[i]) }
+                for i in idx { Haptics.shared.trash(); context.delete(list[i]) }
                 try? context.save()
             }
         }

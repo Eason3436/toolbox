@@ -91,7 +91,7 @@ struct AssetDetailView: View {
                                     Text("解讀這檔和你的整體配置").font(.subheadline).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                                Image(systemName: "chevron.forward").foregroundStyle(.secondary)
                             }
                             .foregroundStyle(.primary)
                             .cardStyle(padding: 18)
@@ -134,7 +134,7 @@ struct AssetDetailView: View {
             }
             .confirmationDialog("刪除「\(asset.name)」？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    context.delete(asset)
+                    Haptics.shared.trash(); context.delete(asset)
                     try? context.save()
                     dismiss()
                 }
@@ -338,7 +338,7 @@ struct AssetDetailView: View {
                 .animation(.easeInOut(duration: 0.35), value: points.count)
             }
             .frame(height: 220)
-            .sensoryFeedback(.selection, trigger: selectedPoint?.date)
+            .selectionHaptic(trigger: selectedPoint?.date)
 
             HStack(spacing: 6) {
                 ForEach(PriceRange.allCases) { r in
@@ -523,7 +523,7 @@ struct LotEditor: View {
                 if lot != nil {
                     Section {
                         Button("刪除這筆", role: .destructive) {
-                            if let lot { context.delete(lot) }
+                            if let lot { Haptics.shared.trash(); context.delete(lot) }
                             asset.lots?.removeAll { $0.id == lot?.id }
                             asset.recomputeFromLots()
                             try? context.save()

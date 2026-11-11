@@ -126,6 +126,15 @@ struct Chip: View {
         }
         .contentShape(.capsule)
         .animation(Motion.chip, value: selected)
+        .onChange(of: selected) {
+            // 線條圖示自己會跟著動畫震；其他（emoji、SF Symbol）彈一下
+            if !usesPulso { Haptics.shared.symbolBounce(size: 17) }
+        }
+    }
+
+    private var usesPulso: Bool {
+        guard let shownSymbol, !removable else { return false }
+        return LedgerIcon.pulso(for: shownSymbol) != nil
     }
 }
 
@@ -265,7 +274,7 @@ struct SummaryRow: View {
             Text(title).foregroundStyle(.secondary)
             Spacer()
             if let amount {
-                MoneyText(value: amount, currency: currency, hidden: hidden, font: .body.weight(.semibold))
+                MoneyText(value: amount, currency: currency, hidden: hidden, font: .body.weight(.semibold), haptics: false)
             } else {
                 Text(value).font(.body.weight(.semibold)).monospacedDigit()
             }
@@ -300,7 +309,7 @@ struct MonthStepper: View {
     var body: some View {
         HStack(spacing: 4) {
             Button { withAnimation(.snappy) { month = DateText.addMonths(month, -1) } } label: {
-                Image(systemName: "chevron.left").frame(width: 32, height: 40).contentShape(.rect)
+                Image(systemName: "chevron.backward").frame(width: 32, height: 40).contentShape(.rect)
             }
             // 放在 List 列裡時，三個按鈕要各自點得到（不然整列只觸發一個）
             .buttonStyle(.borderless)
@@ -319,7 +328,7 @@ struct MonthStepper: View {
             }
             .buttonStyle(.borderless)
             Button { withAnimation(.snappy) { month = DateText.addMonths(month, 1) } } label: {
-                Image(systemName: "chevron.right").frame(width: 32, height: 40).contentShape(.rect)
+                Image(systemName: "chevron.forward").frame(width: 32, height: 40).contentShape(.rect)
             }
             .buttonStyle(.borderless)
         }
