@@ -14,7 +14,7 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
-        Release(version: "1.12.0", date: "2026-11-11", title: "記下的波浪", items: [
+        Release(version: "1.14.0", date: "2026-11-11", title: "記下的波浪", items: [
             "記一筆的數字鍵盤下方多了「記下」鍵，按下後彩色波浪從按鈕往上掃過，換成已記帳的畫面",
             "右上角的打勾照舊，存好後吸進動態島",
             "開啟「減少動態效果」時改成淡入淡出",
