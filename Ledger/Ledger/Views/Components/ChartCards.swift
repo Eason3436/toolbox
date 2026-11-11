@@ -447,3 +447,147 @@ private struct CategoryBreakdown: View {
         }
     }
 }
+
+// MARK: - 膠囊長條卡片（標題、大金額、一排膠囊，選中的那根上漸層色）
+
+struct CapsuleBar: Identifiable, Equatable {
+    var id: String
+    var label: String
+    var value: Double
+    /// 超過預算之類：選中時改成紅色
+    var alert = false
+}
+
+/// 灰色膠囊襯底，選中的那根用主題色漸層。
+/// 進場時一根一根長出來；換選取時彩色膠囊滑過去、金額跟著滾動。點長條可以切換。
+struct CapsuleBarCard: View {
+    var bars: [CapsuleBar]
+    @Binding var selection: String
+    var tint: Color = .accentColor
+    var hidden: Bool = false
+    var caption: (CapsuleBar) -> String
+    var footnote: String? = nil
+    /// 參考線（例如預算），畫成虛線
+    var reference: Double? = nil
+    var chartHeight: CGFloat = 110
+
+    @Namespace private var ns
+    @State private var grown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var selected: CapsuleBar? { bars.first { $0.id == selection } ?? bars.last }
+    private var top: Double { max(bars.map(\.value).max() ?? 0, reference ?? 0, 1) }
+    private static let minHeight: CGFloat = 18
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let s = selected {
+                Text(caption(s))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.interpolate)
+                    .animation(.snappy, value: s.id)
+                MoneyText(value: s.value, hidden: hidden, font: .system(size: 36, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+            if let footnote {
+                Text(footnote).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            chart.padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if reduceMotion { grown = true } else {
+                // 下一個畫面才開始長，進場動畫才看得到
+                DispatchQueue.main.async { grown = true }
+            }
+        }
+    }
+
+    private var chart: some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
+                HStack(alignment: .bottom, spacing: 10) {
+                    ForEach(Array(bars.enumerated()), id: \.element.id) { i, bar in
+                        column(bar, index: i)
+                    }
+                }
+                if let reference, reference > 0 {
+                    referenceLine(reference)
+                }
+            }
+            .frame(height: chartHeight)
+            HStack(spacing: 10) {
+                ForEach(bars) { bar in
+                    Text(bar.label)
+                        .font(.caption2.weight(bar.id == selected?.id ? .semibold : .regular))
+                        .foregroundStyle(bar.id == selected?.id ? Color.primary : Color.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .animation(.snappy, value: selected?.id)
+        }
+    }
+
+    private func height(_ value: Double) -> CGFloat {
+        let h = CGFloat(value / top) * chartHeight
+        return max(Self.minHeight, h)
+    }
+
+    private func column(_ bar: CapsuleBar, index: Int) -> some View {
+        let isOn = bar.id == selected?.id
+        let h = grown ? height(bar.value) : Self.minHeight
+        return ZStack(alignment: .bottom) {
+            Capsule(style: .continuous)
+                .fill(bar.alert ? Color.red.opacity(0.14) : Color.primary.opacity(0.07))
+            if isOn {
+                Capsule(style: .continuous)
+                    .fill(gradient(bar.alert ? .red : tint))
+                    .matchedGeometryEffect(id: "selected", in: ns)
+            }
+        }
+        .frame(maxWidth: 30)
+        .frame(height: h)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.78).delay(grown ? Double(index) * 0.05 : 0), value: grown)
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: bar.value)
+        .contentShape(.rect)
+        .onTapGesture {
+            guard bar.id != selection else { return }
+            Haptics.shared.selection()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { selection = bar.id }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(Text(bar.label))
+        .accessibilityValue(Text(Money.format(bar.value, hidden: hidden)))
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func gradient(_ c: Color) -> LinearGradient {
+        LinearGradient(colors: [c.mix(with: .white, by: 0.35), c], startPoint: .top, endPoint: .bottom)
+    }
+
+    private func referenceLine(_ value: Double) -> some View {
+        let y: CGFloat = CGFloat(value / top) * chartHeight
+        return Rectangle()
+            .fill(.clear)
+            .frame(height: 1)
+            .overlay {
+                Line().stroke(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            }
+            .offset(y: -y)
+            .opacity(grown ? 1 : 0)
+            .animation(.easeOut(duration: 0.4).delay(0.3), value: grown)
+            .allowsHitTesting(false)
+    }
+
+    private struct Line: Shape {
+        func path(in rect: CGRect) -> Path {
+            var p = Path()
+            p.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            return p
+        }
+    }
+}

@@ -122,9 +122,11 @@ struct BudgetDetailView: View {
     var body: some View {
         let interval = budget.interval(offset: offset)
         let inPeriod = entries.filter { interval.contains($0.date) && budget.includes($0) }
-        let history = (-5...0).map { o -> (String, Double) in
+        // 長條顯示 6 期；往前翻超過時整排跟著往前移，選中的永遠在裡面
+        let base = offset > -6 ? 0 : offset
+        let history = (base - 5...base).map { o -> (Int, String, Double) in
             let iv = budget.interval(offset: o)
-            return (label(iv), budget.spent(in: iv, entries: entries))
+            return (o, label(iv), budget.spent(in: iv, entries: entries))
         }
         let byCat = Dictionary(grouping: inPeriod) { $0.category?.main.id }
             .map { (cat: $0.value.first?.category?.main, total: $0.value.reduce(0) { $0 + $1.amount }) }
@@ -145,20 +147,18 @@ struct BudgetDetailView: View {
 
                 BudgetCard(budget: budget, entries: offset == 0 ? entries : inPeriod, hidden: hidden)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("近 6 期").font(.headline)
-                    Chart {
-                        ForEach(history, id: \.0) { item in
-                            BarMark(x: .value("期間", item.0), y: .value("花費", item.1))
-                                .foregroundStyle(item.1 > budget.amount ? Color.red.gradient : budget.color.gradient)
-                                .cornerRadius(6)
-                        }
-                        RuleMark(y: .value("預算", budget.amount))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(height: 180)
-                }
+                // 近 6 期：選中的就是目前看的那一期，點長條或按上方箭頭都會一起換
+                CapsuleBarCard(
+                    bars: history.map { item in
+                        CapsuleBar(id: "\(item.0)", label: item.1, value: item.2, alert: item.2 > budget.amount)
+                    },
+                    selection: Binding(get: { "\(offset)" }, set: { offset = Int($0) ?? 0 }),
+                    tint: budget.color,
+                    hidden: hidden,
+                    caption: { bar in "\(bar.label) 花費" },
+                    footnote: "虛線是預算 \(Money.format(budget.amount, hidden: hidden))",
+                    reference: budget.amount
+                )
                 .cardStyle()
 
                 if !byCat.isEmpty {
