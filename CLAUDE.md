@@ -58,6 +58,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - 捷徑 App Intent「從通知記帳」：iOS 27 捷徑的「通知」自動化把銀行通知交給 App，Foundation Models 解析商家／金額／分類（失敗退回正規式）；另有「快速記一筆」、「更新資產報價」
 - 資產：Yahoo Finance 報價（台股 2330 → .TW/.TWO）＋匯率；帳單（含自動扣款、收入帳單）
 - 掃發票（Vision OCR，只存文字不存照片）、MapKit 商家卡片／分店比對、AI 自動分類、Cashew `.sql` 備份匯入、iCloud Drive 資料夾同步（`記帳同步.json`，只合併新增；SideStore 簽名用不了 CloudKit）
+- 記一筆鍵盤的「記下」用 DistortionWavesKit（MIT，SPM `Jakubantalik/Libraries.dev` main 分支，使用者 2026-11-11 要求加的）：表單有 UIKit 元件，先拍快照當波浪前一頁（`Views/Components/SaveWave.swift`）
 - 主題色可選（12 組配色＋自訂）；圖示用 PulsoIcon（ISC），**只 vendor 用到的約 99 個**在 `Ledger/Ledger/Vendor`，整包加進來會讓編譯超過 20 分鐘
 - 使用者偏好：介面安靜、少「AI」字眼、要圖表不要長文字、Tab bar 用原生的
 - iOS 27、Swift 5、SwiftData；`com.eason3436.ledger`
