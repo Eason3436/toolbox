@@ -40,7 +40,7 @@ enum HapticKind: String, CaseIterable, Identifiable {
         case .number: "金額滾動時一格一格地震"
         case .icon: "分類、膠囊圖示播動畫時"
         case .keypad: "按鍵、刪除、輸入錯誤"
-        case .save: "卡片吸進動態島"
+        case .save: "記下時的波浪"
         case .delete: "刪除記帳、帳戶、資產等"
         case .select: "切換分頁、拖曳圖表、選日期"
         case .other: "隱藏金額、鍵盤收合、新增按鈕"
@@ -220,7 +220,7 @@ final class Haptics {
         case .icon: events = HapticShapes.icon(.bellRing, scale: 1)
         case .keypad: events = [HapticShapes.tap(0, 0.55, 0.85), HapticShapes.tap(0.035, 0.18, 0.3),
                                 HapticShapes.tap(0.16, 0.55, 0.85), HapticShapes.tap(0.195, 0.18, 0.3)]
-        case .save: islandSuck(); return
+        case .save: saveWave(); return
         case .delete:
             events = HapticShapes.grain(0, 0.16, 0.4, 0.65, interval: 0.025) + [HapticShapes.tap(0.2, 0.75, 0.2)]
         case .select: events = [HapticShapes.tap(0, 0.45, 0.75), HapticShapes.tap(0.12, 0.45, 0.75)]
@@ -237,6 +237,17 @@ final class Haptics {
         events.append(HapticShapes.tap(0.5, 0.3, 0.5))
         events.append(HapticShapes.tap(0.6, 0.55, 0.6))
         events.append(HapticShapes.tap(0.72, 0.85, 0.85))
+        play(events, kind: .save)
+    }
+}
+
+extension Haptics {
+    /// 「記下」的波浪：先往按鈕吸一下，0.5 秒時送出，然後隨波浪往上慢慢退去
+    func saveWave() {
+        var events: [HEvent] = [HapticShapes.tap(0, 0.5, 0.6)]
+        events += HapticShapes.swell(0.05, 0.42, peak: 0.35, sharpness: 0.2) { u in u * u }
+        events.append(HapticShapes.tap(0.5, 0.9, 0.55))
+        events += HapticShapes.swell(0.52, 0.9, peak: 0.45, sharpness: 0.15) { u in 1 - u }
         play(events, kind: .save)
     }
 }

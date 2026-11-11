@@ -112,10 +112,6 @@ struct EntryEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(role: .confirm) { save() }
-                        .disabled((Money.parse(amountText) ?? 0) <= 0)
-                }
             }
             .sensoryFeedback(.warning, trigger: parseFailed)
             .onChange(of: kind) { _, newKind in
@@ -333,7 +329,7 @@ struct EntryEditor: View {
                 smartMode = nil
             }
             sentence = ""
-            smartMessage = "已依照「\(text)」填好，看一下再按 ✓"
+            smartMessage = "已依照「\(text)」填好，看一下再按「記下」"
         } catch {
             smartMessage = error.localizedDescription
         }

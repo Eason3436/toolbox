@@ -82,10 +82,12 @@ struct SaveWaveOverlay: View {
             origin = newOrigin
             // 量到自己的位置後才送出波浪，起點才會對準按鈕
             if first {
-                DispatchQueue.main.async { revealed = true }
+                DispatchQueue.main.async {
+                    Haptics.shared.saveWave()
+                    revealed = true
+                }
             }
         }
-        .sensoryFeedback(.success, trigger: revealed)
     }
 }
 
