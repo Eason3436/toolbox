@@ -36,6 +36,7 @@ struct EntryEditor: View {
     @State private var receipt: Receipt?
     @State private var smartMessage: String?
     @State private var showScanner = false
+    @State private var saveWave: SaveWaveRequest?
 
     enum SmartMode { case sentence }
 
@@ -100,7 +101,10 @@ struct EntryEditor: View {
                 .animation(Motion.layout, value: smartMode)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .amountKeypad(text: $amountText, pad: $pad)
+            .amountKeypad(text: $amountText, pad: $pad, submit: KeypadSubmit(
+                title: entry == nil ? "記下" : "儲存",
+                enabled: (Money.parse(amountText) ?? 0) > 0 && saveWave == nil,
+                action: { source, touch in saveWithWave(source: source, touch: touch) }))
             .scrollDismissesKeyboard(.interactively)
             .background(Palette.background)
             .navigationTitle(entry == nil ? "記一筆" : "編輯記帳")
@@ -145,6 +149,14 @@ struct EntryEditor: View {
                 }
             }
         }
+        // 按「記下」：波浪從那顆鍵往上，把表單帶到已記帳的畫面
+        .overlay {
+            if let saveWave {
+                SaveWaveOverlay(request: saveWave) { dismiss() }
+                    .id(saveWave.id)
+            }
+        }
+        .interactiveDismissDisabled(saveWave != nil)
     }
 
     private func sectionTitle(_ t: String) -> some View {
@@ -437,6 +449,29 @@ struct EntryEditor: View {
     }
 
     private func save() {
+        let summary = commit()
+        if entry == nil, let savedHandler {
+            savedHandler(summary)
+        } else {
+            dismiss()
+        }
+    }
+
+    /// 鍵盤上的「記下」：先拍表單快照，存好後播波浪；拍不到就照一般流程
+    private func saveWithWave(source: CGRect, touch: CGPoint) {
+        guard saveWave == nil, (Money.parse(amountText) ?? 0) > 0 else { return }
+        guard let snapshot = SaveWave.snapshotTopSheet() else { save(); return }
+        let editing = entry != nil
+        let summary = commit()
+        var detail = date.formatted(.dateTime.month().day().hour().minute())
+        if let name = account?.name, !name.isEmpty { detail += " · " + name }
+        saveWave = SaveWaveRequest(snapshot: snapshot, source: source, touch: touch,
+                                   summary: summary, detail: detail, editing: editing)
+    }
+
+    /// 把表單內容存進資料庫，回傳給動畫用的摘要
+    @discardableResult
+    private func commit() -> SavedEntrySummary {
         let amount = Money.parse(amountText) ?? 0
         let finalTitle = title.trimmingCharacters(in: .whitespaces).isEmpty ? (category?.name ?? kind.label) : title.trimmingCharacters(in: .whitespaces)
         if let entry {
@@ -475,15 +510,11 @@ struct EntryEditor: View {
             }
         }
         try? context.save()
-        if entry == nil, let savedHandler {
-            savedHandler(SavedEntrySummary(
-                title: finalTitle,
-                amountText: (kind == .income ? "+" : "-") + Money.format(amount, currency: account?.currency ?? Prefs.mainCurrency),
-                symbol: category?.symbol ?? (kind == .income ? "arrow.down.left" : "tag.fill"),
-                color: category?.color ?? .gray,
-                income: kind == .income))
-        } else {
-            dismiss()
-        }
+        return SavedEntrySummary(
+            title: finalTitle,
+            amountText: (kind == .income ? "+" : "-") + Money.format(amount, currency: account?.currency ?? Prefs.mainCurrency),
+            symbol: category?.symbol ?? (kind == .income ? "arrow.down.left" : "tag.fill"),
+            color: category?.color ?? .gray,
+            income: kind == .income)
     }
 }

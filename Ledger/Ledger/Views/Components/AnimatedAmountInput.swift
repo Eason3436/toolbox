@@ -256,9 +256,20 @@ struct AmountPad: Equatable {
     var errors = 0
 }
 
+/// 鍵盤最下面的寬按鈕（例如記一筆的「記下」）。action 拿到按鈕的螢幕座標和手指位置。
+struct KeypadSubmit {
+    var title: String
+    var enabled: Bool
+    var action: (_ source: CGRect, _ touch: CGPoint) -> Void
+}
+
 struct AmountKeypadPanel: View {
     @Binding var text: String
     @Binding var pad: AmountPad
+    var submit: KeypadSubmit? = nil
+
+    @State private var submitFrame: CGRect = .zero
+    @State private var touch: CGPoint?
 
     var body: some View {
         VStack(spacing: 6) {
@@ -274,6 +285,7 @@ struct AmountKeypadPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel("收合鍵盤")
             AmountKeypad(onKey: press)
+            if let submit { submitButton(submit) }
         }
         .padding(.horizontal, 14)
         .padding(.top, 4)
@@ -290,6 +302,27 @@ struct AmountKeypadPanel: View {
         .sensoryFeedback(.error, trigger: pad.errors)
     }
 
+    private func submitButton(_ submit: KeypadSubmit) -> some View {
+        Button {
+            // 等同一次觸控的點擊手勢也記下位置後再送出
+            DispatchQueue.main.async {
+                let frame = submitFrame
+                let point = touch ?? CGPoint(x: frame.midX, y: frame.midY)
+                touch = nil
+                submit.action(frame, point)
+            }
+        } label: {
+            Text(submit.title)
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(!submit.enabled)
+        .padding(.top, 4)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { submitFrame = $0 }
+        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { touch = $0.location })
+    }
+
     private func press(_ key: AmountInputLogic.Key) {
         var l = AmountInputLogic(text: text)
         if l.press(key) {
@@ -301,11 +334,11 @@ struct AmountKeypadPanel: View {
 }
 
 extension View {
-    /// 把金額鍵盤貼在畫面底部（ScrollView / Form 上用）
-    func amountKeypad(text: Binding<String>, pad: Binding<AmountPad>) -> some View {
+    /// 把金額鍵盤貼在畫面底部（ScrollView / Form 上用）；submit 會在鍵盤下方加一顆寬按鈕
+    func amountKeypad(text: Binding<String>, pad: Binding<AmountPad>, submit: KeypadSubmit? = nil) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             if pad.wrappedValue.visible {
-                AmountKeypadPanel(text: text, pad: pad)
+                AmountKeypadPanel(text: text, pad: pad, submit: submit)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
