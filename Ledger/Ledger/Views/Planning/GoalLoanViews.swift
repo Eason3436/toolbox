@@ -72,7 +72,7 @@ struct GoalsView: View {
                         Text(g.name).foregroundStyle(.secondary)
                             .swipeActions {
                                 Button("還原") { g.archived = false; try? context.save() }
-                                Button("刪除", role: .destructive) { context.delete(g); try? context.save() }
+                                Button("刪除", role: .destructive) { Haptics.shared.trash(); context.delete(g); try? context.save() }
                             }
                     }
                 }
@@ -182,7 +182,7 @@ struct GoalEditor: View {
             }
             .confirmationDialog("刪除目標？", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
-                    if let goal { context.delete(goal); try? context.save() }
+                    if let goal { Haptics.shared.trash(); context.delete(goal); try? context.save() }
                     dismiss()
                 }
             }
@@ -268,7 +268,7 @@ struct LoansView: View {
                             }
                             .buttonStyle(.plain)
                             .swipeActions {
-                                Button("刪除", role: .destructive) { context.delete(l); try? context.save() }
+                                Button("刪除", role: .destructive) { Haptics.shared.trash(); context.delete(l); try? context.save() }
                             }
                         }
                     }

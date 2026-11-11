@@ -135,6 +135,11 @@ struct CategoryPickerSheet: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 18) {
                     ForEach(categories.filter { $0.isIncome == income && !$0.isSub }.flatMap { [$0] + $0.sortedChildren }) { c in
                         Button {
+                            if let icon = LedgerIcon.pulso(for: c.symbol), c.emoji == nil {
+                                Haptics.shared.icon(icon, size: 28)
+                            } else {
+                                Haptics.shared.symbolBounce(size: 28)
+                            }
                             selected = c
                             dismiss()
                         } label: {

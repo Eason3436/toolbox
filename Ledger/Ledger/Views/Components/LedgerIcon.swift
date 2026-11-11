@@ -16,6 +16,7 @@ struct LedgerIcon: View {
         if let icon = LedgerIcon.pulso(for: symbol) {
             PulsoIconView(icon, size: size, color: color, strokeWidth: weight, autoAnimated: false, handle: handle)
                 .onChange(of: trigger) {
+                    Haptics.shared.icon(icon, size: size)
                     Task { await handle.startAnimation() }
                 }
         } else {
@@ -23,6 +24,7 @@ struct LedgerIcon: View {
                 .font(.system(size: size * 0.85, weight: .semibold))
                 .foregroundStyle(color ?? .primary)
                 .symbolEffect(.bounce, value: trigger)
+                .onChange(of: trigger) { Haptics.shared.symbolBounce(size: size) }
         }
     }
 

@@ -90,11 +90,12 @@ struct IslandSuckView: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .sensoryFeedback(.success, trigger: bump)
         .task { await run() }
     }
 
     private func run() async {
+        // 整段震動一次排好，跟動畫的時間點對齊
+        Haptics.shared.islandSuck()
         try? await Task.sleep(for: .milliseconds(60))
         // 先往上加速縮小
         withAnimation(.timingCurve(0.5, 0, 0.85, 0.4, duration: 0.32)) { stage = .flying }
