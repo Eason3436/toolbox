@@ -103,9 +103,7 @@ struct AssetsView: View {
     }
 
     private func timeText(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = Calendar.current.isDateInToday(d) ? "HH:mm" : "M/d HH:mm"
-        return f.string(from: d)
+        Calendar.current.isDateInToday(d) ? DateText.time(d) : DateText.short(d)
     }
 
     // MARK: 摘要
@@ -167,7 +165,7 @@ struct AssetsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text("投資組合")
-                        Image(systemName: "chevron.right")
+                        Image(systemName: "chevron.forward")
                     }
                     .font(.headline)
                     .foregroundStyle(Color.accentColor)

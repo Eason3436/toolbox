@@ -11,8 +11,6 @@ struct ParsedNotice: Sendable {
     var categoryName: String
     var cardLast4: String
     var usedAI: Bool
-    /// Apple Intelligence 依商家與時間推測買了什麼（例如「早餐」「飲料」）
-    var guess: String = ""
     /// 捷徑附上的位置（地址或地名）
     var place: String = ""
 }
@@ -64,9 +62,6 @@ struct AINotice {
 
     @Guide(description: "通知中出現的卡號或帳號末四碼，沒有就填空字串")
     var cardLast4: String
-
-    @Guide(description: "依商家和付款時間推測買了什麼，2 到 6 個字，例如「早餐」「午餐便當」「飲料」「零食」「加油」，猜不出來就填空字串")
-    var guess: String
 
     @Guide(description: "使用者另外附上的目前位置（地址、地名或經緯度），不是商家名稱；沒有就填空字串")
     var place: String
@@ -125,7 +120,6 @@ enum NoticeParser {
             categoryName: r.category,
             cardLast4: String(r.cardLast4.filter(\.isNumber).suffix(4)),
             usedAI: true,
-            guess: r.guess.trimmingCharacters(in: .whitespacesAndNewlines),
             place: r.place.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
@@ -219,7 +213,6 @@ enum NoticeRecorder {
                 parsed.isIncome = p.isIncome
                 parsed.cardLast4 = p.cardLast4
                 parsed.usedAI = p.usedAI
-                parsed.guess = p.guess
                 parsed.place = p.place
             }
         } else {
@@ -284,9 +277,6 @@ enum NoticeRecorder {
                           date: date, category: category, account: account, note: note, source: .shortcut)
         entry.rawText = text.isEmpty ? nil : text
         entry.payMethod = PayMethod.detect(in: text)
-        if !parsed.guess.isEmpty {
-            entry.note = entry.note.isEmpty ? "推測：\(parsed.guess)" : "推測：\(parsed.guess)\n\(entry.note)"
-        }
         ctx.insert(entry)
         // 捷徑文字附了位置：找出是哪一家分店
         await BranchMatcher.apply(to: entry, text: text, aiPlace: parsed.place)

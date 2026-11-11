@@ -102,7 +102,7 @@ struct AssetGroupDetailView: View {
                         .swipeActions {
                             if let a = line.asset {
                                 Button("刪除", systemImage: "trash", role: .destructive) {
-                                    context.delete(a)
+                                    Haptics.shared.trash(); context.delete(a)
                                     try? context.save()
                                 }
                             } else if let acc = line.account {

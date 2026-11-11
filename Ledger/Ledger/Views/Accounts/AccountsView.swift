@@ -200,7 +200,7 @@ struct AccountsView: View {
                     Image(systemName: "arrow.left.arrow.right")
                     Text("轉帳")
                     Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    Image(systemName: "chevron.forward").foregroundStyle(.secondary)
                 }
                 .font(.title3)
                 .foregroundStyle(.primary)
@@ -302,7 +302,7 @@ struct AccountsView: View {
                                         Text("\(m.count) 次").font(.caption).foregroundStyle(.secondary)
                                         Spacer()
                                         MoneyText(value: m.total, currency: account.currency, hidden: hidden,
-                                                  font: .subheadline.weight(.semibold))
+                                                  font: .subheadline.weight(.semibold), haptics: false)
                                     }
                                     GeometryReader { g in
                                         Capsule().fill(m.color.opacity(0.85))
@@ -310,7 +310,7 @@ struct AccountsView: View {
                                     }
                                     .frame(height: 5)
                                 }
-                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                                Image(systemName: "chevron.forward").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                             }
                             .contentShape(.rect)
                         }
@@ -485,7 +485,7 @@ struct SectionHeader<D: View>: View {
                 } label: {
                     HStack(spacing: 3) {
                         Text("全部")
-                        Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        Image(systemName: "chevron.forward").font(.footnote.weight(.bold))
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
@@ -631,7 +631,7 @@ struct AccountCarousel: View {
             .padding(.horizontal, 2).padding(.vertical, 2)
         }
         .scrollClipDisabled()
-        .sensoryFeedback(.selection, trigger: selectedID)
+        .selectionHaptic(trigger: selectedID)
     }
 }
 
@@ -640,6 +640,7 @@ struct AccountCarousel: View {
 struct UpcomingBillsCard: View {
     var hidden: Bool
     @Query private var bills: [Bill]
+    @State private var paidTick = 0
     @Environment(\.modelContext) private var context
 
     var body: some View {
@@ -657,8 +658,8 @@ struct UpcomingBillsCard: View {
                     ForEach(list.prefix(4)) { occ in
                         HStack(spacing: 12) {
                             VStack(spacing: 0) {
-                                Text("\(Calendar.current.component(.month, from: occ.due))月").font(.caption2).foregroundStyle(.secondary)
-                                Text("\(Calendar.current.component(.day, from: occ.due))").font(.headline.monospacedDigit())
+                                Text(DateText.month(occ.due)).font(.caption2).foregroundStyle(.secondary)
+                                Text(DateText.localized(occ.due, "d")).font(.headline.monospacedDigit())
                             }
                             .frame(width: 40)
                             VStack(alignment: .leading, spacing: 2) {
@@ -671,6 +672,7 @@ struct UpcomingBillsCard: View {
                                 .foregroundStyle(occ.bill.receives ? .green : .primary)
                             Button(occ.bill.doneLabel) {
                                 withAnimation(.snappy) { BillService.markPaid(occ, context: context) }
+                                paidTick += 1
                             }
                             .font(.caption.weight(.semibold))
                             .buttonStyle(.glass)
@@ -678,6 +680,7 @@ struct UpcomingBillsCard: View {
                     }
                 }
                 .cardStyle()
+                .sensoryFeedback(.success, trigger: paidTick)
             }
         }
     }
@@ -705,7 +708,7 @@ struct InsightLinkCard: View {
                 HStack {
                     Text("消費分析").font(.headline)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.forward").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                 }
                 // 本月各分類佔比的色條
                 GeometryReader { g in

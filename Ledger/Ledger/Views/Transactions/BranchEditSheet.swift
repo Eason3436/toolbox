@@ -441,7 +441,7 @@ struct BranchBatchView: View {
                 selected = []
             }
         }
-        .sensoryFeedback(.selection, trigger: selected)
+        .selectionHaptic(trigger: selected)
     }
 
     private func toggle(_ id: UUID) {

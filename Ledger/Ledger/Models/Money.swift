@@ -58,40 +58,33 @@ enum Money {
 enum DateText {
     static let cal = Calendar.current
 
-    static func monthTitle(_ date: Date) -> String {
-        let c = cal.dateComponents([.year, .month], from: date)
-        return "\(c.month ?? 1)月 \(String(c.year ?? 2026))"
-    }
-
-    static func dueText(_ date: Date) -> String {
+    /// 依目前語系排列日期（例如台灣是「11月9日 星期日」，英文是「Sunday, Nov 9」）
+    /// template 只列出要哪些欄位，順序與分隔符號交給系統決定；j 會依使用者設定選 12／24 小時制
+    static func localized(_ date: Date, _ template: String) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
-        f.dateFormat = "EEE, M月d日"
+        f.locale = .autoupdatingCurrent
+        f.setLocalizedDateFormatFromTemplate(template)
         return f.string(from: date)
     }
+
+    static func monthTitle(_ date: Date) -> String { localized(date, "yMMMM") }
+
+    static func dueText(_ date: Date) -> String { localized(date, "MMMdEEE") }
 
     static func dayHeader(_ date: Date) -> String {
         if cal.isDateInToday(date) { return "今天" }
         if cal.isDateInYesterday(date) { return "昨天" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
-        f.dateFormat = "M月d日 EEEE"
-        return f.string(from: date)
+        return localized(date, "MMMdEEEE")
     }
 
-    static func monthDay(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
-        f.dateFormat = "M月d日"
-        return f.string(from: date)
-    }
+    static func monthDay(_ date: Date) -> String { localized(date, "MMMd") }
 
-    static func short(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_Hant_TW")
-        f.dateFormat = "M/d HH:mm"
-        return f.string(from: date)
-    }
+    /// 只有月份（「11月」「Nov」）
+    static func month(_ date: Date) -> String { localized(date, "MMM") }
+
+    static func short(_ date: Date) -> String { localized(date, "Mdjmm") }
+
+    static func time(_ date: Date) -> String { localized(date, "jmm") }
 
     static func monthInterval(_ date: Date) -> DateInterval {
         cal.dateInterval(of: .month, for: date) ?? DateInterval(start: date, duration: 86400 * 30)

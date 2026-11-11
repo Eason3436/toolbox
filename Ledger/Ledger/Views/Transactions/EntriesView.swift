@@ -179,7 +179,7 @@ struct EntriesView: View {
                                 .buttonStyle(.plain)
                                 .swipeActions {
                                     Button("刪除", systemImage: "trash", role: .destructive) {
-                                        context.delete(e)
+                                        Haptics.shared.trash(); context.delete(e)
                                         try? context.save()
                                     }
                                 }
@@ -349,9 +349,7 @@ struct EntryRow: View {
             if let c = entry.category { parts.append(c.name) }
             if let a = entry.account { parts.append(a.name) }
         }
-        let f = DateFormatter()
-        f.dateFormat = showsDate ? "M/d HH:mm" : "HH:mm"
-        parts.append(f.string(from: entry.date))
+        parts.append(showsDate ? DateText.short(entry.date) : DateText.time(entry.date))
         return parts.joined(separator: " · ")
     }
 }
