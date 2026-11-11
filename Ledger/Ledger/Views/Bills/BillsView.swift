@@ -143,6 +143,7 @@ struct BillsView: View {
                          onEdit: { editing = occ.bill })
                     .frame(height: expanded ? 220 + (stackMode && !isLast ? overlap : 0) : 76 + overlap, alignment: .top)
                     .zIndex(Double(i))
+                    .sensoryFeedback(.success, trigger: occ.paid) { _, paid in paid }
                     .onTapGesture {
                         withAnimation(.spring(duration: 0.4, bounce: 0.2)) { expandedID = occ.id }
                     }

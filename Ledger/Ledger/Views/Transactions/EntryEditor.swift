@@ -24,6 +24,7 @@ struct EntryEditor: View {
     @State private var note = ""
     @State private var parsing = false
     @State private var parseMessage: String?
+    @State private var parseFailed = 0
     @State private var showPasteSheet = false
     @State private var pasteText = ""
     @State private var confirmDelete = false
@@ -112,6 +113,7 @@ struct EntryEditor: View {
                         .disabled((Money.parse(amountText) ?? 0) <= 0)
                 }
             }
+            .sensoryFeedback(.warning, trigger: parseFailed)
             .onChange(of: kind) { _, newKind in
                 if let c = category, c.isIncome != (newKind == .income) { category = nil }
             }
@@ -405,6 +407,7 @@ struct EntryEditor: View {
         defer { parsing = false }
         guard let p = await NoticeParser.parse(text, categories: categories.map(\.name), date: date) else {
             parseMessage = "看不出金額，請手動輸入。"
+            parseFailed += 1
             return
         }
         kind = p.isIncome ? .income : .expense
