@@ -9,7 +9,7 @@ struct HapticsSettingsView: View {
         Form {
             Section {
                 Toggle(isOn: $enabled) {
-                    Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
+                    Label("觸覺回饋", systemImage: "water.waves")
                 }
                 .onChange(of: enabled) { _, on in
                     if on { Haptics.shared.sample(nil) }
@@ -43,13 +43,16 @@ struct HapticsSettingsView: View {
                     Text("放開滑桿會試震一下。")
                 }
 
-                Section("各項震動") {
+                Section {
                     ForEach(HapticKind.allCases) { kind in
                         HapticKindToggle(kind: kind)
                     }
+                } header: {
+                    SettingsHeader("各項震動")
                 }
             }
         }
+        .settingsStyle()
         .navigationTitle("觸覺回饋")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.snappy, value: enabled)

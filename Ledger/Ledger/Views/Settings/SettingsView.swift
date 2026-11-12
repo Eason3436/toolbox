@@ -23,39 +23,81 @@ struct SettingsView: View {
     @State private var pickingSyncFolder = false
     @State private var syncStatus: String? = UserDefaults.standard.string(forKey: CloudSync.lastResultKey)
     @State private var syncFolder: String? = CloudSync.folderName
+    @State private var showGuide = false
 
     var body: some View {
         NavigationStack {
             Form {
+                // 最上面：設定自動記帳的大卡片
                 Section {
-                    NavigationLink {
-                        ShortcutGuideView()
-                    } label: {
-                        Label("設定銀行通知自動記帳", systemImage: "bell.badge.fill")
-                    }
-                    LabeledContent("Apple Intelligence", value: NoticeParser.aiStatusText)
-                    Picker("捷徑預設帳戶", selection: $defaultID) {
+                    SettingsHeroCard(title: "自動記帳", subtitle: "讓銀行通知自己記一筆") { showGuide = true }
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+
+                Section {
+                    Picker(selection: $defaultID) {
                         Text("第一個帳戶").tag("")
                         ForEach(accounts.filter { !$0.archived }) { Text($0.name).tag($0.id.uuidString) }
+                    } label: {
+                        Label("捷徑預設帳戶", systemImage: "creditcard")
+                    }
+                    LabeledContent {
+                        Text(NoticeParser.aiStatusText)
+                    } label: {
+                        Label("裝置端模型", systemImage: "cpu")
+                    }
+                }
+                .settingsRow()
+
+                Section {
+                    NavigationLink { HapticsSettingsView() } label: {
+                        LabeledContent {
+                            Text(hapticsEnabled ? "開啟" : "關閉")
+                        } label: {
+                            Label("觸覺回饋", systemImage: "water.waves")
+                        }
+                    }
+                    Toggle(isOn: $lockEnabled) {
+                        Label("Face ID 鎖定", systemImage: "faceid")
+                    }
+                    Picker(selection: $mainCurrency) {
+                        ForEach(Money.commonCurrencies, id: \.self) { Text($0).tag($0) }
+                    } label: {
+                        Label("主要幣別", systemImage: "banknote")
+                    }
+                    NavigationLink { HomeLayoutView() } label: {
+                        Label("自訂主頁", systemImage: "square.grid.2x2")
                     }
                 } header: {
-                    Text("捷徑自動記帳")
+                    SettingsHeader("一般")
+                } footer: {
+                    Text("Face ID 鎖定：離開 App 後再回來需要解鎖。資產總額與帳單合計會換算成主要幣別。")
                 }
+                .settingsRow()
 
-                Section("主要色") {
+                Section {
                     ThemePicker()
+                        .padding(.vertical, 8)
+                } header: {
+                    SettingsHeader("主要色")
                 }
+                .settingsRow()
 
-                Section("帳戶") {
+                Section {
                     ForEach(accounts) { a in
                         Button { editingAccount = a } label: {
-                            HStack {
-                                Circle().fill(a.color).frame(width: 14, height: 14)
+                            HStack(spacing: 14) {
+                                Circle().fill(a.color)
+                                    .frame(width: 12, height: 12)
+                                    .frame(width: 36, height: 36)
+                                    .background(a.color.opacity(0.12), in: .rect(cornerRadius: 11, style: .continuous))
                                 Text(a.name).foregroundStyle(a.archived ? .secondary : .primary)
                                 if a.archived { Text("已封存").font(.caption).foregroundStyle(.secondary) }
                                 Spacer()
                                 Text(Money.format(a.balance, currency: a.currency)).monospacedDigit().foregroundStyle(.secondary)
                             }
+                            .alignmentGuide(.listRowSeparatorLeading) { _ in -40 }
                         }
                         .buttonStyle(.plain)
                         .swipeActions {
@@ -68,59 +110,36 @@ struct SettingsView: View {
                         for (i, a) in list.enumerated() { a.order = i }
                         try? context.save()
                     }
-                    Button("新增帳戶", systemImage: "plus") { addingAccount = true }
-                }
-
-                Section("分類、地點與發票") {
-                    NavigationLink("管理分類") { CategoryManagerView() }
-                    NavigationLink { BranchBatchView() } label: {
-                        Text("交易地點")
-                    }
-                    NavigationLink { ReceiptBatchView() } label: {
-                        Text("匯入發票照片")
-                    }
-                }
-
-                Section("其他") {
-                    NavigationLink { HomeLayoutView() } label: {
-                        Label("自訂主頁", systemImage: "square.grid.2x2")
-                    }
-                    NavigationLink { ContentView() } label: {
-                        Label("數字動效示範", systemImage: "textformat.123")
-                    }
-                }
-
-                Section {
-                    Picker("主要幣別", selection: $mainCurrency) {
-                        ForEach(Money.commonCurrencies, id: \.self) { Text($0).tag($0) }
-                    }
-                } footer: {
-                    Text("資產總額與帳單合計會換算成主要幣別，匯率每次更新報價時一起更新。")
-                }
-
-                Section {
-                    Button {
-                        restoring = false
-                        pickingSyncFolder = false
-                        importing = true
-                    } label: {
-                        Label("從 Cashew 備份匯入", systemImage: "square.and.arrow.down")
-                    }
-                    if let importResult {
-                        Text(importResult).font(.footnote).foregroundStyle(.green)
-                    }
-                    if let importError {
-                        Text(importError).font(.footnote).foregroundStyle(.red)
+                    Button { addingAccount = true } label: {
+                        Label("新增帳戶", systemImage: "plus")
                     }
                 } header: {
-                    Text("搬家")
-                } footer: {
-                    Text("在 Cashew 打開「設定 → 備份 → 匯出資料」，存成 cashew-…sql 檔，再從這裡選取；也可以在「檔案」App 長按那個檔案 → 分享 → 選「記帳」。會匯入帳戶、分類（含子分類）、交易、預算、目標、借貸，未付款的訂閱會變成帳單。重複匯入不會重複新增。")
+                    SettingsHeader("帳戶")
                 }
+                .settingsRow()
+
+                Section {
+                    NavigationLink { CategoryManagerView() } label: {
+                        Label("管理分類", systemImage: "tag")
+                    }
+                    NavigationLink { BranchBatchView() } label: {
+                        Label("交易地點", systemImage: "mappin.and.ellipse")
+                    }
+                    NavigationLink { ReceiptBatchView() } label: {
+                        Label("匯入發票照片", systemImage: "doc.text.viewfinder")
+                    }
+                } header: {
+                    SettingsHeader("分類、地點與發票")
+                }
+                .settingsRow()
 
                 Section {
                     if let syncFolder {
-                        LabeledContent("資料夾", value: syncFolder)
+                        LabeledContent {
+                            Text(syncFolder)
+                        } label: {
+                            Label("資料夾", systemImage: "folder")
+                        }
                         Button {
                             syncStatus = CloudSync.run(force: true)
                         } label: {
@@ -146,16 +165,17 @@ struct SettingsView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("iCloud 備份與同步")
+                    SettingsHeader("iCloud 同步")
                 } footer: {
-                    Text("在「檔案」裡選 iCloud 雲碟的一個資料夾（例如新建「記帳」）。每次打開 App 會自動合併資料夾裡其他裝置的資料，再存回去，並每天留一份備份（保留 14 天）。每台裝置都選同一個資料夾就能互相同步新增的紀錄。")
+                    Text("在「檔案」裡選 iCloud 雲碟的一個資料夾（例如新建「記帳」）。每次打開 App 會自動合併其他裝置的資料，並每天留一份備份（保留 14 天）。")
                 }
+                .settingsRow()
 
                 Section {
                     Button {
                         exportURL = try? Backup.export()
                     } label: {
-                        Label("匯出完整備份（JSON）", systemImage: "externaldrive.badge.icloud")
+                        Label("匯出完整備份（JSON）", systemImage: "externaldrive")
                     }
                     if let exportURL {
                         ShareLink(item: exportURL) { Label("分享備份檔", systemImage: "square.and.arrow.up") }
@@ -175,40 +195,48 @@ struct SettingsView: View {
                     if let csvURL {
                         ShareLink(item: csvURL) { Label("分享 CSV", systemImage: "square.and.arrow.up") }
                     }
+                    Button {
+                        restoring = false
+                        pickingSyncFolder = false
+                        importing = true
+                    } label: {
+                        Label("從 Cashew 備份匯入", systemImage: "square.and.arrow.down")
+                    }
+                    if let importResult {
+                        Text(importResult).font(.footnote).foregroundStyle(.green)
+                    }
+                    if let importError {
+                        Text(importError).font(.footnote).foregroundStyle(.red)
+                    }
                 } header: {
-                    Text("備份")
+                    SettingsHeader("備份與搬家")
                 } footer: {
-                    Text("還原會把備份裡的資料合併進來，不會刪除現有資料。")
+                    Text("還原會把備份合併進來，不會刪除現有資料。Cashew：在 Cashew 的「設定 → 備份 → 匯出資料」存成 .sql 檔再選取，重複匯入不會重複新增。")
                 }
-
-                Section {
-                    Toggle(isOn: $lockEnabled) {
-                        Label("Face ID 鎖定", systemImage: "faceid")
-                    }
-                } footer: {
-                    Text("離開 App 後再回來需要 Face ID 解鎖。")
-                }
-
-                Section {
-                    NavigationLink { HapticsSettingsView() } label: {
-                        LabeledContent {
-                            Text(hapticsEnabled ? "開啟" : "關閉")
-                        } label: {
-                            Label("觸覺回饋", systemImage: "iphone.radiowaves.left.and.right")
-                        }
-                    }
-                }
+                .settingsRow()
 
                 Section {
                     NavigationLink { ChangelogView() } label: {
-                        LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
+                        LabeledContent {
+                            Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
+                        } label: {
+                            Label("版本", systemImage: "info.circle")
+                        }
                     }
+                    NavigationLink { ContentView() } label: {
+                        Label("數字動效示範", systemImage: "textformat.123")
+                    }
+                } header: {
+                    SettingsHeader("關於")
                 }
+                .settingsRow()
             }
+            .settingsStyle()
+            .navigationDestination(isPresented: $showGuide) { ShortcutGuideView() }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button(role: .close) { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
             }
             .fileImporter(isPresented: $importing,
                           allowedContentTypes: pickingSyncFolder ? [.folder] : (restoring ? [.json] : [.item])) { result in
