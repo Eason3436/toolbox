@@ -14,6 +14,10 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.16.0", date: "2026-11-12", title: "新的設定頁", items: [
+            "設定頁改版：最上面是設定自動記帳的大卡片，每一列左邊有圖示，分組重新整理成一般、主要色、帳戶、分類、iCloud 同步、備份與搬家、關於",
+            "關閉按鈕移到左上角",
+        ]),
         Release(version: "1.15.1", date: "2026-11-12", title: "記下後更快關閉", items: [
             "按「記下」後，波浪一掃完表單就關閉，不用再等邊框的顏色慢慢退掉",
         ]),
