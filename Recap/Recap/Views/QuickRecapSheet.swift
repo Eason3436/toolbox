@@ -15,8 +15,8 @@ struct QuickRecapSheet: View {
                     }
                     switch quick.state {
                     case .idle, .working:
-                        HStack(spacing: 10) {
-                            ProgressView()
+                        VStack(spacing: 12) {
+                            ThinkingIndicator(activity: .summarizing, large: true)
                             if case .working(let text) = quick.state { Text(text).foregroundStyle(.secondary) }
                         }
                         .frame(maxWidth: .infinity, minHeight: 160)
