@@ -14,6 +14,9 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.15.1", date: "2026-11-12", title: "記下後更快關閉", items: [
+            "按「記下」後，波浪一掃完表單就關閉，不用再等邊框的顏色慢慢退掉",
+        ]),
         Release(version: "1.15.0", date: "2026-11-11", title: "膠囊長條圖", items: [
             "商家的「最近 6 個月」和預算的「近 6 期」改成膠囊長條：灰色襯底，選中的那根用主題色漸層，上方大字顯示金額",
             "進場時長條一根一根長出來；點長條切換，彩色膠囊會滑過去、金額跟著滾動",

@@ -33,10 +33,15 @@ enum SaveWave {
         }
     }
 
-    /// 垂直型：從底部的寬按鈕往上；圓角跟記一筆卡片一樣（RootView 的 presentationCornerRadius）
+    /// 垂直型：從底部的寬按鈕往上；圓角跟記一筆卡片一樣（RootView 的 presentationCornerRadius）。
+    /// 邊框顏色、白線和火花收得比預設快：預設要約 3.6 秒才結束，這裡約 2 秒，波浪一過就能關表單
     static let style: DistortionWaveStyle = {
         var s = DistortionWaveStyle(type: .vertical)
         s.cornerRadius = 38
+        s.rimFade = 1.4
+        s.hairlineLinger = 0.2
+        s.hairlineFade = 1.2
+        s.particleLife = 1.4
         return s
     }()
 }
@@ -61,12 +66,7 @@ struct SaveWaveOverlay: View {
                 source: request.source.offsetBy(dx: -o.x, dy: -o.y),
                 focus: CGPoint(x: request.touch.x - o.x, y: request.touch.y - o.y),
                 style: SaveWave.style,
-                onFinish: {
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(650))
-                        onDone()
-                    }
-                }
+                onFinish: onDone
             ) {
                 Image(uiImage: request.snapshot)
                     .resizable()
