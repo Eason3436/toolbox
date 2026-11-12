@@ -601,7 +601,7 @@ struct LectureDetailView: View {
                     Button("再試一次") { queue.regenerateRichNotes(lecture.id) }.buttonStyle(.glass)
                 } else {
                     HStack {
-                        ProgressView().controlSize(.small)
+                        ThinkingIndicator(activity: .writingNotes)
                         Text("Gemini 正在製作詳細課程筆記…").foregroundStyle(.secondary)
                     }
                     Button("現在製作") { queue.kick(summaries: true) }.buttonStyle(.glass)
@@ -654,7 +654,7 @@ struct LectureDetailView: View {
                 Text("上課中，下課後會整理重點。").foregroundStyle(.secondary)
             } else if lecture.needsTranscription {
                 HStack {
-                    ProgressView().controlSize(.small)
+                    ThinkingIndicator(activity: .transcribing)
                     Text("下課了，正在把錄音轉成文字…").foregroundStyle(.secondary)
                 }
                 Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
@@ -672,7 +672,7 @@ struct LectureDetailView: View {
                 Button("立即同步") { Task { await RecapSync.run() } }.buttonStyle(.glass)
             } else {
                 HStack {
-                    ProgressView().controlSize(.small)
+                    ThinkingIndicator(activity: .summarizing)
                     Text(queue.readiness == .available ? "正在整理重點…" : queue.readiness.message).foregroundStyle(.secondary)
                 }
                 Button("現在整理") { queue.kick(summaries: true) }.buttonStyle(.glass)
