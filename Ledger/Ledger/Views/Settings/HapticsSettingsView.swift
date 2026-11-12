@@ -9,7 +9,7 @@ struct HapticsSettingsView: View {
         Form {
             Section {
                 Toggle(isOn: $enabled) {
-                    Label("觸覺回饋", systemImage: "water.waves")
+                    SettingsRowLabel("觸覺回饋", "water.waves")
                 }
                 .onChange(of: enabled) { _, on in
                     if on { Haptics.shared.sample(nil) }
@@ -78,14 +78,14 @@ private struct HapticKindToggle: View {
 
     var body: some View {
         Toggle(isOn: $on) {
-            Label {
+            HStack(spacing: 14) {
+                SettingsIcon(symbol: kind.symbol)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(kind.label)
                     Text(kind.detail).font(.caption).foregroundStyle(.secondary)
                 }
-            } icon: {
-                Image(systemName: kind.symbol)
             }
+            .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
         }
         .onChange(of: on) { _, isOn in
             if isOn { Haptics.shared.sample(kind) }

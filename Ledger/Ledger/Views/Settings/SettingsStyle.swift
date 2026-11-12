@@ -2,24 +2,40 @@ import SwiftUI
 
 // 設定頁的外觀：深色圓角分組、每列左邊一個外框圓角方塊圖示、分組標題粗體
 
-/// 每列的 Label：圖示放進外框圓角方塊，文字一律用主要色（按鈕也不會變成主題色）
-struct SettingsLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
+/// 每列左邊的外框圓角方塊圖示
+struct SettingsIcon: View {
+    var symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(Color.primary.opacity(0.85))
+            .frame(width: 36, height: 36)
+            .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 11, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            }
+    }
+}
+
+/// 每列的標題：圖示＋文字。直接畫出來，不靠 LabelStyle——Picker、Toggle、按鈕裡的 Label 不會套用 LabelStyle，
+/// 按鈕文字也會被染成主題色
+struct SettingsRowLabel: View {
+    var title: String
+    var symbol: String
+    init(_ title: String, _ symbol: String) {
+        self.title = title
+        self.symbol = symbol
+    }
+
+    var body: some View {
         HStack(spacing: 14) {
-            configuration.icon
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.primary.opacity(0.85))
-                .frame(width: 36, height: 36)
-                .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 11, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-                }
-            configuration.title
-                .foregroundStyle(.primary)
+            SettingsIcon(symbol: symbol)
+            Text(title).foregroundStyle(.primary)
         }
-        // 分隔線從列的最前面開始，跟參考的設定頁一樣整條拉滿
-        .alignmentGuide(.listRowSeparatorLeading) { _ in -40 }
+        // 分隔線從圖示下方開始，不會穿出卡片
+        .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
     }
 }
 
@@ -41,7 +57,6 @@ extension View {
     /// 套在設定頁的 Form 上
     func settingsStyle() -> some View {
         self
-            .labelStyle(SettingsLabelStyle())
             .scrollContentBackground(.hidden)
             .background(Palette.background)
             .environment(\.defaultMinListRowHeight, 58)
