@@ -1,4 +1,37 @@
 import SwiftUI
+import ThinkingOrbsKit
+
+/// AI 處理中的點狀光球（ThinkingOrbsKit），取代轉圈圈。每種工作一個動畫。
+/// 旁邊都有說明文字，所以小尺寸對 VoiceOver 隱藏；大尺寸單獨出現時讀「處理中」。
+struct ThinkingIndicator: View {
+    enum Activity {
+        case transcribing, summarizing, searching, writingNotes, working
+
+        /// 依處理佇列的狀態文字挑動畫：轉文字、辨識用聆聽，其他用整理。
+        init(status: String) {
+            self = status.contains("轉文字") || status.contains("辨識") ? .transcribing : .summarizing
+        }
+
+        var orb: OrbState {
+            switch self {
+            case .transcribing: .listening
+            case .summarizing: .composing
+            case .searching: .searching
+            case .writingNotes: .weaving
+            case .working: .working
+            }
+        }
+    }
+
+    var activity: Activity = .working
+    var large = false
+
+    var body: some View {
+        ThinkingOrb(state: activity.orb, size: large ? .px64 : .px20)
+            .accessibilityHidden(!large)
+            .accessibilityLabel("處理中")
+    }
+}
 
 /// 卡片外框。
 struct Card<Content: View>: View {
