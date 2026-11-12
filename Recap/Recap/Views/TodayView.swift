@@ -234,7 +234,7 @@ struct DayContentView: View {
             recapCard(record)
             if let status = queue.statusText {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ThinkingIndicator(activity: .init(status: status))
                     Text(status).font(.footnote).foregroundStyle(.secondary)
                         .contentTransition(.opacity)
                     Spacer()
