@@ -36,7 +36,7 @@ struct AskView: View {
                             .id(turn.id)
                     }
                     if asking {
-                        HStack { ProgressView(); Text("從逐字稿裡找…").foregroundStyle(.secondary) }
+                        HStack(spacing: 8) { ThinkingIndicator(activity: .searching); Text("從逐字稿裡找…").foregroundStyle(.secondary) }
                     }
                 }
                 .padding(16)

@@ -10,6 +10,12 @@ settings:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
+packages:
+  # ThinkingOrbsKit（MIT，Jakub Antalik）：AI 思考中的點狀光球，取代轉圈圈。
+  # 跟 Ledger 的 DistortionWavesKit 同一個 repo，只有 main 分支有 Package.swift
+  Libraries.dev:
+    url: https://github.com/Jakubantalik/Libraries.dev
+    branch: main
 targets:
   Recap:
     type: application
@@ -26,6 +32,8 @@ targets:
     dependencies:
       - target: RecapWidget
         embed: true
+      - package: Libraries.dev
+        product: ThinkingOrbsKit
     info:
       path: Recap/Info.plist
       properties:
