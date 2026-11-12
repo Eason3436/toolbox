@@ -14,6 +14,12 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.16.1", date: "2026-11-12", title: "設定頁修正", items: [
+            "修正：捷徑預設帳戶、觸覺回饋、Face ID、主要幣別等列的圖示沒有外框",
+            "修正：新增帳戶、選擇 iCloud 資料夾等按鈕文字變成藍色",
+            "修正：分隔線穿出卡片外",
+            "選單的值改成灰色",
+        ]),
         Release(version: "1.16.0", date: "2026-11-12", title: "新的設定頁", items: [
             "設定頁改版：最上面是設定自動記帳的大卡片，每一列左邊有圖示，分組重新整理成一般、主要色、帳戶、分類、iCloud 同步、備份與搬家、關於",
             "關閉按鈕移到左上角",

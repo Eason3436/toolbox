@@ -40,12 +40,13 @@ struct SettingsView: View {
                         Text("第一個帳戶").tag("")
                         ForEach(accounts.filter { !$0.archived }) { Text($0.name).tag($0.id.uuidString) }
                     } label: {
-                        Label("捷徑預設帳戶", systemImage: "creditcard")
+                        SettingsRowLabel("捷徑預設帳戶", "creditcard")
                     }
+                    .tint(Color.secondary)
                     LabeledContent {
                         Text(NoticeParser.aiStatusText)
                     } label: {
-                        Label("裝置端模型", systemImage: "cpu")
+                        SettingsRowLabel("裝置端模型", "cpu")
                     }
                 }
                 .settingsRow()
@@ -55,19 +56,20 @@ struct SettingsView: View {
                         LabeledContent {
                             Text(hapticsEnabled ? "開啟" : "關閉")
                         } label: {
-                            Label("觸覺回饋", systemImage: "water.waves")
+                            SettingsRowLabel("觸覺回饋", "water.waves")
                         }
                     }
                     Toggle(isOn: $lockEnabled) {
-                        Label("Face ID 鎖定", systemImage: "faceid")
+                        SettingsRowLabel("Face ID 鎖定", "faceid")
                     }
                     Picker(selection: $mainCurrency) {
                         ForEach(Money.commonCurrencies, id: \.self) { Text($0).tag($0) }
                     } label: {
-                        Label("主要幣別", systemImage: "banknote")
+                        SettingsRowLabel("主要幣別", "banknote")
                     }
+                    .tint(Color.secondary)
                     NavigationLink { HomeLayoutView() } label: {
-                        Label("自訂主頁", systemImage: "square.grid.2x2")
+                        SettingsRowLabel("自訂主頁", "square.grid.2x2")
                     }
                 } header: {
                     SettingsHeader("一般")
@@ -97,7 +99,7 @@ struct SettingsView: View {
                                 Spacer()
                                 Text(Money.format(a.balance, currency: a.currency)).monospacedDigit().foregroundStyle(.secondary)
                             }
-                            .alignmentGuide(.listRowSeparatorLeading) { _ in -40 }
+                            .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
                         }
                         .buttonStyle(.plain)
                         .swipeActions {
@@ -111,7 +113,7 @@ struct SettingsView: View {
                         try? context.save()
                     }
                     Button { addingAccount = true } label: {
-                        Label("新增帳戶", systemImage: "plus")
+                        SettingsRowLabel("新增帳戶", "plus")
                     }
                 } header: {
                     SettingsHeader("帳戶")
@@ -120,13 +122,13 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink { CategoryManagerView() } label: {
-                        Label("管理分類", systemImage: "tag")
+                        SettingsRowLabel("管理分類", "tag")
                     }
                     NavigationLink { BranchBatchView() } label: {
-                        Label("交易地點", systemImage: "mappin.and.ellipse")
+                        SettingsRowLabel("交易地點", "mappin.and.ellipse")
                     }
                     NavigationLink { ReceiptBatchView() } label: {
-                        Label("匯入發票照片", systemImage: "doc.text.viewfinder")
+                        SettingsRowLabel("匯入發票照片", "doc.text.viewfinder")
                     }
                 } header: {
                     SettingsHeader("分類、地點與發票")
@@ -138,12 +140,12 @@ struct SettingsView: View {
                         LabeledContent {
                             Text(syncFolder)
                         } label: {
-                            Label("資料夾", systemImage: "folder")
+                            SettingsRowLabel("資料夾", "folder")
                         }
                         Button {
                             syncStatus = CloudSync.run(force: true)
                         } label: {
-                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                            SettingsRowLabel("立即同步", "arrow.triangle.2.circlepath")
                         }
                         Button("關閉同步", role: .destructive) {
                             CloudSync.turnOff()
@@ -157,7 +159,7 @@ struct SettingsView: View {
                             pickingSyncFolder = true
                             importing = true
                         } label: {
-                            Label("選擇 iCloud 雲碟資料夾", systemImage: "icloud")
+                            SettingsRowLabel("選擇 iCloud 雲碟資料夾", "icloud")
                         }
                     }
                     if let syncStatus {
@@ -175,32 +177,32 @@ struct SettingsView: View {
                     Button {
                         exportURL = try? Backup.export()
                     } label: {
-                        Label("匯出完整備份（JSON）", systemImage: "externaldrive")
+                        SettingsRowLabel("匯出完整備份（JSON）", "externaldrive")
                     }
                     if let exportURL {
-                        ShareLink(item: exportURL) { Label("分享備份檔", systemImage: "square.and.arrow.up") }
+                        ShareLink(item: exportURL) { SettingsRowLabel("分享備份檔", "square.and.arrow.up") }
                     }
                     Button {
                         restoring = true
                         pickingSyncFolder = false
                         importing = true
                     } label: {
-                        Label("從備份還原", systemImage: "arrow.counterclockwise")
+                        SettingsRowLabel("從備份還原", "arrow.counterclockwise")
                     }
                     Button {
                         csvURL = try? Backup.exportCSV()
                     } label: {
-                        Label("匯出交易 CSV", systemImage: "tablecells")
+                        SettingsRowLabel("匯出交易 CSV", "tablecells")
                     }
                     if let csvURL {
-                        ShareLink(item: csvURL) { Label("分享 CSV", systemImage: "square.and.arrow.up") }
+                        ShareLink(item: csvURL) { SettingsRowLabel("分享 CSV", "square.and.arrow.up") }
                     }
                     Button {
                         restoring = false
                         pickingSyncFolder = false
                         importing = true
                     } label: {
-                        Label("從 Cashew 備份匯入", systemImage: "square.and.arrow.down")
+                        SettingsRowLabel("從 Cashew 備份匯入", "square.and.arrow.down")
                     }
                     if let importResult {
                         Text(importResult).font(.footnote).foregroundStyle(.green)
@@ -220,11 +222,11 @@ struct SettingsView: View {
                         LabeledContent {
                             Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? Changelog.current)
                         } label: {
-                            Label("版本", systemImage: "info.circle")
+                            SettingsRowLabel("版本", "info.circle")
                         }
                     }
                     NavigationLink { ContentView() } label: {
-                        Label("數字動效示範", systemImage: "textformat.123")
+                        SettingsRowLabel("數字動效示範", "textformat.123")
                     }
                 } header: {
                     SettingsHeader("關於")
