@@ -2,7 +2,10 @@ import Foundation
 import AVFoundation
 import CoreMedia
 import VideoToolbox
+// 模擬器的 SDK 沒有 Cinematic（單元測試在模擬器跑），所以有條件匯入。
+#if canImport(Cinematic)
 import Cinematic
+#endif
 
 /// APAC（Apple Positional Audio Codec）：iPhone 錄的空間音訊。
 let kAudioFormatAPACCode: FourCharCode = 0x6170_6163 // 'apac'
@@ -507,7 +510,11 @@ enum DownscaleTranscoder {
     @available(iOS 26.0, *)
     private static func systemSpatialCheck(_ asset: AVAsset) async -> Bool? {
         // Cinematic 框架的「音訊混合」判斷：檔案是否含可用的空間音訊。
-        try? await CNAssetSpatialAudioInfo.assetContainsSpatialAudio(asset: asset)
+        #if canImport(Cinematic)
+        return try? await CNAssetSpatialAudioInfo.assetContainsSpatialAudio(asset: asset)
+        #else
+        return nil
+        #endif
     }
 }
 
