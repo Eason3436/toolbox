@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var loadingPhotos = false
     @State private var dropTargeted = false
     @State private var showLivePhoto = false
+    @State private var showDownscale = false
 
     var body: some View {
         NavigationStack {
@@ -45,6 +46,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showLivePhoto) {
                 LivePhotoView(identifiers: model.livePhotoIDs)
+            }
+            .sheet(isPresented: $showDownscale) {
+                DownscaleView()
             }
             .dropDestination(for: URL.self) { urls, _ in
                 model.add(urls: urls)
@@ -119,30 +123,13 @@ struct HomeView: View {
                     Spacer(minLength: 32)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            showPacks = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "shippingbox")
-                                    .font(.title3)
-                                    .foregroundStyle(Color.tbInkSecondary)
-                                    .frame(width: 28)
-                                Text("功能包")
-                                    .foregroundStyle(Color.tbInk)
-                                Spacer()
-                                Text(packCountText)
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.tbInkSecondary)
-                                Image(systemName: "chevron.right")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(Color.tbInkTertiary)
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 12)
-                            .frame(minHeight: 52)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        shortcutRow(title: "4K 轉 1080p", detail: "保留空間音訊",
+                                    systemImage: "arrow.down.right.and.arrow.up.left") {
+                            showDownscale = true
                         }
-                        .buttonStyle(.plain)
+                        shortcutRow(title: "功能包", detail: packCountText, systemImage: "shippingbox") {
+                            showPacks = true
+                        }
                         Text("也可以從其他 App 用「分享 › 工具箱」把檔案丟進來。")
                             .font(.footnote)
                             .foregroundStyle(Color.tbInkSecondary)
@@ -155,6 +142,33 @@ struct HomeView: View {
             }
             .tbSoftEdges()
         }
+    }
+
+    /// 空白首頁下方的捷徑列（膠囊玻璃）。
+    private func shortcutRow(title: String, detail: String, systemImage: String,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                    .foregroundStyle(Color.tbInkSecondary)
+                    .frame(width: 28)
+                Text(title)
+                    .foregroundStyle(Color.tbInk)
+                Spacer()
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.tbInkSecondary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.tbInkTertiary)
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .frame(minHeight: 52)
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var packCountText: String {
@@ -259,6 +273,11 @@ struct HomeView: View {
             Menu {
                 addSources
                 Divider()
+                Button {
+                    showDownscale = true
+                } label: {
+                    Label("4K 轉 1080p（保留空間音訊）", systemImage: "arrow.down.right.and.arrow.up.left")
+                }
                 Button {
                     showPacks = true
                 } label: {
