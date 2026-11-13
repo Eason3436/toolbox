@@ -3,6 +3,7 @@ import BackgroundTasks
 
 /// 用 iOS 26 起的 BGContinuedProcessingTask 讓處理在切到背景後繼續進行，
 /// 系統會在動態島與鎖定畫面顯示進度（即時動態），也可以從那裡取消。
+/// 在 LiveContainer 裡執行時，另外用 LiveContainer 的通用即時動態顯示工具箱自己的名稱與進度。
 final class BackgroundWork: @unchecked Sendable {
     private let lock = NSLock()
     private var task: BGContinuedProcessingTask?
@@ -12,6 +13,8 @@ final class BackgroundWork: @unchecked Sendable {
     private var finished = false
     private var finishedSuccess = false
     private var expiration: (@Sendable () -> Void)?
+    /// LiveContainer 的即時動態（不在 LiveContainer 裡時是 nil）。型別是 LCLiveProgress。
+    private var liveProgress: AnyObject?
 
     private init(title: String, subtitle: String) {
         self.title = title
@@ -23,8 +26,10 @@ final class BackgroundWork: @unchecked Sendable {
     private static let identifierPrefix = "com.eason3436.toolbox.process"
 
     /// 開始一個背景工作。系統不允許時仍會回傳物件，只是不會顯示進度（前景照常處理）。
-    static func begin(title: String, subtitle: String) -> BackgroundWork {
+    static func begin(title: String, subtitle: String,
+                      systemImage: String = "wrench.and.screwdriver") -> BackgroundWork {
         let work = BackgroundWork(title: title, subtitle: subtitle)
+        work.liveProgress = LCLiveProgress.start(title: title, subtitle: subtitle, systemImage: systemImage)
         let identifier = identifierPrefix + "." + UUID().uuidString.prefix(8).lowercased()
         let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             guard let continued = task as? BGContinuedProcessingTask else {
@@ -58,6 +63,7 @@ final class BackgroundWork: @unchecked Sendable {
         let value = fraction
         lock.unlock()
         task?.progress.completedUnitCount = Int64(value * 1000)
+        (liveProgress as? LCLiveProgress)?.update(progress: value)
     }
 
     func update(subtitle newSubtitle: String) {
@@ -66,6 +72,7 @@ final class BackgroundWork: @unchecked Sendable {
         let task = self.task
         lock.unlock()
         task?.updateTitle(title, subtitle: newSubtitle)
+        (liveProgress as? LCLiveProgress)?.update(subtitle: newSubtitle)
     }
 
     func finish(success: Bool) {
@@ -76,6 +83,7 @@ final class BackgroundWork: @unchecked Sendable {
         let task = self.task
         self.task = nil
         lock.unlock()
+        (liveProgress as? LCLiveProgress)?.end(success: success)
         if let task {
             task.progress.completedUnitCount = task.progress.totalUnitCount
             task.updateTitle(title, subtitle: success ? "完成" : "未完成")
@@ -106,6 +114,7 @@ final class BackgroundWork: @unchecked Sendable {
             self.task = nil
             self.finished = true
             self.lock.unlock()
+            (self.liveProgress as? LCLiveProgress)?.end(success: false)
             handler?()
             continued.setTaskCompleted(success: false)
         }
