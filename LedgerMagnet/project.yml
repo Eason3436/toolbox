@@ -1,0 +1,102 @@
+name: LedgerMagnet
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.17.1"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+packages:
+  SVGPath:
+    url: https://github.com/nicklockwood/SVGPath.git
+    from: 1.3.1
+  # DistortionWavesKit（MIT）：記一筆「記下」的彩色波浪。整個 repo 只有 main 分支有 Package.swift
+  Libraries.dev:
+    url: https://github.com/Jakubantalik/Libraries.dev
+    branch: main
+targets:
+  Ledger:
+    type: application
+    platform: iOS
+    dependencies:
+      - package: SVGPath
+        product: SVGPath
+      - package: Libraries.dev
+        product: DistortionWavesKit
+    sources:
+      - path: Ledger
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Ledger/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: Ledger/Info.plist
+      properties:
+        CFBundleDisplayName: Magnet
+        CFBundleName: LedgerMagnet
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+        NSFaceIDUsageDescription: 用 Face ID 解鎖記帳。
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.eason3436.ledger.cashew-backup
+            UTTypeDescription: Cashew 備份
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - sql
+                - sqlite
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Cashew 備份
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.eason3436.ledger.cashew-backup
+          - CFBundleTypeName: 記帳備份
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.json
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.ledger.magnet
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  LedgerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Ledger
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.ledger.magnet.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Ledger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Ledger
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Ledger:
+    build:
+      targets:
+        Ledger: all
+    test:
+      targets:
+        - LedgerTests
