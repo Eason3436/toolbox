@@ -539,7 +539,7 @@ private final class PumpCoordinator: @unchecked Sendable {
     private var finishHandler: (() -> Void)?
     private var didNotify = false
     private var cancelled = false
-    private var failure = (any: false, spatial: false, other: false)
+    private var failure = (happened: false, spatial: false, other: false)
 
     init(count: Int) {
         done = Array(repeating: false, count: count)
@@ -548,7 +548,7 @@ private final class PumpCoordinator: @unchecked Sendable {
 
     var isCancelled: Bool { lock.withLock { cancelled } }
     var isFinished: Bool { lock.withLock { remaining == 0 } }
-    var failed: Bool { lock.withLock { failure.any } }
+    var failed: Bool { lock.withLock { failure.happened } }
     var failedOnSpatial: Bool { lock.withLock { failure.spatial } }
     var failedOnOther: Bool { lock.withLock { failure.other } }
 
@@ -590,7 +590,7 @@ private final class PumpCoordinator: @unchecked Sendable {
 
     func recordFailure(spatial: Bool) {
         lock.withLock {
-            failure.any = true
+            failure.happened = true
             if spatial { failure.spatial = true } else { failure.other = true }
         }
     }
