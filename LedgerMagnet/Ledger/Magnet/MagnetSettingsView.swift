@@ -80,7 +80,11 @@ struct MagnetLiveView: View {
             }
             .gaugeStyle(.accessoryLinearCapacity)
             .frame(maxWidth: 220)
-            if field.tooClose {
+            if field.needsCompassCalibration {
+                Label("拿起手機在空中畫幾次 8 字", systemImage: "gyroscope")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+            } else if field.tooClose {
                 Label("太近了", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.orange)

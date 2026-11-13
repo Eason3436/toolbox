@@ -50,21 +50,31 @@ final class MagnetField {
 
     @ObservationIgnored private let motion = CMMotionManager()
     @ObservationIgnored private var running = false
-    /// 地磁（參考座標系，校正過的磁場）或基準線（裝置座標，未校正的原始磁場）
+    /// 地磁（參考座標系，校正過的磁場）
     @ObservationIgnored private var baseline: Vec3?
-    @ObservationIgnored private var baselineIsRaw = false
     @ObservationIgnored private var smooth = Vec3.zero
     @ObservationIgnored private var lastPublish: TimeInterval = 0
+    @ObservationIgnored private var lastAccuracy: CMMagneticFieldCalibrationAccuracy?
+    /// 旋轉矩陣的方向：裝置 = R × 參考（false）或 Rᵀ × 參考（true）。
+    /// 只在手機夠斜、兩個方向分得出來時投票，之後固定，不會每一筆來回跳。
+    @ObservationIgnored private var conventionVotes = 0
+    /// 連續幾次都有把握（進場要連續幾次，避免一閃一閃）
+    @ObservationIgnored private var confidentStreak = 0
+    /// 同一個變化量維持多久（秒）；太久沒變多半是偏移，不是有人拿著磁鐵
+    @ObservationIgnored private var steadySince: TimeInterval?
+    @ObservationIgnored private var steadyRef = Vec3.zero
+
+    /// 系統的磁力計還沒校準好（剛開機、附近有大型金屬）；這時不顯示磁鐵，避免亂飄
+    private(set) var needsCompassCalibration = false
 
     private init() {}
 
     func start() {
         guard enabled, !running, motion.isDeviceMotionAvailable else { return }
         running = true
-        baseline = nil
+        resetBaseline()
         motion.deviceMotionUpdateInterval = 1.0 / 50.0
-        motion.magnetometerUpdateInterval = 1.0 / 50.0
-        motion.startMagnetometerUpdates()
+        motion.showsDeviceMovementDisplay = true
         motion.startDeviceMotionUpdates(using: .xArbitraryCorrectedZVertical, to: .main) { [weak self] dm, _ in
             guard let dm else { return }
             MainActor.assumeIsolated { self?.handle(dm) }
@@ -75,17 +85,15 @@ final class MagnetField {
         guard running else { return }
         running = false
         motion.stopDeviceMotionUpdates()
-        motion.stopMagnetometerUpdates()
-        point = nil
-        pull = 0
-        presence = 0
-        strength = 0
+        clearOutput()
     }
 
     /// 重新量地磁（校正第一步、或手機換了地方）
     func resetBaseline() {
         baseline = nil
         smooth = .zero
+        confidentStreak = 0
+        steadySince = nil
     }
 
     func saveCalibration(_ c: MagnetCalibrationData?) {
@@ -102,55 +110,78 @@ final class MagnetField {
         return try? JSONDecoder().decode(MagnetCalibrationData.self, from: data)
     }
 
+    private func clearOutput() {
+        if point != nil { point = nil }
+        if pull != 0 { pull = 0 }
+        if presence != 0 { presence = 0 }
+        if strength != 0 { strength = 0 }
+        if tooClose { tooClose = false }
+    }
+
     // MARK: 每一筆讀數
 
     private func handle(_ dm: CMDeviceMotion) {
+        let accuracy: CMMagneticFieldCalibrationAccuracy = dm.magneticField.accuracy
+        // 系統重新校準時參考座標會跳，地磁要重量
+        if accuracy != lastAccuracy {
+            lastAccuracy = accuracy
+            resetBaseline()
+        }
+        // 沒校準的磁場含手機本身的偏移，手機一轉就整個變，根本分不出磁鐵 → 先不顯示
+        let uncalibrated: Bool = accuracy == .uncalibrated
+        if uncalibrated != needsCompassCalibration { needsCompassCalibration = uncalibrated }
+        guard !uncalibrated else {
+            clearOutput()
+            return
+        }
+
         let r: CMRotationMatrix = dm.attitude.rotationMatrix
         let gravity = Vec3(x: dm.gravity.x, y: dm.gravity.y, z: dm.gravity.z)
-        // CMRotationMatrix 的方向依文件不好確定：用重力自己對一次，選比較對的那個方向
         let down = Vec3(x: 0, y: 0, z: -1)
-        let transposed: Bool = Self.mul(r, down, transposed: true).dot(gravity) > Self.mul(r, down, transposed: false).dot(gravity)
+        let a: Double = Self.mul(r, down, transposed: false).dot(gravity)
+        let b: Double = Self.mul(r, down, transposed: true).dot(gravity)
+        // 手機平放時兩個方向算出來幾乎一樣，這時不投票
+        if abs(a - b) > 0.3, abs(conventionVotes) < 20 { conventionVotes += b > a ? 1 : -1 }
+        let transposed: Bool = conventionVotes > 0
 
-        let calibratedField: Bool = dm.magneticField.accuracy != .uncalibrated
-        let field: Vec3
-        if calibratedField {
-            let f = dm.magneticField.field
-            field = Vec3(x: f.x, y: f.y, z: f.z)
-        } else if let raw = motion.magnetometerData?.magneticField {
-            field = Vec3(x: raw.x, y: raw.y, z: raw.z)
-        } else {
-            return
-        }
-        let isRaw: Bool = !calibratedField
-
-        // 校正過的磁場：地磁存在參考座標系，手機轉動也扣得掉。
-        // 原始磁場含硬鐵偏差，只能在裝置座標當基準線。
-        let inRef: Vec3 = isRaw ? field : Self.mul(r, field, transposed: !transposed)
-        guard let base = baseline, baselineIsRaw == isRaw else {
+        let f = dm.magneticField.field
+        let field = Vec3(x: f.x, y: f.y, z: f.z)
+        let inRef: Vec3 = Self.mul(r, field, transposed: !transposed)
+        guard let base = baseline else {
             baseline = inRef
-            baselineIsRaw = isRaw
             return
         }
-        let expected: Vec3 = isRaw ? base : Self.mul(r, base, transposed: transposed)
-        let delta: Vec3 = field - expected
+        let expected: Vec3 = Self.mul(r, base, transposed: transposed)
+        var delta: Vec3 = field - expected
         let mag: Double = delta.length
 
         let noise: Double = calibration?.noise ?? 6
         let quiet: Double = MagnetMath.threshold(noise: noise)
-        // 沒磁鐵時慢慢跟著地磁走（換位置、系統重新校正）
         if mag < quiet {
-            baseline = Vec3.lerp(base, inRef, isRaw ? 0.05 : 0.02)
-        } else if isRaw {
-            // 原始磁場：手機轉動時地磁也在變，轉得快就加快跟上
-            let rr = dm.rotationRate
-            let spin: Double = (rr.x * rr.x + rr.y * rr.y + rr.z * rr.z).squareRoot()
-            if spin > 1.2, mag < 90 { baseline = Vec3.lerp(base, inRef, 0.2) }
+            // 沒磁鐵時慢慢跟著地磁走（換位置、參考座標慢慢漂）
+            baseline = Vec3.lerp(base, inRef, 0.02)
+        } else if MagnetMath.looksLikeOrientationDrift(delta: mag, fieldLength: field.length, baseLength: base.length) {
+            // 磁場大小沒變、只有方向不對 → 是手機姿態估計漂掉，不是磁鐵。快一點對回去
+            baseline = Vec3.lerp(base, inRef, 0.15)
+            delta = .zero
+        }
+
+        // 變化量很久都沒變：多半是殘留偏移（例如手機殼的磁環），慢慢吃進地磁
+        let now: TimeInterval = dm.timestamp
+        if mag >= quiet {
+            if let since = steadySince, (delta - steadyRef).length < max(quiet * 0.5, 5) {
+                if now - since > 20 { baseline = Vec3.lerp(baseline ?? base, inRef, 0.01) }
+            } else {
+                steadySince = now
+                steadyRef = delta
+            }
+        } else {
+            steadySince = nil
         }
 
         smooth = Vec3.lerp(smooth, delta, 0.35)
         sampleSink?(delta)
 
-        let now: TimeInterval = dm.timestamp
         guard now - lastPublish >= 1.0 / 30.0 else { return }
         lastPublish = now
         publish(field: field)
@@ -160,14 +191,27 @@ final class MagnetField {
         let mag: Double = smooth.length
         let noise: Double = calibration?.noise ?? 6
         let p: Double = MagnetMath.presence(mag, noise: noise)
+        // 進場要連續 4 次（約 0.13 秒）都有把握；已經在顯示時，降到很低才收起來
+        let showing: Bool = point != nil
+        if p > (showing ? 0.05 : 0.25) {
+            confidentStreak += 1
+        } else {
+            confidentStreak = 0
+        }
         var newPoint: CGPoint?
         var newPull: Double = 0
-        if p > 0.05, let est = MagnetMath.estimate(smooth, calibration: calibration) {
+        if confidentStreak >= (showing ? 1 : 4), let est = MagnetMath.estimate(smooth, calibration: calibration) {
             let lo: Double = MagnetMath.threshold(noise: noise)
             let x: Double = min(max((mag - lo) / max(est.fullStrength - lo, 1), 0), 1)
             newPull = pow(x, 0.7) * p
             if screenSize.width > 0 {
-                newPoint = CGPoint(x: est.point.x * screenSize.width, y: est.point.y * screenSize.height)
+                let target = CGPoint(x: est.point.x * screenSize.width, y: est.point.y * screenSize.height)
+                // 位置也平滑一下，不要一跳一跳
+                if let old = point {
+                    newPoint = CGPoint(x: old.x + (target.x - old.x) * 0.35, y: old.y + (target.y - old.y) * 0.35)
+                } else {
+                    newPoint = target
+                }
             }
         }
         // 只有變化夠大才更新，減少畫面重算

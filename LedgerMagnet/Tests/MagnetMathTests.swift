@@ -37,4 +37,14 @@ final class MagnetMathTests: XCTestCase {
         XCTAssertEqual(MagnetMath.presence(2, noise: 5), 0)
         XCTAssertEqual(MagnetMath.presence(500, noise: 5), 1)
     }
+
+    func testOrientationDriftIsNotAMagnet() {
+        // 地磁 45 µT 轉了 30°：差 23 µT，但大小沒變
+        XCTAssertTrue(MagnetMath.looksLikeOrientationDrift(delta: 23, fieldLength: 45.5, baseLength: 45))
+        // 磁鐵：大小明顯變了
+        XCTAssertFalse(MagnetMath.looksLikeOrientationDrift(delta: 60, fieldLength: 95, baseLength: 45))
+        XCTAssertFalse(MagnetMath.looksLikeOrientationDrift(delta: 30, fieldLength: 54, baseLength: 45))
+        // 變化比地磁轉 180° 還大，一定是磁鐵
+        XCTAssertFalse(MagnetMath.looksLikeOrientationDrift(delta: 120, fieldLength: 45, baseLength: 45))
+    }
 }

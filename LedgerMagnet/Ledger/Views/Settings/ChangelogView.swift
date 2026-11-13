@@ -14,6 +14,12 @@ enum Changelog {
     static var current: String { releases.first?.version ?? "" }
 
     static let releases: [Release] = [
+        Release(version: "1.17.1", date: "2026-11-13", title: "磁鐵位置更穩", items: [
+            "修正：附近沒有磁鐵時，磁鐵位置還是一直亂飄",
+            "手機只是轉動、磁場大小沒變時，不再當成有磁鐵",
+            "磁鐵要穩定出現一下子才會吸，位置移動也更平順",
+            "磁力計還沒校準好時先不吸，設定 → 磁力會提示畫 8 字",
+        ]),
         Release(version: "1.17.0", date: "2026-11-13", title: "磁力特別版", items: [
             "另一個 App（Magnet），資料跟原本的記帳分開，可以用備份還原搬過來",
             "拿磁鐵靠近手機，卡片、圖示、列表、按鈕會被吸過去，拿開就彈回來",
