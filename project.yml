@@ -44,6 +44,8 @@ targets:
         NSPhotoLibraryUsageDescription: 用來讀取原況照片並把處理好的照片存回相簿。
         NSPhotoLibraryAddUsageDescription: 用來把處理好的照片和影片存到相簿。
         UIFileSharingEnabled: true
+        # 在 LiveContainer 裡用 LiveContainer 的通用即時動態顯示進度（LCLiveActivityAttributes）。
+        NSSupportsLiveActivities: true
         UIAppFonts:
           - NotoSerifTC-Medium.ttf
         NSSpeechRecognitionUsageDescription: 用來把音訊在裝置上轉成文字。
@@ -78,4 +80,20 @@ targets:
         ENABLE_PREVIEWS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-    scheme: {}
+    scheme:
+      testTargets:
+        - ToolboxTests
+
+  ToolboxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ToolboxTests
+    dependencies:
+      - target: Toolbox
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.toolbox.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Toolbox.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Toolbox
+        BUNDLE_LOADER: $(TEST_HOST)

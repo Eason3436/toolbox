@@ -332,7 +332,8 @@ struct OperationView: View {
         let op = operation
         let files = inputs
         let current = values
-        let background = BackgroundWork.begin(title: op.title, subtitle: "\(files.count) 個檔案・準備中")
+        let background = BackgroundWork.begin(title: op.title, subtitle: "\(files.count) 個檔案・準備中",
+                                             systemImage: op.systemImage)
         task = Task {
             let work = Task {
                 try await Runner.run(op, inputs: files, values: current, progress: { value in
