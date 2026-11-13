@@ -27,44 +27,46 @@ struct LCLiveActivityWidget: Widget {
                 .widgetURL(context.attributes.launchURL)
         } dynamicIsland: { context in
             DynamicIsland {
+                // Leading / trailing sit beside the camera; center and bottom go below it.
                 DynamicIslandExpandedRegion(.leading) {
-                    Label {
-                        Text(context.attributes.appName)
-                            .lineLimit(1)
-                    } icon: {
-                        Image(systemName: iconName(context))
-                            .foregroundStyle(accent(context))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.leading, 4)
+                    IconBadge(name: iconName(context), tint: accent(context), size: 44)
+                        .padding(.leading, 6)
+                        .frame(maxHeight: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     TrailingValue(state: context.state, tint: accent(context))
-                        .font(.title3.weight(.semibold).monospacedDigit())
-                        .padding(.trailing, 4)
+                        .font(.title2.weight(.semibold).monospacedDigit())
+                        .contentTransition(.numericText())
+                        .padding(.trailing, 8)
+                        .frame(maxHeight: .infinity, alignment: .center)
                 }
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
+                DynamicIslandExpandedRegion(.center) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(context.state.title)
                             .font(.headline)
                             .lineLimit(1)
-                        if let subtitle = context.state.subtitle, !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
-                        if let progress = clampedProgress(context.state) {
-                            ProgressView(value: progress)
-                                .tint(accent(context))
-                        }
+                        Text(secondaryLine(context))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 4)
                 }
+                DynamicIslandExpandedRegion(.bottom) {
+                    if let progress = clampedProgress(context.state) {
+                        ProgressView(value: progress)
+                            .tint(accent(context))
+                            .padding(.horizontal, 8)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+                    }
+                }
             } compactLeading: {
                 Image(systemName: iconName(context))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(accent(context))
+                    .padding(.leading, 2)
             } compactTrailing: {
                 CompactTrailing(state: context.state, tint: accent(context))
             } minimal: {
@@ -87,38 +89,30 @@ private struct LockScreenView: View {
     let context: ActivityViewContext<LCLiveActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Image(systemName: iconName(context))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(accent(context))
-                    .frame(width: 40, height: 40)
-                    .background(accent(context).opacity(0.18), in: Circle())
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                IconBadge(name: iconName(context), tint: accent(context), size: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(context.attributes.appName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                     Text(context.state.title)
                         .font(.headline)
                         .lineLimit(1)
-                    if let subtitle = context.state.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+                    Text(secondaryLine(context))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 TrailingValue(state: context.state, tint: accent(context))
                     .font(.title2.weight(.semibold).monospacedDigit())
+                    .contentTransition(.numericText())
             }
             if let progress = clampedProgress(context.state) {
                 ProgressView(value: progress)
                     .tint(accent(context))
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 }
 
@@ -169,7 +163,12 @@ private struct CompactTrailing: View {
                 .frame(width: 50, alignment: .trailing)
                 .foregroundStyle(tint)
         } else if let progress = clampedProgress(state) {
-            ProgressRing(progress: progress, tint: tint)
+            // Text reads better than a tiny ring next to the camera; the ring stays for `minimal`.
+            Text(progress, format: .percent.precision(.fractionLength(0)))
+                .font(.body.weight(.semibold).monospacedDigit())
+                .contentTransition(.numericText())
+                .foregroundStyle(tint)
+                .padding(.trailing, 2)
         } else if let text = state.compactText, !text.isEmpty {
             Text(text)
                 .lineLimit(1)
@@ -189,7 +188,7 @@ private struct ProgressRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(tint.opacity(0.25), lineWidth: 3)
+            Circle().stroke(tint.opacity(0.35), lineWidth: 3)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -199,7 +198,31 @@ private struct ProgressRing: View {
     }
 }
 
+/// SF Symbol in a soft tinted circle.
+private struct IconBadge: View {
+    let name: String
+    let tint: Color
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: name)
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.2), in: Circle())
+    }
+}
+
 // MARK: - Helpers
+
+/// Subtitle, or the app name when there is none, so the layout keeps two lines.
+private func secondaryLine(_ context: ActivityViewContext<LCLiveActivityAttributes>) -> String {
+    if let subtitle = context.state.subtitle, !subtitle.isEmpty {
+        return "\(context.attributes.appName) · \(subtitle)"
+    }
+    return context.attributes.appName
+}
+
 
 private func clampedProgress(_ state: LCLiveActivityAttributes.ContentState) -> Double? {
     guard let progress = state.progress, progress.isFinite else { return nil }

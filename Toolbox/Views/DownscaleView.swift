@@ -209,6 +209,11 @@ struct DownscaleView: View {
             LabeledContent("空間音訊") {
                 spatialResult(outcome)
             }
+            if !outcome.audio.problems.isEmpty && outcome.keptSpatial && outcome.audio.sourceHadSpatial {
+                Text(outcome.audio.problems.formatted(.list(type: .and)))
+                    .font(.footnote)
+                    .foregroundStyle(Color.tbInkSecondary)
+            }
             LabeledContent("音軌", value: audioTracksText(outcome.audio))
             if let error = outcome.saveError {
                 Label("沒有存到相簿：\(error)", systemImage: "exclamationmark.circle")
