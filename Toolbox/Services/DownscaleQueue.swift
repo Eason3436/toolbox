@@ -141,7 +141,8 @@ final class DownscaleQueue {
         guard !isRunning, readyCount > 0 else { return }
         isRunning = true
         let total = readyCount
-        let work = BackgroundWork.begin(title: "4K 轉 1080p", subtitle: "共 \(total) 支影片")
+        let work = BackgroundWork.begin(title: "4K 轉 1080p", subtitle: "共 \(total) 支影片",
+                                       systemImage: "arrow.down.right.and.arrow.up.left")
         background = work
         task = Task { await runAll(total: total) }
         work.onExpiration { [weak self] in

@@ -32,7 +32,7 @@ Release 的 tag 每次建置都會被刪掉重建（同一個 tag 永遠放最�
 - PDF：轉 Markdown、合併、拆分、轉圖、加解密碼
 - 文件（MD/HTML/TXT/CSV/JSON/Office）：轉 PDF、DOCX、Markdown、繁簡轉換、修亂碼
 - **功能包**：JSON 檔把內建積木串成新功能，不用重新打包（格式見 `README.md`）
-- 捷徑／Siri（`Toolbox/Intents`）、長時間工作用 `BGContinuedProcessingTask`（系統 Live Activity）
+- 捷徑／Siri（`Toolbox/Intents`）、長時間工作用 `BGContinuedProcessingTask`（系統 Live Activity）；在 LiveContainer 裡另外用 LC 通用即時動態顯示進度（`Toolbox/LiveContainer/`，`LCLiveActivityAttributes.swift` 從 `LiveContainer/overlay` 原封不動複製，改了要兩邊一起改）
 - 結構：`Engine/`（積木註冊、功能包）、`Operations/`（各類處理）、`Views/`、`Services/`
 - iOS 26 起；Bundle ID `com.eason3436.toolbox`；Swift 5
 
