@@ -64,6 +64,14 @@ enum MagnetMath {
     /// 低於這個變化量就當作沒有磁鐵（µT）
     static func threshold(noise: Double) -> Double { max(noise * 2.5, 10) }
 
+    /// 變化量其實只是手機姿態估計漂掉（地磁轉了個角度），不是磁鐵。
+    /// 只是轉角度時磁場「大小」不會變；真的磁鐵幾乎一定會讓大小跟著變。
+    static func looksLikeOrientationDrift(delta: Double, fieldLength: Double, baseLength: Double) -> Bool {
+        guard baseLength > 1, delta < baseLength * 1.8 else { return false }
+        let sizeChange: Double = abs(fieldLength - baseLength)
+        return sizeChange < min(delta * 0.25, 8)
+    }
+
     /// 有磁鐵的把握（0…1）
     static func presence(_ magnitude: Double, noise: Double) -> Double {
         let lo: Double = threshold(noise: noise)
