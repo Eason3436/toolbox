@@ -24,6 +24,8 @@ final class DownscaleQueue {
         let expected: [String]
         let output: [String]
         let systemOutput: Bool?
+        /// 跟原片不一樣的地方，空的代表一致。
+        let problems: [String]
     }
 
     enum Status: Equatable {
@@ -161,7 +163,8 @@ final class DownscaleQueue {
         var allSucceeded = true
         for id in items.filter({ $0.status == .ready }).map(\.id) {
             if Task.isCancelled { break }
-            background?.update(subtitle: "第 \(finished + 1)/\(total) 支")
+            let name = items.first(where: { $0.id == id })?.name ?? ""
+            background?.update(subtitle: total > 1 ? "第 \(finished + 1)/\(total) 支・\(name)" : name)
             let ok = await process(id, keepSpatial: true, finished: finished, total: total)
             allSucceeded = allSucceeded && ok
             finished += 1
@@ -252,9 +255,10 @@ final class DownscaleQueue {
             sourceHadSpatial: check.sourceHadSpatial,
             spatialPreserved: check.spatialPreserved,
             tracksMatch: check.tracksMatch,
-            expected: check.expectedCodecs.map(Self.codecName),
-            output: check.outputCodecs.map(Self.codecName),
-            systemOutput: check.systemOutput
+            expected: check.expected.audio,
+            output: check.output.audio,
+            systemOutput: check.systemOutput,
+            problems: check.problems
         )
         let outcome = Outcome(beforeSize: probe.fileSize, afterSize: afterSize, audio: summary,
                               keptSpatial: keepSpatial, saveError: saveError)
@@ -344,15 +348,5 @@ final class DownscaleQueue {
     static func outputName(for name: String) -> String {
         let base = (name as NSString).deletingPathExtension
         return (base.isEmpty ? "影片" : base) + "_1080p.mov"
-    }
-
-    nonisolated static func codecName(_ code: FourCharCode) -> String {
-        switch code {
-        case kAudioFormatAPACCode: return "APAC"
-        case kAudioFormatMPEG4AAC: return "AAC"
-        case kAudioFormatLinearPCM: return "PCM"
-        case kAudioFormatAppleLossless: return "ALAC"
-        default: return code.fourCCString.uppercased()
-        }
     }
 }
