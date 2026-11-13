@@ -74,6 +74,20 @@ jobs:
           name: Toolbox-ipa
           path: Toolbox.ipa
 
+      - name: Unit tests (simulator)
+        continue-on-error: true
+        run: |
+          DEST=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          echo "Simulator: $DEST"
+          xcodebuild test \
+            -project Toolbox.xcodeproj \
+            -scheme Toolbox \
+            -destination "id=$DEST" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
+          grep -E "Test Case|error:|Executed" test.log | tail -60 || true
+          exit ${STATUS:-0}
+
       - name: Publish to "latest" release
         if: github.ref == 'refs/heads/main'
         env:
