@@ -86,23 +86,48 @@ struct VideoProbe: Sendable {
 
 // MARK: - 空間音訊驗證結果
 
+/// 檔案的音訊結構：哪些音軌、哪條是預設（enabled）、alternate group、備援關聯、metadata 軌。
+/// iPhone 錄的空間音訊（TN3177）：立體聲 AAC 與 APAC 在同一個 alternate group，
+/// 立體聲是預設（enabled）且被標成 APAC 的備援（audioFallback），另外有一條 metadata 軌。
+/// 播放器（包括「照片」）靠這些關係決定戴耳機時要不要切到空間音訊，少一個就只會放立體聲。
+struct TrackLayout: Sendable, Equatable {
+    var audio: [String] = []
+    var enabledAudio: [String] = []
+    var groups: [[String]] = []
+    var fallbacks: [String] = []
+    var metadataTracks = 0
+
+    var hasAPAC: Bool { audio.contains("APAC") }
+}
+
 struct AudioCheck: Sendable {
-    /// 預期輸出的音軌 codec（排序過）。
-    let expectedCodecs: [FourCharCode]
-    let outputCodecs: [FourCharCode]
+    /// 原片的結構（只保留立體聲時已拿掉 APAC 相關的部分）。
+    let expected: TrackLayout
+    let output: TrackLayout
     let sourceHadSpatial: Bool
+    let keptSpatial: Bool
     /// 系統（Cinematic 框架）判斷原片／輸出是否含空間音訊；無法判斷時是 nil。
     let systemSource: Bool?
     let systemOutput: Bool?
 
-    var tracksMatch: Bool { expectedCodecs == outputCodecs }
-    var outputHasAPAC: Bool { outputCodecs.contains(kAudioFormatAPACCode) }
+    var tracksMatch: Bool { expected.audio == output.audio }
 
-    /// 空間音訊是否保留成功：音軌數量與 codec 一致、有 APAC，而且系統判斷沒有退步。
+    /// 跟原片不一樣的地方（空的代表結構完全一致）。
+    var problems: [String] {
+        var list: [String] = []
+        if expected.audio != output.audio { list.append("音軌和原片不一致") }
+        guard keptSpatial, sourceHadSpatial else { return list }
+        if expected.enabledAudio != output.enabledAudio { list.append("預設音軌和原片不同") }
+        if expected.groups != output.groups { list.append("立體聲與空間音訊的備用群組沒保留") }
+        if expected.fallbacks != output.fallbacks { list.append("立體聲備援關聯沒保留") }
+        if output.metadataTracks < expected.metadataTracks { list.append("少了 metadata 軌") }
+        if systemSource == true && systemOutput != true { list.append("系統判斷輸出沒有空間音訊") }
+        return list
+    }
+
+    /// 空間音訊是否保留成功：有 APAC，而且整個音訊結構都跟原片一致。
     var spatialPreserved: Bool {
-        guard sourceHadSpatial, outputHasAPAC, tracksMatch else { return false }
-        if systemSource == true && systemOutput == false { return false }
-        return true
+        sourceHadSpatial && keptSpatial && output.hasAPAC && problems.isEmpty
     }
 }
 
@@ -199,11 +224,13 @@ enum DownscaleTranscoder {
             $0.keySpace == .quickTimeMetadata || $0.keySpace == .quickTimeUserData
         }
 
-        // 軌道的 alternate group 只有 AVMovieTrack 讀得到。
-        let alternateGroups = await loadAlternateGroups(url: probe.url)
+        // alternate group：哪些軌互為備用（例如立體聲和空間音訊）。
+        let alternateGroups = await loadAlternateGroups(asset)
 
         var pumps: [Pump] = []
         var inputsBySourceID: [CMPersistentTrackID: AVAssetWriterInput] = [:]
+        /// 有複製的來源軌，最後用來複製 track association。
+        var copiedTracks: [(track: AVAssetTrack, input: AVAssetWriterInput)] = []
 
         // ---- 影像 ----
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
@@ -235,6 +262,7 @@ enum DownscaleTranscoder {
         guard writer.canAdd(videoInput) else { throw ToolError("無法建立 1080p 影像軌") }
         writer.add(videoInput)
         inputsBySourceID[videoTrack.trackID] = videoInput
+        copiedTracks.append((videoTrack, videoInput))
 
         let scaler = try PixelScaler()
         let duration = max(probe.duration, 0.001)
@@ -281,6 +309,7 @@ enum DownscaleTranscoder {
             writer.add(input)
             includesSpatial = includesSpatial || isSpatial
             inputsBySourceID[track.trackID] = input
+            copiedTracks.append((track, input))
             audioEntries.append((input, track.trackID, enabled))
             pumps.append(Pump(name: "audio-\(track.trackID)", output: out, input: input,
                               isSpatialAudio: isSpatial) { input.append($0) })
@@ -291,7 +320,6 @@ enum DownscaleTranscoder {
         }
 
         // ---- Timed metadata：passthrough 複製 ----
-        var metadataTracks: [(track: AVAssetTrack, input: AVAssetWriterInput)] = []
         for track in try await asset.loadTracks(withMediaType: .metadata) {
             guard let format = try await track.load(.formatDescriptions).first else { continue }
             let out = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
@@ -304,19 +332,25 @@ enum DownscaleTranscoder {
             reader.add(out)
             writer.add(input)
             inputsBySourceID[track.trackID] = input
-            metadataTracks.append((track, input))
+            copiedTracks.append((track, input))
             pumps.append(Pump(name: "metadata-\(track.trackID)", output: out, input: input,
                               isSpatialAudio: false) { input.append($0) })
         }
 
-        // 保留 track association：metadata 軌描述的是哪一條軌（通常是影像軌）。
-        let referent = AVAssetTrack.AssociationType.metadataReferent
-        for (track, input) in metadataTracks {
-            let targets = (try? await track.loadAssociatedTracks(ofType: referent)) ?? []
-            for target in targets {
-                guard let targetInput = inputsBySourceID[target.trackID],
-                      input.canAddTrackAssociation(withTrackOf: targetInput, type: referent.rawValue) else { continue }
-                input.addTrackAssociation(withTrackOf: targetInput, type: referent.rawValue)
+        // 保留所有 track association，最重要的是 audioFallback：
+        // APAC 軌指向立體聲軌，代表「不能放空間音訊時改放這條」，播放器靠它切換空間音訊。
+        // 另外還有 metadata 軌描述哪一條軌（metadataReferent）等。
+        let associationTypes: [AVAssetTrack.AssociationType] = [
+            .audioFallback, .metadataReferent, .chapterList, .forcedSubtitlesOnly, .selectionFollower, .timecode,
+        ]
+        for (track, input) in copiedTracks {
+            for type in associationTypes {
+                let targets = (try? await track.loadAssociatedTracks(ofType: type)) ?? []
+                for target in targets {
+                    guard let targetInput = inputsBySourceID[target.trackID],
+                          input.canAddTrackAssociation(withTrackOf: targetInput, type: type.rawValue) else { continue }
+                    input.addTrackAssociation(withTrackOf: targetInput, type: type.rawValue)
+                }
             }
         }
 
@@ -470,41 +504,82 @@ enum DownscaleTranscoder {
         throw ToolError("這台裝置不支援 1080p HEVC\(probe.isHDR ? " 10-bit" : "") 編碼")
     }
 
-    private static func loadAlternateGroups(url: URL) async -> [CMPersistentTrackID: Int] {
-        let movie = AVMovie(url: url, options: nil)
-        guard let tracks = try? await movie.load(.tracks) else { return [:] }
+    /// 每條軌屬於哪個 alternate group（用群組在清單裡的順序當編號，0 代表不在群組裡）。
+    private static func loadAlternateGroups(_ asset: AVAsset) async -> [CMPersistentTrackID: Int] {
+        guard let groups = try? await asset.load(.trackGroups) else { return [:] }
         var result: [CMPersistentTrackID: Int] = [:]
-        for case let track as AVMovieTrack in tracks {
-            result[track.trackID] = track.alternateGroupID
+        for (index, group) in groups.enumerated() {
+            for id in group.trackIDs { result[CMPersistentTrackID(id.int32Value)] = index + 1 }
         }
         return result
     }
 
-    // MARK: 空間音訊驗證
-
-    /// 比對輸出檔的音軌數量與 codec 是否和預期一致，iOS 26 起再請系統判斷是否含空間音訊。
-    static func verifyAudio(source: VideoProbe, output: URL, keptSpatial: Bool) async -> AudioCheck {
-        let expected = source.audioTracks
-            .filter { keptSpatial || !$0.isSpatial }
-            .map(\.codec).sorted()
-        let outputAsset = AVURLAsset(url: output)
-        var codecs: [FourCharCode] = []
-        if let tracks = try? await outputAsset.loadTracks(withMediaType: .audio) {
-            for track in tracks {
-                if let format = try? await track.load(.formatDescriptions).first {
-                    codecs.append(CMFormatDescriptionGetMediaSubType(format))
+    /// 讀出檔案的音訊結構，用來比對原片和輸出。
+    static func layout(of asset: AVAsset) async -> TrackLayout {
+        var layout = TrackLayout()
+        let audio = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        var names: [CMPersistentTrackID: String] = [:]
+        for track in audio {
+            guard let format = try? await track.load(.formatDescriptions).first else { continue }
+            let name = codecName(CMFormatDescriptionGetMediaSubType(format))
+            names[track.trackID] = name
+            layout.audio.append(name)
+            if (try? await track.load(.isEnabled)) == true { layout.enabledAudio.append(name) }
+        }
+        for track in audio {
+            let targets = (try? await track.loadAssociatedTracks(ofType: .audioFallback)) ?? []
+            for target in targets {
+                if let from = names[track.trackID], let to = names[target.trackID] {
+                    layout.fallbacks.append("\(from)→\(to)")
                 }
             }
         }
+        for group in (try? await asset.load(.trackGroups)) ?? [] {
+            let members = group.trackIDs.compactMap { names[CMPersistentTrackID($0.int32Value)] }.sorted()
+            if members.count > 1 { layout.groups.append(members) }
+        }
+        layout.metadataTracks = ((try? await asset.loadTracks(withMediaType: .metadata)) ?? []).count
+        layout.audio.sort()
+        layout.enabledAudio.sort()
+        layout.fallbacks.sort()
+        layout.groups.sort { $0.joined() < $1.joined() }
+        return layout
+    }
+
+    static func codecName(_ code: FourCharCode) -> String {
+        switch code {
+        case kAudioFormatAPACCode: return "APAC"
+        case kAudioFormatMPEG4AAC: return "AAC"
+        case kAudioFormatLinearPCM: return "PCM"
+        case kAudioFormatAppleLossless: return "ALAC"
+        default: return code.fourCCString.uppercased()
+        }
+    }
+
+    // MARK: 空間音訊驗證
+
+    /// 比對輸出檔和原片的音訊結構（音軌、預設軌、alternate group、備援關聯、metadata 軌），
+    /// iOS 26 起再請系統判斷是否含空間音訊。
+    static func verifyAudio(source: VideoProbe, output: URL, keptSpatial: Bool) async -> AudioCheck {
+        let sourceAsset = AVURLAsset(url: source.url)
+        let outputAsset = AVURLAsset(url: output)
+        var expected = await layout(of: sourceAsset)
+        if !keptSpatial {
+            // 只留立體聲：預期就是拿掉 APAC 之後的樣子，群組與備援關聯不再適用。
+            expected.audio.removeAll { $0 == "APAC" }
+            expected.enabledAudio = expected.audio
+            expected.groups = []
+            expected.fallbacks = []
+        }
+        let actual = await layout(of: outputAsset)
         var systemSource: Bool?
         var systemOutput: Bool?
         if #available(iOS 26.0, *) {
-            systemSource = await systemSpatialCheck(AVURLAsset(url: source.url))
+            systemSource = await systemSpatialCheck(sourceAsset)
             systemOutput = await systemSpatialCheck(outputAsset)
         }
-        return AudioCheck(expectedCodecs: expected, outputCodecs: codecs.sorted(),
-                          sourceHadSpatial: source.hasSpatialAudio,
-                          systemSource: systemSource, systemOutput: systemOutput)
+        return AudioCheck(expected: expected, output: actual, sourceHadSpatial: source.hasSpatialAudio,
+                          keptSpatial: keptSpatial, systemSource: systemSource, systemOutput: systemOutput)
     }
 
     @available(iOS 26.0, *)
