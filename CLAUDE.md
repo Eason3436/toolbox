@@ -14,6 +14,7 @@
 | Screenshots 截圖腦 | `screenshots` | `Screenshots/` | `screenshots.yml` | [`screenshots-latest`/Screenshots.ipa](https://github.com/Eason3436/toolbox/releases/download/screenshots-latest/Screenshots.ipa) |
 | Recap | `recap` | `Recap/` | `recap.yml` | [`recap-latest`/Recap.ipa](https://github.com/Eason3436/toolbox/releases/download/recap-latest/Recap.ipa) |
 | Ledger 記帳 | `ledger` | `Ledger/` | `ledger.yml` | [`ledger-latest`/Ledger.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-latest/Ledger.ipa) |
+| Ledger 磁力特別版 | `main` | `LedgerMagnet/` | `ledger-magnet.yml` | [`ledger-magnet-latest`/LedgerMagnet.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-magnet-latest/LedgerMagnet.ipa) |
 | LiveContainer 捷徑版 | `livecontainer` | `LiveContainer/`（overlay + patches） | `livecontainer.yml` | [`livecontainer-latest`/LiveContainer.ipa](https://github.com/Eason3436/toolbox/releases/download/livecontainer-latest/LiveContainer.ipa)（另有 `LiveContainer+SideStore.ipa`） |
 | HealthMi（第三方） | `healthmi` | 無，CI 直接 clone 上游 | `healthmi.yml` | [`healthmi-latest`/HealthMi.ipa](https://github.com/Eason3436/toolbox/releases/download/healthmi-latest/HealthMi.ipa) |
 
@@ -65,6 +66,13 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - CI 注意：長的 tuple／三元運算鏈會讓 Swift 型別檢查逾時，拆成有型別的 helper
 - 更新日誌：`Ledger/Ledger/Views/Settings/ChangelogView.swift`（設定 → 版本）。每次更新加一筆並同步改 `Ledger/project.yml` 的 `MARKETING_VERSION`：大改版動第一碼、新功能動第二碼、只有修正動第三碼
 
+### Ledger 磁力特別版（`LedgerMagnet/`）
+2026-11-13 從 `Ledger/`（1.16.1）整包複製出來的另一個 App：磁鐵靠近 iPhone 時，卡片、分類圖示、列表列、膠囊、按鈕被吸過去，拿開彈回。
+- 用 iPhone 自己的磁力計（CoreMotion），扣掉地磁後估計磁鐵位置；四個邊的校正存在 UserDefaults。沒用 magnetkit（那是 React 網頁套件，iPhone 不能用）
+- 程式在 `LedgerMagnet/Ledger/Magnet/`：`MagnetMath`（純數學、有單元測試）、`MagnetField`（感測器）、`Magnetic`（`.magnetic()` modifier、光暈）、`MagnetSettingsView`（設定 → 磁力、校正）
+- Bundle ID `com.eason3436.ledger.magnet`、顯示名稱 Magnet；資料跟原本的記帳分開。原本 `Ledger/` 的修正不會自動同步過來
+- `MARKETING_VERSION` 從 1.17.0 起算，更新日誌一樣在 `Views/Settings/ChangelogView.swift`
+
 ### LiveContainer 捷徑版（`LiveContainer/`）
 [LiveContainer](https://github.com/LiveContainer/LiveContainer)（AGPL-3.0）的修改版。使用者把自己的 App 裝在 LiveContainer 裡跑，但裝在裡面的 App 的捷徑動作系統看不到，所以在 LiveContainer 自己的 App Intents 延伸功能加了動作：開啟裡面的 App、傳資料到 App 收件匣、記帳：從通知記帳／快速記一筆。背景動作把 JSON 放到 `<guest home>/Library/LCShortcutInbox/`，Ledger 回到前景時讀取（`Ledger/Ledger/Services/LiveContainerInbox.swift`）。另加「App 更新」：比對 GitHub release asset 的 `updated_at`，一鍵更新上面這些 App。另加即時動態：裡面的 App 用通用格式 `LCLiveActivityAttributes` 開即時動態，由 `LiveContainer/LiveActivityWidget/`（CI 另外用 XcodeGen 編、複製進 PlugIns）畫在動態島。
 - 新檔案放 `overlay/`（複製進上游），修改用 `patches/*.patch`（git apply）；上游 commit 釘在 `9108ae6`，可用 workflow_dispatch 輸入換
@@ -78,10 +86,10 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 
 - 專案檔都用 **XcodeGen**（各 App 資料夾裡的 `project.yml`），不要提交 `.xcodeproj`
 - **沙盒裡沒有 Swift／Xcode，CI 就是編譯器**。改完 push，看 Actions 結果；失敗就讀 build log 修
-- Runner：Recap、Screenshots、Ledger、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
+- Runner：Recap、Screenshots、Ledger（含磁力特別版）、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
 - 觸發：
-  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
-  - `recap.yml`、`ledger.yml`：push 改到各自資料夾時跑，也可手動
+  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**`、`LedgerMagnet/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
+  - `recap.yml`、`ledger.yml`、`ledger-magnet.yml`：push 改到各自資料夾時跑，也可手動
   - `screenshots.yml`：只能手動
   - `livecontainer.yml`、`healthmi.yml`：改到 workflow 本身（或 `LiveContainer/**`）時跑，也可手動並指定上游 ref
   - GitHub 的 push 事件偶爾沒觸發，用 workflow_dispatch 手動跑；macOS job 偶爾沒拿到 runner 被取消，重跑即可
