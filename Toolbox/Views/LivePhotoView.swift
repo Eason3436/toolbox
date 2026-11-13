@@ -108,7 +108,8 @@ struct LivePhotoView: View {
         guard !identifiers.isEmpty else { return }
         running = true
         summary = nil
-        let background = BackgroundWork.begin(title: "原況照片瘦身", subtitle: "共 \(identifiers.count) 張")
+        let background = BackgroundWork.begin(title: "原況照片瘦身", subtitle: "共 \(identifiers.count) 張",
+                                             systemImage: "livephoto")
         let result = await LivePhotoService.convert(identifiers: identifiers, deleteOriginals: deleteOriginals) { done, total in
             background.update(fraction: Double(done - 1) / Double(Swift.max(total, 1)))
             background.update(subtitle: "第 \(done)/\(total) 張")

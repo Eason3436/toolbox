@@ -28,10 +28,11 @@ Release 的 tag 每次建置都會被刪掉重建（同一個 tag 永遠放最�
 - 圖片：比例裁切（含 XPan 65:24）、轉檔、壓縮、縮放、移除 EXIF/位置、OCR、去背、QR、拼長圖、轉 PDF 等
 - 原況照片：移除影片部分但保留編輯、景深、時間地點
 - 影片／音訊：壓縮、轉檔、剪輯、擷取音訊、轉 GIF、語音轉文字（SRT）
+- **4K 轉 1080p（保留空間音訊）**：獨立畫面 `Views/DownscaleView.swift`（首頁 ＋ 選單／空白首頁）。PHPicker `.current` 拿原檔 → AVAssetReader/Writer 自己組（不用 ExportSession），影像 HEVC 1080p、音訊與 timed metadata passthrough；碼率規則在 `Operations/Downscale/BitrateCalculator.swift`，單元測試在 `ToolboxTests/`
 - PDF：轉 Markdown、合併、拆分、轉圖、加解密碼
 - 文件（MD/HTML/TXT/CSV/JSON/Office）：轉 PDF、DOCX、Markdown、繁簡轉換、修亂碼
 - **功能包**：JSON 檔把內建積木串成新功能，不用重新打包（格式見 `README.md`）
-- 捷徑／Siri（`Toolbox/Intents`）、長時間工作用 `BGContinuedProcessingTask`（系統 Live Activity）
+- 捷徑／Siri（`Toolbox/Intents`）、長時間工作用 `BGContinuedProcessingTask`（系統 Live Activity）；在 LiveContainer 裡另外用 LC 通用即時動態顯示進度（`Toolbox/LiveContainer/`，`LCLiveActivityAttributes.swift` 從 `LiveContainer/overlay` 原封不動複製，改了要兩邊一起改）
 - 結構：`Engine/`（積木註冊、功能包）、`Operations/`（各類處理）、`Views/`、`Services/`
 - iOS 26 起；Bundle ID `com.eason3436.toolbox`；Swift 5
 
