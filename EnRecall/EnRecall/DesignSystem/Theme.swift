@@ -44,6 +44,8 @@ struct ERPalette {
     let infoContainer = Color("ERInfoContainer")
     let infoTrack = Color("ERInfoTrack")
     let danger = Color("ERDanger")
+    /// 例句裡標出單字的螢光筆色（半透明）
+    let highlight = Color("ERHighlight")
 
     // 評分
     let ratingAgain = Color("ERRatingAgain")

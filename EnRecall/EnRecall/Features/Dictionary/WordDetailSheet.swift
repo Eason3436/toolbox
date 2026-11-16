@@ -40,6 +40,7 @@ struct WordDetailSheet: View {
         .erPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .environment(\.highlighter, Highlighter(word: card.word, forms: detail?.word?.forms))
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             guard !isLoaded else { return }
@@ -359,10 +360,12 @@ struct ExampleLines: View {
     let en: String
     let zh: String?
 
+    @Environment(\.highlighter) private var highlighter
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(en)
+                Text(highlighter?.attributed(en) ?? AttributedString(en))
                     .font(.body)
                     .foregroundStyle(Color.er.text)
                     .fixedSize(horizontal: false, vertical: true)
@@ -420,13 +423,15 @@ struct MeaningBlock: View {
 struct PatternLine: View {
     let pattern: WordDetail.Pattern
 
+    @Environment(\.highlighter) private var highlighter
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(pattern.pattern)
                 .font(.erMono.weight(.semibold))
                 .foregroundStyle(Color.er.text)
             if let en = pattern.en {
-                Text(en)
+                Text(highlighter?.attributed(en) ?? AttributedString(en))
                     .font(.subheadline)
                     .foregroundStyle(Color.er.text)
                     .fixedSize(horizontal: false, vertical: true)

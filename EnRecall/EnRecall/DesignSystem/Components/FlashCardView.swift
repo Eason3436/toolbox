@@ -114,6 +114,7 @@ struct FlashCardView: View {
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollIndicators(.hidden)
                 .softScrollEdges()
+                .scrollEdgeEffectHidden(true, for: .all)
             }
 
             Spacer(minLength: 0)
@@ -123,6 +124,7 @@ struct FlashCardView: View {
                 .foregroundStyle(Color.er.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .environment(\.highlighter, Highlighter(word: card.word, forms: detail?.word?.forms))
     }
 
     /// 從 Claude 寫的字：只有一句例句
@@ -140,11 +142,12 @@ struct FlashCardView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .softScrollEdges()
+            .scrollEdgeEffectHidden(true, for: .all)
         }
     }
 }
 
-/// 圓形玻璃喇叭按鈕
+/// 圓形喇叭按鈕
 struct SpeakButton: View {
     let text: String
     var size: CGFloat = 44
@@ -157,9 +160,12 @@ struct SpeakButton: View {
                 .font(.system(size: size * 0.36, weight: .semibold))
                 .foregroundStyle(Color.er.text)
                 .frame(width: size, height: size)
+                .background(Color.er.fill, in: Circle())
+                .overlay(Circle().strokeBorder(Color.er.outline, lineWidth: 1))
+                .contentShape(Circle())
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
+        // 內容層用實心圓：玻璃在翻卡的 3D 旋轉裡會先變黑一下
+        .buttonStyle(.plain)
         .accessibilityLabel("發音")
     }
 }

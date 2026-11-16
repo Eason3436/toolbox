@@ -109,6 +109,49 @@ struct ReviewMixTests {
     }
 }
 
+@MainActor
+struct StudySnapshotTests {
+    @Test func includesLearnedCardsAndRecentLogsOnly() throws {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let context = ModelContext(container)
+        let deck = Deck(id: "gsat-4", name: "學測 Level 4", kind: .storePack, dailyNewLimit: 10, sortIndex: 0)
+        context.insert(deck)
+        let learned = Card(id: "w:absolute", word: "absolute", zh: "完全的", sortIndex: 0)
+        learned.deck = deck
+        learned.state = .review
+        learned.stability = 30
+        learned.reps = 3
+        learned.lapses = 1
+        learned.lastReview = Date()
+        let fresh = Card(id: "w:abandon", word: "abandon", zh: "放棄", sortIndex: 1)
+        fresh.deck = deck
+        context.insert(learned)
+        context.insert(fresh)
+        context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .good, stateBefore: .review, scheduledDays: 6))
+        context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .again, stateBefore: .new,
+                                 reviewedAt: Date().addingTimeInterval(-200 * 86_400)))
+        try context.save()
+
+        let snapshot = try StudySnapshot.make(context: context)
+        #expect(snapshot.cards.map(\.id) == ["w:absolute"])
+        #expect(snapshot.logs.count == 1)
+        #expect(snapshot.decks.first?.total == 2)
+        #expect(snapshot.decks.first?.new == 1)
+        #expect(snapshot.decks.first?.mastered == 1)
+
+        let body = try StudySnapshot.requestBody(code: "TestCodeTestCodeTest1234", snapshot: snapshot)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["p_code"] as? String == "TestCodeTestCodeTest1234")
+        let payload = try #require(json["p_payload"] as? [String: Any])
+        #expect(payload["v"] as? Int == 1)
+        #expect(payload["daily_new_limit"] != nil)
+        let card = try #require((payload["cards"] as? [[String: Any]])?.first)
+        #expect(card["last_review"] is String)
+        #expect(card["state"] as? String == "review")
+    }
+}
+
 struct StatsCalculatorTests {
     @Test func heatLevels() {
         #expect(StatsCalculator.heatLevel(0, max: 10) == 0)

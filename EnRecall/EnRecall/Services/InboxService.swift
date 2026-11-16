@@ -90,6 +90,30 @@ final class InboxService {
         return imported
     }
 
+    // MARK: 學習紀錄
+
+    /// 上次上傳的時間（成功才記）
+    private(set) var lastUpload: Date?
+    private var isUploading = false
+
+    /// 把學習紀錄（牌組、學過的卡、最近 90 天的複習）傳給後端，Claude 的連接器才看得到成效。
+    /// 預設 10 分鐘內不重傳；複習完關掉時用 force。後端還沒有這個 RPC 時安靜失敗
+    func uploadSnapshot(context: ModelContext, force: Bool = false) async {
+        guard !isPreview, !AppConfig.isRunningTests, AppConfig.isBackendConfigured, let code, !isUploading else { return }
+        guard UserDefaults.standard.object(forKey: SettingsKey.shareStats) as? Bool ?? true else { return }
+        if !force, let lastUpload, Date().timeIntervalSince(lastUpload) < 600 { return }
+        isUploading = true
+        defer { isUploading = false }
+        do {
+            let snapshot = try StudySnapshot.make(context: context)
+            let body = try StudySnapshot.requestBody(code: code, snapshot: snapshot)
+            try await SupabaseRPC.call("ios_push_snapshot", body: body)
+            lastUpload = Date()
+        } catch {
+            // 下次再試
+        }
+    }
+
     /// 換一組新的配對碼：舊的網址立刻失效
     func regenerate() async -> Bool {
         guard !isPreview, AppConfig.isBackendConfigured else { return false }
@@ -116,14 +140,20 @@ final class InboxService {
 enum SupabaseRPC {
     @discardableResult
     static func call(_ function: String, code: String) async throws -> Data {
+        try await call(function, body: try JSONEncoder().encode(["p_code": code]))
+    }
+
+    /// body：RPC 參數的 JSON（例如 {"p_code": …, "p_payload": {…}}）
+    @discardableResult
+    static func call(_ function: String, body: Data) async throws -> Data {
         guard let base = AppConfig.supabaseURL else { throw URLError(.badURL) }
         var request = URLRequest(url: base.appending(path: "rest/v1/rpc/\(function)"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 15
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(AppConfig.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONEncoder().encode(["p_code": code])
+        request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)

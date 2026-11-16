@@ -37,6 +37,9 @@ enum AppConfig {
         return URL(string: "https://\(host)/storage/v1/object/public/packs")!
     }
 
+    /// 「0.10.0」：更新日誌比對目前版本用
+    static var shortVersion: String { info("CFBundleShortVersionString") }
+
     static var appVersion: String {
         let short = info("CFBundleShortVersionString")
         let build = info("CFBundleVersion")
