@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftData
 
 /// store/catalog.json
 struct StoreCatalog: Decodable {
@@ -67,7 +68,7 @@ enum PackStatus: Equatable {
     case updateAvailable
 }
 
-/// 單字商店：讀公開的 catalog.json。下載單字包在 M4 接上
+/// 單字商店：讀公開的 catalog.json，下載單字包放進牌組
 @MainActor
 @Observable
 final class StoreModel {
@@ -119,5 +120,64 @@ final class StoreModel {
 
     func updatesAvailable(decks: [Deck]) -> [StorePack] {
         packs.filter { status(of: $0, decks: decks) == .updateAvailable }
+    }
+
+    // MARK: 下載
+
+    /// 下載 → 解壓 → 解析 → 寫進牌組。進度：下載佔 90%，安裝佔最後 10%
+    @discardableResult
+    func install(_ pack: StorePack, context: ModelContext) async throws -> InstallResult {
+        guard progress[pack.id] == nil else { throw CancellationError() }
+        progress[pack.id] = 0
+        defer { progress[pack.id] = nil }
+
+        let total = Double(max(pack.downloadBytes, 1))
+        var received = 0
+        var files: [(name: String, data: Data)] = []
+        for file in pack.neededFiles {
+            let url = AppConfig.storeBaseURL.appending(path: file.path)
+            let base = received
+            let packID = pack.id
+            let compressed = try await Task.detached(priority: .userInitiated) {
+                try await PackDownloader.fetch(url) { bytes in
+                    await MainActor.run {
+                        guard self.progress[packID] != nil else { return }
+                        self.progress[packID] = min(0.9, 0.9 * Double(base + bytes) / total)
+                    }
+                }
+            }.value
+            received += compressed.count
+            files.append((name: file.name, data: compressed))
+        }
+
+        let parsed = files
+        let entries = try await Task.detached(priority: .userInitiated) {
+            let decompressed = try parsed.map { (name: $0.name, data: try Gzip.decompress($0.data)) }
+            return try PackParser.entries(files: decompressed)
+        }.value
+        guard !entries.isEmpty else { throw URLError(.cannotParseResponse) }
+        progress[pack.id] = 0.95
+        return try PackInstaller.install(pack, entries: entries, into: context)
+    }
+
+    /// 一次下載好幾包，回傳給 toast 用的訊息
+    func installAll(_ packs: [StorePack], context: ModelContext) async -> String? {
+        var done: [(StorePack, InstallResult)] = []
+        var failed = 0
+        for pack in packs where progress[pack.id] == nil {
+            do {
+                done.append((pack, try await install(pack, context: context)))
+            } catch {
+                failed += 1
+            }
+        }
+        if failed > 0 {
+            return done.isEmpty ? "下載失敗，請稍後再試" : "下載了 \(done.count) 包，\(failed) 包失敗"
+        }
+        guard let first = done.first else { return nil }
+        if done.count == 1 {
+            return first.1.isUpdate ? "已更新\(first.0.title)" : "已下載\(first.0.title)"
+        }
+        return "已下載 \(done.count) 包"
     }
 }
