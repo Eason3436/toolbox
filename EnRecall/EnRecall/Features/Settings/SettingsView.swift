@@ -49,6 +49,19 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.er.surface)
 
+            Section("關於") {
+                NavigationLink {
+                    ChangelogView()
+                } label: {
+                    LabeledContent("更新日誌") {
+                        Text(AppConfig.appVersion)
+                            .font(.erMono)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .listRowBackground(Color.er.surface)
+
             Section {
                 Button("重置所有進度", role: .destructive) {
                     confirmReset = true
