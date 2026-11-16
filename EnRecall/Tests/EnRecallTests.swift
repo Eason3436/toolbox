@@ -184,3 +184,162 @@ struct PairingCodeTests {
         #expect(!PairingCodeStore.isValid("has space in the code xx"))
     }
 }
+
+struct GzipTests {
+    private func gzip(_ text: String, withName: Bool) throws -> Data {
+        let deflate = try (Data(text.utf8) as NSData).compressed(using: .zlib) as Data
+        var header: [UInt8] = [0x1f, 0x8b, 0x08, withName ? 0x08 : 0x00, 0, 0, 0, 0, 0x02, 0xff]
+        if withName { header += Array("level1.json".utf8) + [0] }
+        return Data(header) + deflate + Data(repeating: 0, count: 8)
+    }
+
+    @Test func decompressesGzipWithAndWithoutFileName() throws {
+        let json = #"{"version":2,"words":[]}"#
+        #expect(try Gzip.decompress(gzip(json, withName: true)) == Data(json.utf8))
+        #expect(try Gzip.decompress(gzip(json, withName: false)) == Data(json.utf8))
+    }
+
+    @Test func plainJSONPassesThrough() throws {
+        let data = Data(#"{"a":1}"#.utf8)
+        #expect(try Gzip.decompress(data) == data)
+    }
+}
+
+struct PackParserTests {
+    @Test func wordMappingFollowsSharedRules() throws {
+        let level = #"""
+        {"version":2,"words":[
+          {"word":"record","phonetic":"/ˈrekərd/","meanings":[
+            {"pos":"n.","zh":"紀錄","examples":[]},
+            {"pos":"v.","zh":"記錄","examples":[{"en":"Record it.","zh":"記下來。"}]}]},
+          {"word":"ability","meanings":[
+            {"pos":"n.","zh":"能力","examples":[{"en":"A.","zh":"甲。"}]},
+            {"pos":"n.","zh":"才能","examples":[]}]}
+        ]}
+        """#
+        let fixes = #"{"version":3,"words":[{"word":"Dr.","meanings":[{"pos":"abbr.","zh":"醫生","examples":[]}]}]}"#
+        let entries = try PackParser.entries(files: [
+            (name: "fixes-level2.json", data: Data(fixes.utf8)),
+            (name: "level2.json", data: Data(level.utf8)),
+        ])
+        #expect(entries.map(\.id) == ["w:record", "w:ability", "w:dr."])
+        #expect(entries[0].pos == "n. / v.")
+        #expect(entries[0].zh == "n. 紀錄\nv. 記錄")
+        #expect(entries[0].example == "Record it.")
+        #expect(entries[1].pos == "n.")
+        #expect(entries[1].zh == "能力；才能")
+        #expect(entries[2].word == "Dr.")
+        #expect(entries[2].example == nil)
+    }
+
+    @Test func phrases() throws {
+        let book = #"{"version":2,"format":2,"items":[{"no":1,"p":"rely on sb/sth","zh":"依賴","pos":"動詞片語","ex":"Rely on me.","exZh":"靠我。"}]}"#
+        let entries = try PackParser.entries(files: [(name: "phrasebook.json", data: Data(book.utf8))])
+        #expect(entries.first?.id == "p:rely on sb/sth")
+        #expect(entries.first?.exampleZh == "靠我。")
+    }
+}
+
+@MainActor
+struct PackInstallerTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    private func pack(version: Int) -> StorePack {
+        StorePack(id: "gsat-1", kind: "word", level: 1, title: "學測 Level 1", subtitle: nil, desc: nil, author: nil,
+                  official: true, version: version, words: 3, updated: nil, preview: nil, files: [])
+    }
+
+    private func entry(_ word: String, zh: String = "中文") -> LibraryEntry {
+        LibraryEntry(id: Normalizer.wordID(word), word: word, pos: "n.", zh: zh, example: nil, exampleZh: nil, phonetic: nil)
+    }
+
+    @Test func updateKeepsProgressAndRetiresRemovedWords() throws {
+        let context = try makeContext()
+        try PackInstaller.install(pack(version: 1), entries: [entry("ability"), entry("class"), entry("front")], into: context)
+        let ability = try #require(try context.fetch(FetchDescriptor<Card>()).first { $0.id == "w:ability" })
+        let due = Date().addingTimeInterval(86_400 * 7)
+        ability.state = .review
+        ability.stability = 12
+        ability.due = due
+        ability.reps = 4
+
+        let result = try PackInstaller.install(pack(version: 2), entries: [entry("ability", zh: "能力；才能"), entry("class"), entry("happen")], into: context)
+        #expect(result.isUpdate)
+        #expect(result.added == 1)
+        #expect(result.retired == 1)
+        #expect(ability.zh == "能力；才能")
+        #expect(ability.stability == 12)
+        #expect(ability.due == due)
+        #expect(ability.reps == 4)
+        let decks = try context.fetch(FetchDescriptor<Deck>())
+        #expect(decks.count == 1)
+        #expect(decks.first?.packVersion == 2)
+        #expect(decks.first?.activeCards.count == 3)
+    }
+
+    @Test func wordAlreadyImportedFromClaudeStaysInItsDeck() throws {
+        let context = try makeContext()
+        let custom = Deck(id: "custom:x", name: "第 3 課", kind: .custom)
+        context.insert(custom)
+        let card = Card(id: "w:ability", word: "ability", zh: "能力")
+        card.reps = 3
+        card.deck = custom
+        context.insert(card)
+
+        let result = try PackInstaller.install(pack(version: 1), entries: [entry("ability"), entry("class")], into: context)
+        #expect(result.added == 1)
+        #expect(card.deck?.id == "custom:x")
+        #expect(card.reps == 3)
+        #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+    }
+}
+
+struct FSRSTests {
+    private let scheduler = FSRSScheduler()
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private var newCard: CardMemory {
+        CardMemory(state: .new, stability: 0, difficulty: 0, due: now, lastReview: nil, reps: 0, lapses: 0)
+    }
+
+    @Test func newCardSteps() {
+        let preview = scheduler.preview(newCard, now: now)
+        #expect(preview[.again]?.memory.state == .learning)
+        #expect(preview[.again]?.memory.due == now.addingTimeInterval(60))
+        #expect(preview[.good]?.memory.due == now.addingTimeInterval(600))
+        #expect(preview[.easy]?.memory.state == .review)
+        #expect((preview[.easy]?.scheduledDays ?? 0) >= 1)
+    }
+
+    @Test func reviewIntervalsAreOrdered() {
+        let learned = scheduler.next(scheduler.next(newCard, rating: .good, now: now).memory, rating: .good, now: now.addingTimeInterval(600))
+        #expect(learned.memory.state == .review)
+        let later = now.addingTimeInterval(learned.scheduledDays * 86_400)
+        let preview = scheduler.preview(learned.memory, now: later)
+        let hard = preview[.hard]?.scheduledDays ?? 0
+        let good = preview[.good]?.scheduledDays ?? 0
+        let easy = preview[.easy]?.scheduledDays ?? 0
+        #expect(hard >= 1)
+        #expect(hard < good)
+        #expect(good < easy)
+        #expect(good > learned.scheduledDays)
+        #expect(preview[.again]?.memory.state == .relearning)
+        #expect(preview[.again]?.memory.lapses == 1)
+    }
+
+    @Test func difficultyStaysInRange() {
+        var memory = newCard
+        var time = now
+        for _ in 0..<20 {
+            memory = scheduler.next(memory, rating: .again, now: time).memory
+            time = time.addingTimeInterval(3600)
+        }
+        #expect(memory.difficulty <= 10)
+        #expect(memory.difficulty >= 1)
+        #expect(memory.stability > 0)
+    }
+}

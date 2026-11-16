@@ -1,11 +1,13 @@
 import SwiftUI
 import SwiftData
 
-/// 一輪複習。M3 先做畫面與流程：評分只會換下一張，FSRS 排程與存檔在 M4 接上
+/// 一輪複習：評分用 FSRS 排下次時間並存檔；學習中的卡（幾分鐘後再看）排回這一輪的最後面。
+/// 可以復原上一張（卡片狀態和複習紀錄一起還原）
 struct ReviewView: View {
     let session: ReviewSession
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
     @Query private var logs: [ReviewLog]
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
@@ -15,6 +17,19 @@ struct ReviewView: View {
     @State private var isRevealed = false
     @State private var isLoaded = false
     @State private var ratedCount = 0
+    @State private var history: [Step] = []
+    @State private var intervals: [Rating: String] = [:]
+
+    private let scheduler = FSRSScheduler()
+
+    /// 復原用：評分前的狀態
+    private struct Step {
+        let index: Int
+        let card: Card
+        let before: CardMemory
+        let log: ReviewLog
+        let requeued: Bool
+    }
 
     private var current: Card? { queue.indices.contains(index) ? queue[index] : nil }
 
@@ -38,14 +53,14 @@ struct ReviewView: View {
                         .accessibilityAddTraits(.isButton)
                         .accessibilityHint(isRevealed ? "" : "顯示答案")
                     Spacer(minLength: 0)
-                    RatingBar(isRevealed: isRevealed, onReveal: reveal, onRate: rate)
+                    RatingBar(isRevealed: isRevealed, intervals: intervals, onReveal: reveal, onRate: rate)
                 } else {
                     Spacer()
                     VStack(spacing: 16) {
                         Image(systemName: "checkmark.circle")
                             .font(.system(size: 44, weight: .regular))
                             .foregroundStyle(Color.er.ratingGood)
-                        Text("今天複習完了 · \(ratedCount) 張")
+                        Text("今天複習完了 · \(Set(history.map(\.card.id)).count) 張")
                             .font(.headline)
                             .foregroundStyle(Color.er.text)
                         Button {
@@ -80,6 +95,15 @@ struct ReviewView: View {
                         ReviewProgress(done: min(index, queue.count), total: queue.count)
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(history.isEmpty)
+                    .accessibilityLabel("復原上一張")
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -99,15 +123,53 @@ struct ReviewView: View {
     }
 
     private func reveal() {
-        guard !isRevealed else { return }
+        guard !isRevealed, let card = current else { return }
+        let now = Date()
+        intervals = scheduler.preview(card.memory, now: now).mapValues { $0.intervalLabel(from: now) }
         withAnimation(.spring(duration: 0.35)) { isRevealed = true }
     }
 
     private func rate(_ rating: Rating) {
+        guard let card = current else { return }
+        let now = Date()
+        let before = card.memory
+        let outcome = scheduler.next(before, rating: rating, now: now)
+        card.memory = outcome.memory
+
+        let log = ReviewLog(
+            cardId: card.id,
+            deckId: card.deck?.id,
+            rating: rating,
+            stateBefore: before.state,
+            reviewedAt: now,
+            elapsedDays: outcome.elapsedDays,
+            scheduledDays: outcome.scheduledDays
+        )
+        context.insert(log)
+        try? context.save()
+
+        // 還在學習步驟（幾分鐘後再看）：排回這一輪最後面
+        let requeue = outcome.memory.state == .learning || outcome.memory.state == .relearning
+        history.append(Step(index: index, card: card, before: before, log: log, requeued: requeue))
         ratedCount += 1
         withAnimation(.spring(duration: 0.35)) {
+            if requeue { queue.append(card) }
             isRevealed = false
             index += 1
+        }
+    }
+
+    private func undo() {
+        guard let step = history.popLast() else { return }
+        step.card.memory = step.before
+        context.delete(step.log)
+        try? context.save()
+        withAnimation(.spring(duration: 0.35)) {
+            if step.requeued, let last = queue.lastIndex(where: { $0.id == step.card.id }), last > step.index {
+                queue.remove(at: last)
+            }
+            index = step.index
+            isRevealed = false
         }
     }
 }

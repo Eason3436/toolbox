@@ -6,6 +6,8 @@ struct PackDetailView: View {
 
     @Environment(StoreModel.self) private var store
     @Environment(ToastCenter.self) private var toasts
+    @Environment(\.modelContext) private var context
+    @State private var openDeck: Deck?
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
 
     /// 單字包支援的內容（學測單字包都有；片語包只有例句與用法）
@@ -72,6 +74,9 @@ struct PackDetailView: View {
         }
         .erPageBackground()
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $openDeck) { deck in
+            DeckDetailView(deck: deck)
+        }
     }
 
     private var updatedDate: Date? {
@@ -117,9 +122,9 @@ struct PackDetailView: View {
                 .frame(minHeight: 50)
         case .downloaded:
             Button {
-                toasts.show("已在牌組裡", systemImage: "rectangle.stack")
+                openDeck = decks.first { $0.id == pack.id }
             } label: {
-                Text("已下載")
+                Text("開啟牌組")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 34)
             }
@@ -128,7 +133,10 @@ struct PackDetailView: View {
             .controlSize(.large)
         case .notDownloaded, .updateAvailable:
             Button {
-                toasts.show("下載功能下一版加上", systemImage: "hammer")
+                Task {
+                    guard let message = await store.installAll([pack], context: context) else { return }
+                    toasts.show(message, systemImage: message.contains("失敗") ? "exclamationmark.triangle" : "checkmark")
+                }
             } label: {
                 Text("\(status == .updateAvailable ? "更新" : "下載") · \(pack.downloadSizeText)")
                     .font(.headline)

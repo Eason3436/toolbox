@@ -20,10 +20,12 @@ struct StoreView: View {
 
     @Environment(StoreModel.self) private var store
     @Environment(ToastCenter.self) private var toasts
+    @Environment(\.modelContext) private var context
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
 
     @State private var section: StoreTab = .featured
     @State private var query = ""
+    @State private var openDeck: Deck?
 
     private var searchResults: [StorePack] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -65,6 +67,9 @@ struct StoreView: View {
         .searchable(text: $query, prompt: "搜尋單字包")
         .refreshable { await store.load(force: true) }
         .task { await store.load() }
+        .navigationDestination(item: $openDeck) { deck in
+            DeckDetailView(deck: deck)
+        }
     }
 
     @ViewBuilder
@@ -158,7 +163,7 @@ struct StoreView: View {
     private func primaryAction(_ pack: StorePack) {
         switch store.status(of: pack, decks: decks) {
         case .downloaded:
-            toasts.show("已在牌組裡", systemImage: "rectangle.stack")
+            openDeck = decks.first { $0.id == pack.id }
         case .downloading:
             break
         case .notDownloaded, .updateAvailable:
@@ -166,9 +171,11 @@ struct StoreView: View {
         }
     }
 
-    /// 下載在 M4 接上
     private func download(_ packs: [StorePack]) {
-        toasts.show("下載功能下一版加上", systemImage: "hammer")
+        Task {
+            guard let message = await store.installAll(packs, context: context) else { return }
+            toasts.show(message, systemImage: message.contains("失敗") ? "exclamationmark.triangle" : "checkmark")
+        }
     }
 }
 
