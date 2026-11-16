@@ -90,7 +90,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - UI 照設計稿 https://claude.ai/artifact/JenUMptsrMx7mLauGdTiKh ；顏色全部在 Assets 的 colorset（`Color.er.*`，`DesignSystem/Theme.swift`），畫面程式碼不准有 hex、`Color.white`、`Color.black`；玻璃只用在控制層；每個畫面都要淺色、深色兩個 `#Preview`（`PreviewData` 的 in-memory container）
 - 沒用 supabase-swift，網路都用 URLSession
 - iOS 27、Swift 5、SwiftData；`com.eason3436.enrecall`；只有 App 本體（widget 在 M6 才加，要用 SideStore 的 ALTAppGroups）
-- 進度：M1 SQL、M2 部署規劃書、M3 App 骨架、M5 從 Claude 匯入（配對碼在 Keychain、回前景自動領收件匣）完成；M4 下載單字包＋FSRS、M6 統計／通知／widget 待做。M4 下載單字包時要注意：從 Claude 匯入的單字庫字（id 是 `w:…`／`p:…`）可能已經在自訂牌組裡，不能因為 unique id 衝突而失敗或重置進度
+- 進度：M1–M5 完成（2026-11-16）：商店下載 .json.gz 自己解壓（`Services/PackLibrary.swift`）、FSRS-5 排程（`Services/FSRSScheduler.swift`）、複習存檔與復原、從 Claude 匯入。M6（通知、桌面小工具）待做。更新單字包只改字義例句、不動 FSRS；已從 Claude 匯入的單字庫字留在原牌組
 
 ### HealthMi（只有 workflow）
 第三方開源 App [ShawnDiego/HealthMi](https://github.com/ShawnDiego/HealthMi)（Apache-2.0，小米運動健康 → Apple 健康）。`healthmi.yml` clone 上游、xcodegen、ad-hoc 簽 HealthKit entitlement 後打包。手動觸發時可用 `ref` 指定上游版本。注意：SideStore 免費帳號會把 HealthKit entitlement 拿掉。
