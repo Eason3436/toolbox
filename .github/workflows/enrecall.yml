@@ -94,5 +94,5 @@ jobs:
             -destination "id=$DEST" \
             -derivedDataPath build-test \
             CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
-          grep -E "Test Case|error:|Executed" test.log | tail -60 || true
+          grep -E "(error:|✘|✔|Test run|failed|passed|Executed)" test.log | tail -80 || true
           exit ${STATUS:-0}
