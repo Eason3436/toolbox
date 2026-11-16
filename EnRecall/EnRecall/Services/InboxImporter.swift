@@ -62,6 +62,8 @@ struct ImportResult: Equatable {
     var added = 0
     /// added 裡面有幾個是句型
     var patterns = 0
+    /// added 裡面有幾個是 App 裡本來就有的卡，只是放進這個牌組（進度照舊）
+    var linked = 0
     var skipped = 0
     /// 有新增卡片的牌組名稱（依第一次出現的順序）
     var decks: [String] = []
@@ -69,6 +71,7 @@ struct ImportResult: Equatable {
     mutating func merge(_ other: ImportResult) {
         added += other.added
         patterns += other.patterns
+        linked += other.linked
         skipped += other.skipped
         for deck in other.decks where !decks.contains(deck) { decks.append(deck) }
     }
@@ -93,6 +96,7 @@ struct ImportResult: Equatable {
         } else {
             text = "從 Claude 匯入 \(what)"
         }
+        if linked > 0 { text += "，其中 \(linked) 個本來就在背，進度照舊" }
         if skipped > 0 { text += "，略過 \(skipped) 個重複" }
         return text
     }
@@ -100,7 +104,8 @@ struct ImportResult: Equatable {
 
 /// 把收件匣的字放進牌組（規劃書 5.5）：
 /// - 依 deck_name 找自訂牌組，沒有就建立
-/// - 單字庫的字（library_word_id）已經在本機任何牌組 → 跳過，不重複、不重置進度
+/// - 單字庫的字（library_word_id）已經在本機別的牌組 → 連到這個牌組（DeckLink），不建新卡、進度照舊
+/// - 已經在這個牌組 → 跳過
 /// - 同一牌組內 wordNorm + 詞性相同 → 跳過
 /// - 其他建立新卡（FSRS 狀態是新卡）
 enum InboxImporter {
@@ -116,11 +121,14 @@ enum InboxImporter {
             let key = deckKey(deck.name, deck.category)
             customDecks[key] = customDecks[key] ?? deck
         }
-        var existingIDs = Set(try context.fetch(FetchDescriptor<Card>()).map(\.id))
+        var existing: [String: Card] = [:]
+        for card in try context.fetch(FetchDescriptor<Card>()) { existing[card.id] = card }
 
         var result = ImportResult()
         var deckKeys: [String: Set<String>] = [:]
         var deckNextIndex: [String: Int] = [:]
+        // 這一批剛連好的（還沒存檔，deck.links 不一定看得到）
+        var linkedHere: Set<String> = []
 
         for item in items {
             let deckName = item.deckName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -144,18 +152,32 @@ enum InboxImporter {
             }
 
             if deckKeys[deck.id] == nil {
-                deckKeys[deck.id] = Set(deck.cards.map { key(word: $0.wordNorm, pos: $0.pos) })
-                deckNextIndex[deck.id] = (deck.cards.map(\.sortIndex).max() ?? -1) + 1
+                deckKeys[deck.id] = Set(deck.allCards.map { key(word: $0.wordNorm, pos: $0.pos) })
+                deckNextIndex[deck.id] = deck.nextSortIndex
             }
 
             let libraryID = item.libraryWordId.flatMap { $0.isEmpty ? nil : $0 }
             let dedupKey = key(word: Normalizer.normalize(word), pos: item.pos)
-            if let libraryID, existingIDs.contains(libraryID) {
+            if let libraryID, let card = existing[libraryID] {
                 // 已經有的句型：內容換成新的（Claude 可能補充過），進度不動
                 if let detail = item.detail {
                     try saveContent(CardDetail(word: nil, phrase: nil, similar: nil, pattern: detail), id: libraryID, in: context)
                 }
-                result.skipped += 1
+                guard !deck.contains(card), !linkedHere.contains(DeckLink.key(deckID: deck.id, cardID: card.id)) else {
+                    result.skipped += 1
+                    continue
+                }
+                // 在別的牌組：連過來，同一張卡、同一份進度
+                let sortIndex = deckNextIndex[deck.id] ?? 0
+                DeckLink.insert(deck: deck, card: card, sortIndex: sortIndex, addedAt: now, into: context)
+                linkedHere.insert(DeckLink.key(deckID: deck.id, cardID: card.id))
+                deck.lastImportedAt = now
+                deckKeys[deck.id, default: []].insert(key(word: card.wordNorm, pos: card.pos))
+                deckNextIndex[deck.id] = sortIndex + 1
+                if item.isPattern { result.patterns += 1 }
+                result.added += 1
+                result.linked += 1
+                if !result.decks.contains(deck.name) { result.decks.append(deck.name) }
                 continue
             }
             if deckKeys[deck.id]?.contains(dedupKey) == true {
@@ -185,7 +207,7 @@ enum InboxImporter {
             }
             if item.isPattern { result.patterns += 1 }
 
-            existingIDs.insert(id)
+            existing[id] = card
             deckKeys[deck.id, default: []].insert(dedupKey)
             deckNextIndex[deck.id] = sortIndex + 1
             result.added += 1

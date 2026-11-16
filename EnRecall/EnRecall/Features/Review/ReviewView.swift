@@ -245,7 +245,7 @@ struct ReviewView: View {
 
         let log = ReviewLog(
             cardId: card.id,
-            deckId: card.deck?.id,
+            deckId: plan.deckOf[card.id] ?? session.deckID ?? card.deck?.id,
             rating: rating,
             stateBefore: before.state,
             reviewedAt: now,

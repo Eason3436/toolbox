@@ -27,6 +27,10 @@ final class Deck {
     @Relationship(deleteRule: .cascade, inverse: \Card.deck)
     var cards: [Card] = []
 
+    /// 從別的牌組連過來的卡（DeckLink.swift）
+    @Relationship(deleteRule: .cascade, inverse: \DeckLink.deck)
+    var links: [DeckLink] = []
+
     init(
         id: String,
         name: String,
@@ -73,8 +77,8 @@ final class Deck {
         set { orderRaw = newValue.rawValue }
     }
 
-    /// 停用（單字庫已刪除）的卡不算
-    var activeCards: [Card] { cards.filter { !$0.isRetired } }
+    /// 停用（單字庫已刪除）的卡不算；連過來的卡也算
+    var activeCards: [Card] { allCards.filter { !$0.isRetired } }
 
     /// 牌組頁、商店的小方塊文字：L1–L6、Ph、或自訂牌組的第一個字
     var tileLabel: String {

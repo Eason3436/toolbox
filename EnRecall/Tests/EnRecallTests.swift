@@ -20,7 +20,7 @@ struct NormalizerTests {
 struct StudyPlannerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -46,6 +46,40 @@ struct StudyPlannerTests {
         #expect(plan.new.filter { $0.deck?.id == "a" }.count == 3)
         // 依序：A 的前三張
         #expect(plan.new.prefix(3).map(\.id) == ["a0", "a1", "a2"])
+    }
+
+    @Test func cardInTwoDecksIsPlannedOnce() throws {
+        let context = try makeContext()
+        let now = Date()
+        let level = Deck(id: "gsat-3", name: "學測 Level 3", kind: .storePack, sortIndex: 0)
+        let magazine = Deck(id: "custom:m", name: "Enjoy English 11/16", kind: .custom, sortIndex: 1)
+        context.insert(level)
+        context.insert(magazine)
+        addCards(2, to: level, in: context, prefix: "w")
+        let crispy = try #require(level.cards.first { $0.id == "w0" })
+        crispy.state = .review
+        crispy.due = now.addingTimeInterval(-60)
+        DeckMembership.add(crispy, to: magazine, in: context)
+        try context.save()
+
+        #expect(magazine.activeCards.map(\.id) == ["w0"])
+        let plan = StudyPlanner.plan(decks: [level, magazine], logs: [], globalNewLimit: 10, now: now)
+        #expect(plan.due.map(\.id) == ["w0"])
+        #expect(plan.deckOf["w0"] == "gsat-3")
+
+        // 只複習雜誌牌組：一樣是同一張卡
+        let only = StudyPlanner.plan(decks: [magazine], logs: [], globalNewLimit: 10, now: now)
+        #expect(only.due.first === crispy)
+        #expect(only.deckOf["w0"] == "custom:m")
+
+        // 移出雜誌牌組：卡片和進度還在學測牌組
+        #expect(DeckMembership.remove(crispy, from: magazine, in: context))
+        try context.save()
+        #expect(magazine.activeCards.isEmpty)
+        #expect(crispy.deck?.id == "gsat-3")
+        #expect(crispy.state == .review)
+        // 原本的牌組不能移出
+        #expect(!DeckMembership.remove(crispy, from: level, in: context))
     }
 
     @Test func pausedAndReviewOnlyDecks() throws {
@@ -113,7 +147,7 @@ struct ReviewMixTests {
 struct StudySnapshotTests {
     @Test func includesLearnedCardsAndRecentLogsOnly() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         let context = ModelContext(container)
         let deck = Deck(id: "gsat-4", name: "學測 Level 4", kind: .storePack, dailyNewLimit: 10, sortIndex: 0)
         context.insert(deck)
@@ -128,6 +162,9 @@ struct StudySnapshotTests {
         fresh.deck = deck
         context.insert(learned)
         context.insert(fresh)
+        let magazine = Deck(id: "custom:m", name: "雜誌", kind: .custom, sortIndex: 1)
+        context.insert(magazine)
+        DeckLink.insert(deck: magazine, card: learned, sortIndex: 0, into: context)
         context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .good, stateBefore: .review, scheduledDays: 6))
         context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .again, stateBefore: .new,
                                  reviewedAt: Date().addingTimeInterval(-200 * 86_400)))
@@ -139,6 +176,10 @@ struct StudySnapshotTests {
         #expect(snapshot.decks.first?.total == 2)
         #expect(snapshot.decks.first?.new == 1)
         #expect(snapshot.decks.first?.mastered == 1)
+        // 同一張卡在兩個牌組：只傳一次，decks 列出兩個
+        #expect(snapshot.decks.last?.total == 1)
+        #expect(snapshot.cards.first?.decks == ["gsat-4", "custom:m"])
+        #expect(Set(snapshot.cardIds) == ["w:absolute", "w:abandon"])
 
         let body = try StudySnapshot.requestBody(code: "TestCodeTestCodeTest1234", snapshot: snapshot)
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -149,6 +190,8 @@ struct StudySnapshotTests {
         let card = try #require((payload["cards"] as? [[String: Any]])?.first)
         #expect(card["last_review"] is String)
         #expect(card["state"] as? String == "review")
+        #expect(card["decks"] as? [String] == ["gsat-4", "custom:m"])
+        #expect((payload["card_ids"] as? [String])?.count == 2)
     }
 }
 
@@ -165,7 +208,7 @@ struct StatsCalculatorTests {
 struct InboxImporterTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -216,11 +259,24 @@ struct InboxImporterTests {
         card.deck = pack
         context.insert(card)
 
-        let result = try InboxImporter.importItems([item("ability", libraryID: "w:ability")], into: context)
-        #expect(result.added == 0)
-        #expect(result.skipped == 1)
+        let result = try InboxImporter.importItems([item("ability", libraryID: "w:ability"), item("photosynthesis")], into: context)
+        #expect(result.added == 2)
+        #expect(result.linked == 1)
+        #expect(result.skipped == 0)
+        #expect(result.toastMessage == "從 Claude 匯入 2 個單字到〈第 3 課〉，其中 1 個本來就在背，進度照舊")
+        // 同一張卡：原本的牌組不變、進度不變，也出現在第 3 課
         #expect(card.reps == 5)
         #expect(card.deck?.id == "gsat-1")
+        #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+        let lesson = try #require(try context.fetch(FetchDescriptor<Deck>()).first { $0.name == "第 3 課" })
+        #expect(Set(lesson.activeCards.map(\.id)) == ["w:ability", lesson.cards.first?.id ?? ""])
+        #expect(card.allDecks.map(\.id) == ["gsat-1", lesson.id])
+
+        // 再送一次：已經在這個牌組，不會多一筆
+        let again = try InboxImporter.importItems([item("ability", libraryID: "w:ability")], into: context)
+        #expect(again.added == 0)
+        #expect(again.skipped == 1)
+        #expect(try context.fetch(FetchDescriptor<DeckLink>()).count == 1)
     }
 
     @Test func samePhraseDifferentPosIsKept() throws {
@@ -353,7 +409,7 @@ private extension Data {
 struct PackInstallerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -427,6 +483,17 @@ struct PackInstallerTests {
         #expect(card.deck?.id == "custom:x")
         #expect(card.reps == 3)
         #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+        // 等級牌組也看得到這個字（同一張卡）
+        let level = try #require(try context.fetch(FetchDescriptor<Deck>()).first { $0.id == "gsat-1" })
+        #expect(level.activeCards.count == 2)
+        #expect(level.orderedActiveCards.map(\.id) == ["w:ability", "w:class"])
+
+        // 單字包拿掉這個字：只解除連結，卡片還在第 3 課
+        try PackInstaller.install(pack(version: 2), entries: [entry("class")], into: context)
+        try context.save()
+        #expect(level.activeCards.map(\.id) == ["w:class"])
+        #expect(card.deck?.id == "custom:x")
+        #expect(!card.isRetired)
     }
 }
 
@@ -552,7 +619,7 @@ struct PatternTests {
     @MainActor
     @Test func importsPatternsIntoTheirOwnDeck() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         let context = ModelContext(container)
         let json = #"""
         [{"id":"1","deck_name":"第 3 課","word":"It is not until + 時間 + that + S + V","pos":null,"zh":"直到…才…",

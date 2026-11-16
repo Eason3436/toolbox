@@ -18,7 +18,11 @@ final class Card {
     /// 依序出新卡時的順序
     var sortIndex: Int = 0
     var addedAt: Date = Date()
+    /// 原本的牌組（單字庫的字是等級牌組）。也放在別的牌組時看 links
     var deck: Deck?
+    /// 也放在哪些牌組（DeckLink.swift）
+    @Relationship(deleteRule: .cascade, inverse: \DeckLink.card)
+    var links: [DeckLink] = []
 
     // FSRS 狀態
     var stateRaw: Int = FSRSState.new.rawValue

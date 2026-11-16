@@ -18,6 +18,6 @@ struct EnRecallApp: App {
                 .tint(Color.er.primary)
         }
         // 資料庫在 App 自己的 Application Support：SideStore 續簽、覆蓋安裝都不會清掉
-        .modelContainer(for: [Deck.self, Card.self, ReviewLog.self, CardContent.self])
+        .modelContainer(for: [Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self])
     }
 }

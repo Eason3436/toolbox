@@ -7,7 +7,7 @@ enum PreviewData {
     static let container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         // swiftlint:disable:next force_try
-        let container = try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         seed(container.mainContext)
         return container
     }()
@@ -15,7 +15,7 @@ enum PreviewData {
     static let emptyContainer: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         // swiftlint:disable:next force_try
-        return try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        return try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
     }()
 
     static let store = StoreModel(packs: packs)
@@ -60,6 +60,7 @@ enum PreviewData {
         let patterns = Deck(id: "custom:patterns", name: "雜誌句型", kind: .custom, category: .pattern, dailyNewLimit: 5, sortIndex: 4)
         [l4, custom, l5, phrases, patterns].forEach(context.insert)
 
+        var abstractCard: Card?
         for (i, s) in level4.enumerated() {
             let card = Card(id: Normalizer.wordID(s.word), word: s.word, pos: s.pos, zh: s.zh, example: s.example, exampleZh: s.exampleZh, phonetic: s.phonetic, sortIndex: i)
             if i < 5 {
@@ -70,7 +71,10 @@ enum PreviewData {
                 card.lastReview = now.addingTimeInterval(-day * 2)
                 card.due = now.addingTimeInterval(i < 4 ? -3600 : day * 3)
             }
-            if s.word == "abstract" { context.insert(CardContent(id: card.id, data: abstractDetail)) }
+            if s.word == "abstract" {
+                context.insert(CardContent(id: card.id, data: abstractDetail))
+                abstractCard = card
+            }
             card.deck = l4
             context.insert(card)
         }
@@ -78,6 +82,10 @@ enum PreviewData {
             let card = Card(id: "claude:preview-\(i)", word: s.word, pos: s.pos, zh: s.zh, example: s.example, exampleZh: s.exampleZh, source: .claude, sortIndex: i)
             card.deck = custom
             context.insert(card)
+        }
+        // 學測的字也放進雜誌牌組（同一張卡、同一份進度）
+        if let abstract = abstractCard {
+            DeckLink.insert(deck: custom, card: abstract, sortIndex: claudeWords.count, into: context)
         }
         let l5Card = Card(id: "w:surveillance", word: "surveillance", pos: "n.", zh: "監視", example: "The building is under 24-hour surveillance.", exampleZh: "這棟建築有 24 小時監控。", phonetic: "/sɜːrˈveɪləns/")
         l5Card.deck = l5
