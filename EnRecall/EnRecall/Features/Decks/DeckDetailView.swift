@@ -8,6 +8,7 @@ struct DeckDetailView: View {
     @State private var query = ""
     @State private var session: ReviewSession?
     @State private var selected: Card?
+    @State private var isMakingPDF = false
 
     private var cards: [Card] {
         let all = deck.orderedActiveCards
@@ -66,10 +67,18 @@ struct DeckDetailView: View {
                 .accessibilityLabel("新卡順序")
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button("做成 PDF", systemImage: "doc.richtext") {
+                    isMakingPDF = true
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("複習", systemImage: "play.fill") {
                     session = ReviewSession(category: nil, deckID: deck.id)
                 }
             }
+        }
+        .sheet(isPresented: $isMakingPDF) {
+            HandoutView(presetDeckID: deck.id)
         }
         .sheet(item: $selected) { card in
             WordDetailSheet(card: card)

@@ -653,3 +653,73 @@ struct PatternTests {
         #expect(again.skipped == 1)
     }
 }
+
+@MainActor
+struct HandoutTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    @Test func letterHintKeepsSbAndCapsLength() {
+        #expect(HandoutHTML.letterHint("give up") == "g _ _ _   u _")
+        #expect(HandoutHTML.letterHint("take care of sb") == "t _ _ _   c _ _ _   o _   sb")
+        #expect(HandoutHTML.letterHint("internationalization").filter { $0 == "_" }.count == 9)
+    }
+
+    @Test func underlinesDifferentLetters() {
+        let (a, b) = HandoutHTML.underlinedDifference("affect", "effect")
+        #expect(a == "<u>a</u>ffect")
+        #expect(b == "<u>e</u>ffect")
+    }
+
+    @Test func weakestRangeSkipsNewCardsAndPutsWeakFirst() throws {
+        let context = try makeContext()
+        let now = Date()
+        let deck = Deck(id: "gsat-3", name: "學測 Level 3", kind: .storePack, level: 3)
+        context.insert(deck)
+        for (id, stability) in [("w:strong", 60.0), ("w:weak", 1.0), ("w:new", 0.0)] {
+            let card = Card(id: id, word: String(id.dropFirst(2)), zh: "字")
+            card.deck = deck
+            if stability > 0 {
+                card.state = .review
+                card.stability = stability
+                card.lastReview = now.addingTimeInterval(-5 * 86_400)
+            }
+            context.insert(card)
+        }
+        try context.save()
+
+        let entries = try HandoutBuilder.entries(HandoutOptions(range: .weakest), context: context, now: now)
+        #expect(entries.map(\.card.id) == ["w:weak", "w:strong"])
+        #expect(entries.first?.levelText == "L3")
+        #expect(entries.first?.memoryText.count == 5)
+    }
+
+    @Test func testSheetNeverPrintsTheAnswerInTheQuestion() throws {
+        let context = try makeContext()
+        let deck = Deck(id: "custom:x", name: "第 3 課", kind: .custom)
+        context.insert(deck)
+        let card = Card(id: "claude:1", word: "abandon", pos: "v.", zh: "放棄",
+                        example: "They abandoned the plan after a week.", exampleZh: "他們一週後放棄了計畫。", source: .claude)
+        card.deck = deck
+        context.insert(card)
+        try context.save()
+
+        var options = HandoutOptions(kind: .test, range: .deck, deckID: "custom:x")
+        let entries = try HandoutBuilder.entries(options, context: context)
+        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        let parts = html.components(separatedBy: "<section class=\"answers\">")
+        #expect(parts.count == 2)
+        #expect(!parts[0].lowercased().contains("abandon"))
+        #expect(parts[0].contains("They \(HandoutHTML.blank) the plan"))
+        #expect(parts[0].contains("a _ _ _ _ _ _"))
+        #expect(parts[1].contains("abandon"))
+
+        options.kind = .notes
+        let notes = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        #expect(notes.contains("They <b>abandoned</b> the plan"))
+        #expect(notes.contains("第 3 課 · 1 字"))
+    }
+}

@@ -11,6 +11,11 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.13.0", date: day(16), notes: [
+            "首頁新增「單字 PDF」：講義、自測卷、速查表，按「產生」一鍵做好，可以分享或列印",
+            "牌組右上角也能把整副牌做成 PDF",
+            "從 Claude 加進來的牌組和單字跟其他的一樣顯示，不再標來源",
+        ]),
         Entry(version: "0.12.0", date: day(16), notes: [
             "同一個字可以同時在好幾個牌組，複習進度只有一份：從 Claude 送來的雜誌牌組會放齊整篇的字，不會只剩新字",
             "同一個字在兩個牌組，一天也只會考一次",

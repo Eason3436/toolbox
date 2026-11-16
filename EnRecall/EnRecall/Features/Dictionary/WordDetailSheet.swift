@@ -110,9 +110,6 @@ struct WordDetailSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     DetailLabel("例句")
-                    if card.source == .claude {
-                        Chip(text: "AI 例句", style: .info)
-                    }
                 }
                 ExampleLines(en: example, zh: card.exampleZh)
             }

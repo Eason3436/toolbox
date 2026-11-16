@@ -15,6 +15,13 @@ enum SettingsKey {
     static let quizKind = "quizKind"
     static let quizScope = "quizScope"
     static let quizCount = "quizCount"
+    /// 單字 PDF 上次選的用途、範圍、牌組、字數、份量、方向
+    static let handoutKind = "handoutKind"
+    static let handoutRange = "handoutRange"
+    static let handoutDeck = "handoutDeck"
+    static let handoutCount = "handoutCount"
+    static let handoutAmount = "handoutAmount"
+    static let handoutDirection = "handoutDirection"
 }
 
 /// 複習時接下來出什麼
