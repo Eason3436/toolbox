@@ -254,4 +254,39 @@ extension PreviewData {
  }
 }
 """#.utf8)
+
+    static let notUntilDetail = Data(#"""
+{
+ "pattern": {
+  "pattern": "It is not until + 時間／子句 + that + S + V",
+  "zh": "直到…才…",
+  "anchors": ["it is not until", "that"],
+  "level": "進階",
+  "register": "正式，寫作常用",
+  "explanation": "強調「到某個時間點才發生」。not until 後面放時間或子句，that 後面接完整的句子，而且用肯定句。",
+  "slots": [
+   { "slot": "時間／子句", "accepts": "時間名詞片語，或 until 後面接完整子句", "examples": ["midnight", "last year", "she moved to Taipei"] },
+   { "slot": "S + V", "accepts": "完整的肯定句，時態跟著前面", "examples": ["I realized the truth", "he started to practice"] }
+  ],
+  "examples": [
+   { "en": "It was not until the 1990s that the internet became popular.", "zh": "直到 1990 年代網路才普及。", "source": "Studio Classroom 2026/11" },
+   { "en": "It is not until we lose our health that we know its value.", "zh": "直到失去健康，我們才知道它的可貴。" }
+  ],
+  "variations": [
+   { "form": "Not until + 時間／子句 + 助動詞 + S + V", "note": "倒裝：Not until 放句首，後面主要子句要倒裝", "en": "Not until midnight did he finish his report.", "zh": "直到半夜他才寫完報告。" },
+   { "form": "S + did not + V + until + 時間", "note": "一般寫法", "en": "He did not finish his report until midnight.", "zh": "他直到半夜才寫完報告。" }
+  ],
+  "collocations": [
+   { "en": "It was not until later that …", "zh": "直到後來才…" }
+  ],
+  "similar": [
+   { "pattern": "Only when + 子句 + 助動詞 + S + V", "diff": "only when 強調「只有在…的時候」，一樣要倒裝", "en": "Only when you try will you know.", "zh": "只有試了才會知道。" }
+  ],
+  "errors": [
+   { "wrong": "It was not until midnight that he didn't finish his report.", "right": "It was not until midnight that he finished his report.", "note": "that 後面用肯定句，否定已經在 not until 裡" }
+  ],
+  "tips": "not until 先講時間，that 後面才是「終於發生的事」。"
+ }
+}
+"""#.utf8)
 }

@@ -11,6 +11,10 @@ enum SettingsKey {
     static let reviewMix = "reviewMix"
     /// 把學習紀錄傳給 Claude 連接器（預設開）
     static let shareStats = "shareStats"
+    /// 測驗上次選的題型、範圍、題數
+    static let quizKind = "quizKind"
+    static let quizScope = "quizScope"
+    static let quizCount = "quizCount"
 }
 
 /// 複習時接下來出什麼

@@ -10,6 +10,23 @@ struct Highlighter {
         regex = pattern.flatMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
     }
 
+    /// 句型：標出固定不變的字（anchors），例如 "it is not until"、"that"
+    init(anchors: [String]) {
+        let pattern = Self.pattern(anchors: anchors)
+        regex = pattern.flatMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }
+
+    /// 卡片用哪一種：句型卡標固定字，其他標單字（含變化形）
+    static func forCard(_ card: Card, detail: CardDetail?) -> Highlighter {
+        if let pattern = detail?.pattern {
+            return Highlighter(anchors: pattern.anchors.isEmpty ? anchors(fromPattern: pattern.pattern) : pattern.anchors)
+        }
+        if card.deck?.category == .pattern {
+            return Highlighter(anchors: anchors(fromPattern: card.word))
+        }
+        return Highlighter(word: card.word, forms: detail?.word?.forms)
+    }
+
     func attributed(_ text: String) -> AttributedString {
         var result = AttributedString(text)
         guard let regex else { return result }
@@ -31,13 +48,16 @@ struct Highlighter {
     ]
 
     static func pattern(word: String, forms: String?) -> String? {
+        // 「not only … but also」：… 是空格，前後分成兩段
         let tokens = word.lowercased()
             .replacingOccurrences(of: #"\(.*?\)|\[.*?\]"#, with: " ", options: .regularExpression)
-            .split(whereSeparator: { $0 == " " || $0 == "/" || $0 == "…" })
+            .replacingOccurrences(of: "...", with: " … ")
+            .replacingOccurrences(of: "…", with: " … ")
+            .split(whereSeparator: { $0 == " " || $0 == "/" })
             .map(String.init)
         guard !tokens.isEmpty else { return nil }
 
-        if tokens.count == 1 {
+        if tokens.count == 1, tokens[0] != "…" {
             var variants = inflections(of: tokens[0])
             for form in (forms ?? "").lowercased().split(whereSeparator: { !$0.isLetter && $0 != "-" && $0 != "'" }) {
                 variants.insert(String(form))
@@ -48,7 +68,7 @@ struct Highlighter {
         // 片語：代稱切開成幾段，每段第一個字允許變化
         var chunks: [[String]] = [[]]
         for token in tokens {
-            if placeholders.contains(token) {
+            if placeholders.contains(token) || token == "…" {
                 if !(chunks.last ?? []).isEmpty { chunks.append([]) }
             } else {
                 chunks[chunks.count - 1].append(token)
@@ -62,6 +82,60 @@ struct Highlighter {
         }
         guard !parts.isEmpty else { return nil }
         return #"\b(?:"# + parts.joined(separator: "|") + #")\b"#
+    }
+
+    static func pattern(anchors: [String]) -> String? {
+        let parts = anchors.compactMap { anchor -> String? in
+            let words = anchor.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+            guard !words.isEmpty else { return nil }
+            // 句型裡每個字都可能變化：it is → it was、make it → made it 只認得 be／have／do 和規則變化
+            return words.map { word in
+                let forms = irregularGroups.first { $0.contains(word) } ?? inflections(of: word)
+                return "(?:" + forms.map(NSRegularExpression.escapedPattern(for:)).sorted { $0.count > $1.count }.joined(separator: "|") + ")"
+            }
+            .joined(separator: #"\s+"#)
+        }
+        guard !parts.isEmpty else { return nil }
+        return #"\b(?:"# + parts.sorted { $0.count > $1.count }.joined(separator: "|") + #")\b"#
+    }
+
+    private static let irregularGroups: [Set<String>] = [
+        ["be", "is", "are", "was", "were", "been", "am", "being"],
+        ["have", "has", "had", "having"],
+        ["do", "does", "did", "done", "doing"],
+    ]
+
+    /// 句型公式裡的代號（S、V、N 這種全大寫的另外判斷）
+    private static let slotTokens: Set<String> = ["Ving", "Ved", "Ven", "Vpp", "V-ing", "V-ed", "to-V", "Adj", "Adv"]
+
+    /// 沒給 anchors 時從句型公式猜：「It is not until + 時間 + that + S + V」→ ["it is not until", "that"]。
+    /// 去掉 + … ／ 括號、中文、S／V／N 這類代號和 sb／sth
+    static func anchors(fromPattern text: String) -> [String] {
+        let separated = text
+            .replacingOccurrences(of: "...", with: "|")
+            .replacingOccurrences(of: #"[+…/／()（）\[\]［］〔〕~～,，;；:：=]"#, with: "|", options: .regularExpression)
+        var result: [String] = []
+        for chunk in separated.split(separator: "|") {
+            var run: [String] = []
+            func flush() {
+                if !run.isEmpty {
+                    let anchor = run.joined(separator: " ")
+                    if anchor.count > 1 { result.append(anchor) }
+                    run = []
+                }
+            }
+            for token in chunk.split(whereSeparator: \.isWhitespace).map(String.init) {
+                let isEnglish = token.allSatisfy { $0.isASCII && ($0.isLetter || $0 == "'" || $0 == "-") }
+                let isSlot = slotTokens.contains(token) || (token.count <= 4 && token == token.uppercased() && token != "I")
+                if isEnglish, !isSlot, !placeholders.contains(token.lowercased()) {
+                    run.append(token.lowercased())
+                } else {
+                    flush()
+                }
+            }
+            flush()
+        }
+        return result
     }
 
     private static func alternation(_ variants: Set<String>) -> String? {

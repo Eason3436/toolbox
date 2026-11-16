@@ -13,6 +13,16 @@ struct FlashCardView: View {
 
     private var deckLabel: String { card.deck?.name ?? "" }
     private var tabs: [DetailTab] { DetailTab.available(for: detail) }
+    private var isPattern: Bool { detail?.pattern != nil || card.deck?.category == .pattern }
+
+    /// 這張卡沒有目前選的分頁（例如句型卡沒有「例句」以外的某頁）就顯示第一頁
+    private var shownTab: Binding<DetailTab> {
+        Binding {
+            tabs.contains(tab) ? tab : (tabs.first ?? .examples)
+        } set: {
+            tab = $0
+        }
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.flashCard, style: .continuous)
@@ -57,7 +67,7 @@ struct FlashCardView: View {
             Spacer(minLength: 16)
             VStack(spacing: 12) {
                 Text(card.word)
-                    .font(.system(size: 40, weight: .bold))
+                    .font(.system(size: isPattern ? 28 : 40, weight: .bold))
                     .minimumScaleFactor(0.5)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Color.er.text)
@@ -67,8 +77,10 @@ struct FlashCardView: View {
                         .foregroundStyle(Color.er.textSecondary)
                         .multilineTextAlignment(.center)
                 }
-                SpeakButton(text: card.word, size: 52)
-                    .padding(.top, 8)
+                if !isPattern {
+                    SpeakButton(text: card.word, size: 52)
+                        .padding(.top, 8)
+                }
             }
             Spacer(minLength: 16)
             Text("點卡片看答案")
@@ -84,16 +96,19 @@ struct FlashCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(card.word)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: isPattern ? 20 : 26, weight: .bold))
                     .foregroundStyle(Color.er.text)
                     .minimumScaleFactor(0.6)
+                    .fixedSize(horizontal: false, vertical: isPattern)
                 if let pos = card.pos, !pos.isEmpty {
                     Text(pos)
                         .font(.erMono)
                         .foregroundStyle(Color.er.textSecondary)
                 }
                 Spacer(minLength: 0)
-                SpeakButton(text: card.word, size: 40)
+                if !isPattern {
+                    SpeakButton(text: card.word, size: 40)
+                }
             }
             Text(card.zh)
                 .font(.system(size: 22, weight: .semibold))
@@ -105,12 +120,12 @@ struct FlashCardView: View {
             if tabs.isEmpty {
                 basicExample
             } else {
-                DetailTabBar(tabs: tabs, selection: $tab)
+                DetailTabBar(tabs: tabs, selection: shownTab)
                 ScrollView {
-                    DetailTabContent(tab: tab, detail: detail, card: card)
+                    DetailTabContent(tab: shownTab.wrappedValue, detail: detail, card: card)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .id(tab)
+                .id(shownTab.wrappedValue)
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollIndicators(.hidden)
                 .softScrollEdges()
@@ -124,7 +139,7 @@ struct FlashCardView: View {
                 .foregroundStyle(Color.er.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .environment(\.highlighter, Highlighter(word: card.word, forms: detail?.word?.forms))
+        .environment(\.highlighter, Highlighter.forCard(card, detail: detail))
     }
 
     /// 從 Claude 寫的字：只有一句例句

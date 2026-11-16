@@ -47,6 +47,7 @@ struct StorePack: Decodable, Identifiable, Hashable {
     var neededFiles: [PackFile] {
         files.filter { file in
             file.name.hasPrefix("level") || file.name.hasPrefix("fixes-") || file.name.hasPrefix("similar-")
+                || file.name.hasPrefix("quiz-")
                 || file.name == "phrasebook.json"
         }
     }

@@ -475,3 +475,114 @@ struct FSRSTests {
         #expect(memory.stability > 0)
     }
 }
+
+struct QuizTests {
+    private func quizEntries() throws -> [LibraryEntry] {
+        let level = #"{"version":2,"words":[{"word":"abandon","meanings":[{"pos":"v.","zh":"放棄","examples":[{"en":"They abandoned the plan.","zh":"他們放棄了計畫。"}]}]}]}"#
+        let quiz = #"""
+        {"version":1,"words":[],"sentences":[
+          {"id":"abandon-01","target":"abandon","chinese":"放棄","pos":"v.","contextZh":"別＿＿夢想。","referenceEn":"Do not abandon your dream.",
+           "accepted":["abandon","give up"],"contextEn":"The team had to ＿＿ its practice.","contextEnZh":"球隊只好放棄練習。","acceptedEn":["abandon"]},
+          {"target":"nothing","accepted":"bad"}
+        ]}
+        """#
+        return try PackParser.entries(files: [
+            (name: "quiz-level4.json", data: Data(quiz.utf8)),
+            (name: "level4.json", data: Data(level.utf8)),
+        ])
+    }
+
+    @Test func quizItemsAttachToTheirWord() throws {
+        let entries = try quizEntries()
+        #expect(entries.map(\.id) == ["w:abandon"])
+        let detail = try #require(entries[0].detail).decodedDetail()
+        #expect(detail.quiz?.count == 1)
+        #expect(detail.quiz?.first?.accepted == ["abandon", "give up"])
+    }
+
+    @Test func buildsQuestionsAndChecksAnswers() throws {
+        let entries = try quizEntries()
+        let detail = try #require(entries[0].detail).decodedDetail()
+        let card = Card(id: "w:abandon", word: "abandon", pos: "v.", zh: "放棄")
+
+        let zhToEn = try #require(QuizBuilder.question(kind: .zhToEn, card: card, detail: detail))
+        #expect(zhToEn.prompt == "別＿＿夢想。")
+        #expect(QuizBuilder.isCorrect("Abandon ", for: zhToEn))
+        #expect(QuizBuilder.isCorrect("abandoned", for: zhToEn))
+        #expect(QuizBuilder.isCorrect("give  up", for: zhToEn))
+        #expect(!QuizBuilder.isCorrect("abandonment", for: zhToEn))
+        #expect(zhToEn.letterHint == "a _ _ _ _ _ _")
+
+        let cloze = try #require(QuizBuilder.question(kind: .cloze, card: card, detail: detail))
+        #expect(cloze.prompt == "The team had to ＿＿ its practice.")
+        #expect(!QuizBuilder.isCorrect("abandoned", for: cloze))
+
+        // 沒有題目的字：用例句挖空，答案是句子裡的寫法
+        var noQuiz = detail
+        noQuiz.quiz = nil
+        let fromExample = try #require(QuizBuilder.question(kind: .cloze, card: card, detail: noQuiz))
+        #expect(fromExample.prompt == "They ＿＿ the plan.")
+        #expect(fromExample.answers == ["abandoned"])
+    }
+
+    @Test func phraseClozeBlanksEachChunk() throws {
+        let card = Card(id: "p:not only ... but also", word: "not only ... but also", zh: "不但…而且",
+                        example: "She is not only smart but also kind.")
+        let question = try #require(QuizBuilder.question(kind: .phrase, card: card, detail: nil))
+        #expect(question.prompt == "She is ＿＿ smart ＿＿ kind.")
+        #expect(question.answers == ["not only but also"])
+        #expect(question.letterHint == "n _ _   o _ _ _   b _ _   a _ _ _")
+    }
+}
+
+struct PatternTests {
+    @Test func anchorsComeFromTheFormula() {
+        #expect(Highlighter.anchors(fromPattern: "It is not until + 時間／子句 + that + S + V") == ["it is not until", "that"])
+        #expect(Highlighter.anchors(fromPattern: "S + make it a rule to + V") == ["make it a rule to"])
+    }
+
+    @Test func anchorsMatchOtherTenses() throws {
+        let highlighter = Highlighter(anchors: ["it is not until", "that"])
+        let text = "It was not until the 1990s that the internet became popular."
+        let regex = try #require(highlighter.regex)
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+        #expect(matches.map { (text as NSString).substring(with: $0.range) } == ["It was not until", "that"])
+    }
+
+    @MainActor
+    @Test func importsPatternsIntoTheirOwnDeck() throws {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let context = ModelContext(container)
+        let json = #"""
+        [{"id":"1","deck_name":"第 3 課","word":"It is not until + 時間 + that + S + V","pos":null,"zh":"直到…才…",
+          "example":"It was not until 1990 that it changed.","example_zh":"直到 1990 年才改變。","source":"library",
+          "library_word_id":"pt:it is not until|that","kind":"pattern",
+          "detail":{"pattern":"It is not until + 時間 + that + S + V","zh":"直到…才…","anchors":["it is not until","that"],
+                    "slots":[{"slot":"時間","accepts":"時間名詞","examples":["1990"]}],"examples":[{"en":"It was not until 1990 that it changed."}]}},
+         {"id":"2","deck_name":"第 3 課","word":"ability","pos":"n.","zh":"能力","example":null,"example_zh":null,
+          "source":"library","library_word_id":"w:ability","detail":"壞掉的"}]
+        """#
+        let items = try JSONDecoder().decode([InboxItem].self, from: Data(json.utf8))
+        #expect(items.count == 2)
+        #expect(items[1].detail == nil)
+
+        let result = try InboxImporter.importItems(items, into: context)
+        #expect(result.added == 2)
+        #expect(result.patterns == 1)
+        #expect(result.toastMessage == "從 Claude 匯入 1 個單字和 1 個句型到〈第 3 課〉")
+
+        let decks = try context.fetch(FetchDescriptor<Deck>())
+        #expect(decks.count == 2)
+        #expect(Set(decks.map(\.category)) == [.word, .pattern])
+
+        let detail = try #require(CardDetail.load(for: "pt:it is not until|that", in: context))
+        #expect(detail.pattern?.slots.first?.slot == "時間")
+        #expect(DetailTab.available(for: detail) == [.structure, .examples])
+
+        // 再送一次同一個句型：不重複，內容更新
+        let again = try InboxImporter.importItems([items[0]], into: context)
+        #expect(again.added == 0)
+        #expect(again.skipped == 1)
+    }
+}

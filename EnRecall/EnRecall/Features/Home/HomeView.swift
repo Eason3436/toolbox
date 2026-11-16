@@ -7,9 +7,15 @@ struct HomeView: View {
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
     @Environment(StoreModel.self) private var store
     @State private var session: ReviewSession?
+    @State private var isQuizzing = false
 
     private var summary: StudySummary {
         StudyPlanner.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
+    }
+
+    /// 句型卡要有句型牌組才出現在練習模式
+    private var practiceCategories: [DeckCategory] {
+        DeckCategory.allCases.filter { $0 != .pattern || decks.contains { $0.category == .pattern } }
     }
 
     private var latestClaudeDeck: Deck? {
@@ -37,13 +43,14 @@ struct HomeView: View {
 
                 SectionHeader(title: "練習模式")
                 VStack(spacing: 0) {
-                    ForEach(DeckCategory.allCases) { category in
+                    ForEach(practiceCategories) { category in
                         PracticeRow(category: category, counts: summary.counts(for: category)) {
                             session = ReviewSession(category: category)
                         }
-                        if category != DeckCategory.allCases.last {
-                            Divider().overlay(Color.er.outline).padding(.leading, 64)
-                        }
+                        Divider().overlay(Color.er.outline).padding(.leading, 64)
+                    }
+                    QuizRow {
+                        isQuizzing = true
                     }
                 }
                 .erCard(padding: 0, elevated: true)
@@ -77,6 +84,9 @@ struct HomeView: View {
         }
         .fullScreenCover(item: $session) { session in
             ReviewView(session: session)
+        }
+        .fullScreenCover(isPresented: $isQuizzing) {
+            QuizView()
         }
     }
 }
@@ -175,13 +185,11 @@ private struct PracticeRow: View {
     let counts: StudyCounts
     let start: () -> Void
 
-    private var title: String { category == .word ? "記憶卡" : "片語記憶卡" }
-
     var body: some View {
         HStack(spacing: Theme.Spacing.row) {
-            IconTile(label: category == .word ? "Aa" : "Ph")
+            IconTile(label: category.tileLabel)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(category.practiceTitle)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Color.er.text)
                 Text("到期 \(counts.due) · 新卡 \(counts.new)")
@@ -195,6 +203,31 @@ private struct PracticeRow: View {
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
                 .disabled(counts.total == 0)
+        }
+        .padding(Theme.Spacing.card)
+    }
+}
+
+/// 測驗：中翻英、英文填空、片語填空
+private struct QuizRow: View {
+    let start: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.row) {
+            IconTile(label: "Qz")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("測驗")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.er.text)
+                Text("中翻英 · 英文填空 · 片語填空")
+                    .font(.caption)
+                    .foregroundStyle(Color.er.textSecondary)
+            }
+            Spacer(minLength: 8)
+            Button("開始", action: start)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
         }
         .padding(Theme.Spacing.card)
     }

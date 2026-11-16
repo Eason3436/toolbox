@@ -57,7 +57,8 @@ enum PreviewData {
         custom.lastImportedAt = now.addingTimeInterval(-3600)
         let l5 = Deck(id: "gsat-5", name: "學測 Level 5", kind: .storePack, mode: .paused, dailyNewLimit: 5, sortIndex: 2, packVersion: 2, level: 5)
         let phrases = Deck(id: "phrasebook", name: "學測片語總表", kind: .storePack, category: .phrase, dailyNewLimit: 5, sortIndex: 3, packVersion: 1)
-        [l4, custom, l5, phrases].forEach(context.insert)
+        let patterns = Deck(id: "custom:patterns", name: "雜誌句型", kind: .custom, category: .pattern, dailyNewLimit: 5, sortIndex: 4)
+        [l4, custom, l5, phrases, patterns].forEach(context.insert)
 
         for (i, s) in level4.enumerated() {
             let card = Card(id: Normalizer.wordID(s.word), word: s.word, pos: s.pos, zh: s.zh, example: s.example, exampleZh: s.exampleZh, phonetic: s.phonetic, sortIndex: i)
@@ -85,6 +86,11 @@ enum PreviewData {
         context.insert(CardContent(id: phrase.id, data: suchAsDetail))
         phrase.deck = phrases
         context.insert(phrase)
+        let pattern = Card(id: "pt:it is not until … that", word: "It is not until + 時間／子句 + that + S + V", zh: "直到…才…",
+                           example: "It was not until the 1990s that the internet became popular.", exampleZh: "直到 1990 年代網路才普及。")
+        context.insert(CardContent(id: pattern.id, data: notUntilDetail))
+        pattern.deck = patterns
+        context.insert(pattern)
 
         // 近 90 天的複習紀錄（固定的假資料，每次預覽都一樣）
         for offset in 0..<90 {
