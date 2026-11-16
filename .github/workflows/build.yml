@@ -9,6 +9,8 @@ on:
       - ".github/workflows/ledger.yml"
       - "LedgerMagnet/**"
       - ".github/workflows/ledger-magnet.yml"
+      - "EnRecall/**"
+      - ".github/workflows/enrecall.yml"
   workflow_dispatch:
 
 permissions:
