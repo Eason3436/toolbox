@@ -1,19 +1,23 @@
-# EnRecall iOS — Supabase 部署規劃書（M2：MCP 伺服器）
+# EnRecall iOS — Supabase 部署規劃書（M1 資料庫 + M2 MCP 伺服器）
 
 > 給負責部署的人／agent。照順序做，每一步都有驗收方式。
 > **碰到下面「絕對不能做」的任何一項，先停下來回報，不要自己決定。**
 
 ---
 
-## 0. 絕對不能做
+## 0. 兩個專案，各自的角色
 
-這個 Supabase 專案也是使用者自己的 EnRecall（Android／網頁版）在用，裡面有他的進度和備份。
+| | **iOS 後端（要部署的地方）** | **單字商店來源（只讀）** |
+|---|---|---|
+| 是什麼 | 你帳號裡的 Supabase 專案，專門給 EnRecall iOS 用 | 使用者自己的 EnRecall 專案（ref `<EnRecall 專案 ref>`），是另一個帳號 |
+| 放什麼 | `ios_devices`、`ios_inbox`、三個 RPC、清除排程、Edge Function `enrecall-mcp` | 單字商店的 JSON 檔（公開的 Storage bucket `packs`） |
+| 你能做的事 | 照這份文件建立、部署、測試 | **只能用 HTTPS GET 讀公開檔案**，不需要也不要任何金鑰 |
 
-1. **不能修改、刪除、寫入任何既有的資料表**：`backups`、`listening_*`、`reinforce_*`、`mcp_keys`、`mcp_commands`、`pack_stats`、`pack_stars`，以及 `auth.*`、`storage.*`
-2. **不能改既有的 Edge Function `mcp`**。這次要新增的是另一個函式 `enrecall-mcp`
-3. **不能上傳、覆蓋、刪除 Storage `packs` bucket 裡的任何檔案**。只能讀
-4. 不能把 service role key 寫進程式碼、repo 或回覆裡。Edge Function 執行時會自動拿到 `SUPABASE_SERVICE_ROLE_KEY` 環境變數，直接讀那個就好
-5. 只能新增本專案用的東西，名稱一律以 `ios_` 或 `enrecall-` 開頭
+### 絕對不能做
+
+1. **不能對 EnRecall 專案做任何寫入**：不登入、不呼叫它的 REST／RPC、不上傳 Storage。只讀 `<STORE_BASE>/...` 這種公開網址
+2. 不能把 service role key 寫進程式碼、repo 或回覆裡。Edge Function 執行時會自動拿到 `SUPABASE_SERVICE_ROLE_KEY` 環境變數，直接讀那個就好
+3. 如果 iOS 後端用的是**已經有其他東西的專案**，不能改既有的表和函式。只能新增，名稱一律以 `ios_` 或 `enrecall-` 開頭（最好直接開一個新專案，名稱 `enrecall-ios`，區域選 ap-northeast-1 Tokyo）
 
 ---
 
@@ -21,18 +25,23 @@
 
 | 項目 | 值 |
 |---|---|
-| 專案名稱 | EnRecall |
-| Project ref | `<EnRecall 專案 ref>` |
-| 區域 | ap-northeast-1 |
-| API URL | `https://<EnRecall 專案 ref>.supabase.co` |
-| Publishable key（公開金鑰，App 用） | `<publishable key>` |
-| 商店檔案（公開） | `<STORE_BASE>/<path>` |
+| iOS 後端專案 | 你建立的專案，下面用 `<IOS_REF>` 代表 |
+| iOS 後端 API URL | `https://<IOS_REF>.supabase.co` |
+| iOS 後端 publishable key | 部署完回報給我，App 要用（這是公開金鑰，可以放進 App） |
+| 商店檔案根網址（公開、唯讀） | `<STORE_BASE>` |
 
 ---
 
-## 2. 目前狀態：M1 已完成（不用重做）
+## 2. M1：在 iOS 後端專案套用 migration
 
-Migration `20261116122047_ios_inbox` 已經套用，原始檔在 repo 的 `EnRecall/supabase/migrations/20261116122047_ios_inbox.sql`。內容：
+原始檔在 repo 的 `EnRecall/supabase/migrations/20261116122047_ios_inbox.sql`，整份照原樣套用（`supabase db push`，或用 MCP 的 `apply_migration`，名稱 `ios_inbox`）。
+
+這份 migration 會用到兩個擴充套件：
+
+- `pgcrypto`：新的 Supabase 專案預設就裝在 `extensions` schema，函式裡寫的是 `extensions.digest`
+- `pg_cron`：migration 會自動啟用
+
+套用後會有這些東西：
 
 | 物件 | 說明 |
 |---|---|
@@ -43,15 +52,33 @@ Migration `20261116122047_ios_inbox` 已經套用，原始檔在 repo 的 `EnRec
 | `ios_register_device(p_code)`、`ios_claim_inbox(p_code)`、`ios_unregister_device(p_code)` | security definer，只有 anon 能呼叫，給 App 用 |
 | `pg_cron` 工作 `ios-inbox-cleanup` | 每天 03:00 UTC 刪除超過 7 天的收件匣，以及 180 天沒出現的裝置 |
 
-M1 已驗收：anon 讀寫 `ios_*` 表都被拒（401），呼叫三個 RPC 正常，取回收件匣後資料就被刪除。
+### M1 驗收（用 iOS 後端的 publishable key）
+
+```bash
+URL=https://<IOS_REF>.supabase.co
+KEY=<iOS 後端的 publishable key>
+H=(-H "apikey: $KEY" -H "Content-Type: application/json")
+curl -s "${H[@]}" "$URL/rest/v1/ios_inbox?select=*"                     # 預期 401 permission denied
+curl -s "${H[@]}" "$URL/rest/v1/ios_devices?select=*"                   # 預期 401
+curl -s "${H[@]}" -X POST -d '{"code_hash":"x","deck_name":"a","word":"a","zh":"a","source":"claude"}' "$URL/rest/v1/ios_inbox"   # 預期 401
+curl -s "${H[@]}" -X POST -d '{"p_code":"TESTx0000000000000001"}' "$URL/rest/v1/rpc/ios_code_hash"        # 預期 401
+curl -s "${H[@]}" -X POST -d '{"p_code":"short"}' "$URL/rest/v1/rpc/ios_register_device"                  # 預期 400 invalid code
+curl -s "${H[@]}" -X POST -d '{"p_code":"TESTx0000000000000001"}' "$URL/rest/v1/rpc/ios_register_device"  # 預期 204
+curl -s "${H[@]}" -X POST -d '{"p_code":"TESTx0000000000000001"}' "$URL/rest/v1/rpc/ios_claim_inbox"      # 預期 []
+curl -s "${H[@]}" -X POST -d '{"p_code":"TESTx0000000000000001"}' "$URL/rest/v1/rpc/ios_unregister_device" # 預期 204
+```
+
+另外確認 `select jobname, schedule from cron.job` 有 `ios-inbox-cleanup  0 3 * * *`。
 
 Supabase Security Advisor 會對這三個 RPC 跳「anon 可執行 security definer」警告，**這是刻意的**，不用處理。
 
 ---
 
-## 3. 單字庫資料來源（Storage，唯讀）
+## 3. 單字庫資料來源（EnRecall 專案的公開 Storage，唯讀）
 
-資料庫裡**沒有**單字表。單字商店是 `packs` bucket 裡的 JSON，MCP 伺服器直接讀這些檔案。
+單字商店是 EnRecall 專案 `packs` bucket 裡的 JSON，沒有資料表。MCP 伺服器和 iOS App 都直接用 HTTPS 讀這些公開檔案，不需要金鑰。
+
+下面寫的 `<path>`，完整網址都是 `STORE_BASE/<path>`，其中 `STORE_BASE = <STORE_BASE>`。
 
 ### 3.1 商店清單 `store/catalog.json`（沒有 gzip）
 
@@ -174,14 +201,15 @@ function phraseCore(p: string): string {
 - 協定：MCP **Streamable HTTP、無狀態**（不發 session id，每個請求獨立處理）。只需要支援 `POST`。`GET` 回 405
 - 套件：`mcp-lite` + Hono，或 `@modelcontextprotocol/sdk`（stateless 模式）。選一個就好
 - 原始碼放在 `EnRecall/supabase/functions/enrecall-mcp/index.ts`
-- 部署：`supabase functions deploy enrecall-mcp --no-verify-jwt --project-ref <EnRecall 專案 ref>`。用 MCP 工具部署的話，`verify_jwt` 要設 `false`
-- 資料庫存取：`createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))`
+- 部署：`supabase functions deploy enrecall-mcp --no-verify-jwt --project-ref <IOS_REF>`。用 MCP 工具部署的話，`verify_jwt` 要設 `false`
+- 資料庫存取（iOS 後端自己的資料庫）：`createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))`
+- 單字庫：讀環境變數 `STORE_BASE`，沒設就用預設值 `<STORE_BASE>`。只能用 `fetch` GET
 - 伺服器名稱 `enrecall-ios`，版本 `1.0.0`
 
 ### 5.2 網址與配對碼
 
 ```
-https://<EnRecall 專案 ref>.supabase.co/functions/v1/enrecall-mcp/<配對碼>
+https://<IOS_REF>.supabase.co/functions/v1/enrecall-mcp/<配對碼>
 ```
 
 - 函式收到的路徑是 `/enrecall-mcp/<配對碼>`，取最後一段
@@ -304,8 +332,8 @@ https://<EnRecall 專案 ref>.supabase.co/functions/v1/enrecall-mcp/<配對碼>
 先準備一組測試配對碼，測完一定要刪掉：
 
 ```bash
-URL=https://<EnRecall 專案 ref>.supabase.co
-KEY=<publishable key>
+URL=https://<IOS_REF>.supabase.co
+KEY=<iOS 後端的 publishable key>
 CODE=TESTmuse$(openssl rand -hex 10)
 curl -s -X POST "$URL/rest/v1/rpc/ios_register_device" -H "apikey: $KEY" -H "Content-Type: application/json" -d "{\"p_code\":\"$CODE\"}"
 MCP="$URL/functions/v1/enrecall-mcp/$CODE"
@@ -341,12 +369,16 @@ curl -s -X POST "$URL/rest/v1/rpc/ios_unregister_device" -H "apikey: $KEY" -H "C
 
 ## 7. 交付物
 
-1. 已部署的 `enrecall-mcp`（`verify_jwt = false`）
+1. iOS 後端專案已套用 M1 migration，`enrecall-mcp` 已部署（`verify_jwt = false`）
 2. `EnRecall/supabase/functions/enrecall-mcp/index.ts`（以及 `deno.json`，如果有用到）
-3. 一份簡短回報：第 6 節每一項的結果、函式版本號，以及跟這份規劃書不一樣的地方和原因
+3. 一份簡短回報，內容包括：
+   - **iOS 後端的 API URL 和 publishable key**（App 的設定檔要用。這兩個是公開值，**不要**附 service role key）
+   - 第 2 節 M1 驗收、第 6 節每一項的結果
+   - 函式版本號
+   - 跟這份規劃書不一樣的地方和原因
 
 使用者在 Claude App 新增連接器時用的網址：
 
 ```
-https://<EnRecall 專案 ref>.supabase.co/functions/v1/enrecall-mcp/<App 設定頁顯示的配對碼>
+https://<IOS_REF>.supabase.co/functions/v1/enrecall-mcp/<App 設定頁顯示的配對碼>
 ```
