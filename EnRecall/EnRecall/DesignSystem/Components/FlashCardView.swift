@@ -113,6 +113,7 @@ struct FlashCardView: View {
                 .id(tab)
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollIndicators(.hidden)
+                .softScrollEdges()
             }
 
             Spacer(minLength: 0)
@@ -138,6 +139,7 @@ struct FlashCardView: View {
                 ExampleLines(en: example, zh: card.exampleZh)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .softScrollEdges()
         }
     }
 }

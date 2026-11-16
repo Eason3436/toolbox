@@ -40,6 +40,7 @@ struct WordDetailSheet: View {
         .erPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             guard !isLoaded else { return }
             detail = CardDetail.load(for: card.id, in: context)

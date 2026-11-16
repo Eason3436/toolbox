@@ -46,6 +46,8 @@ struct RootView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        // 全部捲動區用柔和的邊緣（系統依列的高度決定範圍，內容本身有留邊距，不會蓋到字）
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .overlay(alignment: .top) {
             ToastHost()
         }
