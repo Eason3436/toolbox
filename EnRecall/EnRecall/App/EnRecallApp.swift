@@ -5,6 +5,7 @@ import SwiftData
 struct EnRecallApp: App {
     @State private var store = StoreModel()
     @State private var toasts = ToastCenter()
+    @State private var inbox = InboxService()
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceMode.system
 
     var body: some Scene {
@@ -12,6 +13,7 @@ struct EnRecallApp: App {
             RootView()
                 .environment(store)
                 .environment(toasts)
+                .environment(inbox)
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Color.er.primary)
         }

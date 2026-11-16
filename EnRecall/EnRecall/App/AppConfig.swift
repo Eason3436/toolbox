@@ -17,6 +17,9 @@ enum AppConfig {
             && !supabaseAnonKey.isEmpty && !supabaseAnonKey.contains("PLACEHOLDER")
     }
 
+    /// 單元測試會把 App 當 host 啟動：這時不要連後端（不然每次 CI 都會註冊一個配對碼）
+    static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
     static var supabaseURL: URL? {
         isBackendConfigured ? URL(string: "https://\(supabaseHost)") : nil
     }

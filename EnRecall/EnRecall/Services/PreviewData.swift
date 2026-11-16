@@ -19,6 +19,7 @@ enum PreviewData {
     }()
 
     static let store = StoreModel(packs: packs)
+    static let inbox = InboxService(previewCode: "Pv3kQ9wZr7TnB2xLm5HcY8dF")
 
     struct Sample {
         let word: String
@@ -52,6 +53,7 @@ enum PreviewData {
 
         let l4 = Deck(id: "gsat-4", name: "學測 Level 4", kind: .storePack, mode: .active, order: .random, dailyNewLimit: 10, sortIndex: 0, packVersion: 2, level: 4)
         let custom = Deck(id: "custom:preview", name: "手寫單字 11/16", kind: .custom, mode: .active, dailyNewLimit: 5, sortIndex: 1)
+        custom.lastImportedAt = now.addingTimeInterval(-3600)
         let l5 = Deck(id: "gsat-5", name: "學測 Level 5", kind: .storePack, mode: .paused, dailyNewLimit: 5, sortIndex: 2, packVersion: 2, level: 5)
         let phrases = Deck(id: "phrasebook", name: "學測片語總表", kind: .storePack, category: .phrase, dailyNewLimit: 5, sortIndex: 3, packVersion: 1)
         [l4, custom, l5, phrases].forEach(context.insert)
@@ -133,6 +135,7 @@ extension View {
             .modelContainer(empty ? PreviewData.emptyContainer : PreviewData.container)
             .environment(PreviewData.store)
             .environment(ToastCenter())
+            .environment(PreviewData.inbox)
             .tint(Color.er.primary)
     }
 }

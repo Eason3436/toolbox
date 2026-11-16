@@ -103,3 +103,84 @@ struct StatsCalculatorTests {
         #expect(StatsCalculator.heatLevel(5, max: 10) == 2)
     }
 }
+
+@MainActor
+struct InboxImporterTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    private func item(_ word: String, deck: String = "第 3 課", pos: String? = "n.", libraryID: String? = nil) -> InboxItem {
+        InboxItem(
+            id: UUID().uuidString, deckName: deck, word: word, pos: pos, zh: "中文",
+            example: "Example.", exampleZh: "例句。",
+            source: libraryID == nil ? "claude" : "library", libraryWordId: libraryID
+        )
+    }
+
+    @Test func createsDeckAndCards() throws {
+        let context = try makeContext()
+        let result = try InboxImporter.importItems([
+            item("ability", libraryID: "w:ability"),
+            item("photosynthesis"),
+        ], into: context)
+        #expect(result.added == 2)
+        #expect(result.decks == ["第 3 課"])
+        let decks = try context.fetch(FetchDescriptor<Deck>())
+        #expect(decks.count == 1)
+        #expect(decks.first?.kind == .custom)
+        let cards = try context.fetch(FetchDescriptor<Card>())
+        #expect(Set(cards.map(\.source)) == [.library, .claude])
+        #expect(cards.contains { $0.id == "w:ability" })
+        #expect(result.toastMessage == "從 Claude 匯入 2 個單字到〈第 3 課〉")
+    }
+
+    @Test func sendingTheSameWordsTwiceDoesNotDuplicate() throws {
+        let context = try makeContext()
+        let batch = [item("ability", libraryID: "w:ability"), item("photosynthesis"), item("Photosynthesis ")]
+        let first = try InboxImporter.importItems(batch, into: context)
+        #expect(first.added == 2)
+        #expect(first.skipped == 1)
+        let second = try InboxImporter.importItems(batch, into: context)
+        #expect(second.added == 0)
+        #expect(second.skipped == 3)
+        #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+    }
+
+    @Test func libraryWordAlreadyInAnotherDeckKeepsProgress() throws {
+        let context = try makeContext()
+        let pack = Deck(id: "gsat-1", name: "學測 Level 1", kind: .storePack, level: 1)
+        context.insert(pack)
+        let card = Card(id: "w:ability", word: "ability", zh: "能力")
+        card.state = .review
+        card.reps = 5
+        card.deck = pack
+        context.insert(card)
+
+        let result = try InboxImporter.importItems([item("ability", libraryID: "w:ability")], into: context)
+        #expect(result.added == 0)
+        #expect(result.skipped == 1)
+        #expect(card.reps == 5)
+        #expect(card.deck?.id == "gsat-1")
+    }
+
+    @Test func samePhraseDifferentPosIsKept() throws {
+        let context = try makeContext()
+        let result = try InboxImporter.importItems([item("record", pos: "n."), item("record", pos: "v.")], into: context)
+        #expect(result.added == 2)
+    }
+}
+
+struct PairingCodeTests {
+    @Test func generatedCodesMatchServerFormat() {
+        for _ in 0..<50 {
+            let code = PairingCodeStore.generate()
+            #expect(code.count == 24)
+            #expect(PairingCodeStore.isValid(code))
+        }
+        #expect(!PairingCodeStore.isValid("short"))
+        #expect(!PairingCodeStore.isValid("has space in the code xx"))
+    }
+}

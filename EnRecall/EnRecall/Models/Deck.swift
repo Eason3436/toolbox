@@ -19,6 +19,8 @@ final class Deck {
     /// 學測級別（1–6），片語和自訂牌組是 nil
     var level: Int?
     var createdAt: Date = Date()
+    /// 最近一次從 Claude 匯入進來的時間（首頁「從 Claude 匯入」顯示最新的那個牌組）
+    var lastImportedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \Card.deck)
     var cards: [Card] = []
