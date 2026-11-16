@@ -16,6 +16,7 @@
 | Ledger 記帳 | `ledger` | `Ledger/` | `ledger.yml` | [`ledger-latest`/Ledger.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-latest/Ledger.ipa) |
 | Ledger 磁力特別版 | `main` | `LedgerMagnet/` | `ledger-magnet.yml` | [`ledger-magnet-latest`/LedgerMagnet.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-magnet-latest/LedgerMagnet.ipa) |
 | LiveContainer 捷徑版 | `livecontainer` | `LiveContainer/`（overlay + patches） | `livecontainer.yml` | [`livecontainer-latest`/LiveContainer.ipa](https://github.com/Eason3436/toolbox/releases/download/livecontainer-latest/LiveContainer.ipa)（另有 `LiveContainer+SideStore.ipa`） |
+| EnRecall 背單字 | `claude/new-session-fyxd74`（開發中） | `EnRecall/` | `enrecall.yml` | [`enrecall-latest`/EnRecall.ipa](https://github.com/Eason3436/toolbox/releases/download/enrecall-latest/EnRecall.ipa) |
 | HealthMi（第三方） | `healthmi` | 無，CI 直接 clone 上游 | `healthmi.yml` | [`healthmi-latest`/HealthMi.ipa](https://github.com/Eason3436/toolbox/releases/download/healthmi-latest/HealthMi.ipa) |
 
 `ui-check` 是 Toolbox 早期的舊分支，可以忽略。`claude/project-thread-*` 是改名前的舊分支，內容都已在 `main`，不要再用。
@@ -80,6 +81,17 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - Bundle ID 跟官方一樣（`com.kdt.livecontainer`），會覆蓋原本的；安裝時要選「保留 App 延伸功能」
 - 細節見 `LiveContainer/README.md`
 
+### EnRecall 背單字（`EnRecall/`）
+給使用者弟弟用的學測背單字 App（使用者另有一個 EnRecall 網頁／Android 版，資料在他自己的 Supabase）。依「EnRecall iOS 版 開發規劃書」分 M1–M6 做。
+- 從單字商店下載學測 Level 1–6、學測片語總表 → FSRS 複習；Claude App 透過 MCP 連接器把單字丟進收件匣，App 打開時領取
+- **絕對不能修改、刪除或寫入使用者既有 EnRecall Supabase 專案（`souqknwgklqdnhguivaz`）的資料表**。iOS 只讀它的公開 Storage（`packs` bucket 的 `store/catalog.json`、單字包 json.gz）。要動資料表先問使用者
+- iOS 後端（`ios_devices`、`ios_inbox`、配對碼 RPC、Edge Function `enrecall-mcp`）放在**另一個帳號的新 Supabase 專案**，由使用者的 Muse 部署；規劃書在 `EnRecall/supabase/DEPLOY.md`。部署好之後把網址與 publishable key 填進 `EnRecall/EnRecall/Config/App.xcconfig`（現在是 PLACEHOLDER，連接器功能會自動關掉）
+- App 內不整合 AI、不登入、不做雲端同步；不做新手引導，空狀態只有一行字
+- UI 照設計稿 https://claude.ai/artifact/JenUMptsrMx7mLauGdTiKh ；顏色全部在 Assets 的 colorset（`Color.er.*`，`DesignSystem/Theme.swift`），畫面程式碼不准有 hex、`Color.white`、`Color.black`；玻璃只用在控制層；每個畫面都要淺色、深色兩個 `#Preview`（`PreviewData` 的 in-memory container）
+- 沒用 supabase-swift，網路都用 URLSession
+- iOS 27、Swift 5、SwiftData；`com.eason3436.enrecall`；只有 App 本體（widget 在 M6 才加，要用 SideStore 的 ALTAppGroups）
+- 進度：M1 SQL、M2 部署規劃書、M3 App 骨架（五個分頁、商店、複習畫面）完成；M4 下載單字包＋FSRS、M5 從 Claude 匯入、M6 統計／通知／widget 待做
+
 ### HealthMi（只有 workflow）
 第三方開源 App [ShawnDiego/HealthMi](https://github.com/ShawnDiego/HealthMi)（Apache-2.0，小米運動健康 → Apple 健康）。`healthmi.yml` clone 上游、xcodegen、ad-hoc 簽 HealthKit entitlement 後打包。手動觸發時可用 `ref` 指定上游版本。注意：SideStore 免費帳號會把 HealthKit entitlement 拿掉。
 
@@ -87,14 +99,14 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 
 - 專案檔都用 **XcodeGen**（各 App 資料夾裡的 `project.yml`），不要提交 `.xcodeproj`
 - **沙盒裡沒有 Swift／Xcode，CI 就是編譯器**。改完 push，看 Actions 結果；失敗就讀 build log 修
-- Runner：Recap、Screenshots、Ledger（含磁力特別版）、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
+- Runner：Recap、Screenshots、Ledger（含磁力特別版）、EnRecall、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
 - 觸發：
-  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**`、`LedgerMagnet/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
-  - `recap.yml`、`ledger.yml`、`ledger-magnet.yml`：push 改到各自資料夾時跑，也可手動
+  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**`、`LedgerMagnet/**`、`EnRecall/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
+  - `recap.yml`、`ledger.yml`、`ledger-magnet.yml`、`enrecall.yml`：push 改到各自資料夾時跑，也可手動
   - `screenshots.yml`：只能手動
   - `livecontainer.yml`、`healthmi.yml`：改到 workflow 本身（或 `LiveContainer/**`）時跑，也可手動並指定上游 ref
   - GitHub 的 push 事件偶爾沒觸發，用 workflow_dispatch 手動跑；macOS job 偶爾沒拿到 runner 被取消，重跑即可
-- Recap、Screenshots、Ledger 的 workflow 會在模擬器跑單元測試
+- Recap、Screenshots、Ledger、EnRecall 的 workflow 會在模擬器跑單元測試
 
 ## 給使用者 IPA 的規則
 
