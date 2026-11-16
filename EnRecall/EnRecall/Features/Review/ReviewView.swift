@@ -19,6 +19,7 @@ struct ReviewView: View {
     @State private var ratedCount = 0
     @State private var history: [Step] = []
     @State private var intervals: [Rating: String] = [:]
+    @State private var detailCard: Card?
 
     private let scheduler = FSRSScheduler()
 
@@ -43,7 +44,7 @@ struct ReviewView: View {
                     EmptyLine("沒有要複習的卡")
                     Spacer()
                 } else if let card = current {
-                    FlashCardView(card: card, isFlipped: isRevealed)
+                    FlashCardView(card: card, isFlipped: isRevealed) { detailCard = card }
                         .id(card.id)
                         .transition(.asymmetric(
                             insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -106,6 +107,9 @@ struct ReviewView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .sheet(item: $detailCard) { card in
+            WordDetailSheet(card: card, showsProgress: false)
         }
         .task {
             guard !isLoaded else { return }

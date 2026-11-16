@@ -21,6 +21,8 @@ final class Deck {
     var createdAt: Date = Date()
     /// 最近一次從 Claude 匯入進來的時間（首頁「從 Claude 匯入」顯示最新的那個牌組）
     var lastImportedAt: Date?
+    /// 安裝時的內容格式（PackInstaller.contentFormat）。比較舊就在背景重新安裝一次，進度不動
+    var contentFormat: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \Card.deck)
     var cards: [Card] = []

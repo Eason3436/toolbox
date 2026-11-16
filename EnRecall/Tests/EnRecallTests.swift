@@ -237,6 +237,58 @@ struct PackParserTests {
         let entries = try PackParser.entries(files: [(name: "phrasebook.json", data: Data(book.utf8))])
         #expect(entries.first?.id == "p:rely on sb/sth")
         #expect(entries.first?.exampleZh == "靠我。")
+        let detail = try #require(entries.first?.detail).decodedDetail()
+        #expect(detail.phrase?.p == "rely on sb/sth")
+        #expect(detail.word == nil)
+    }
+
+    @Test func fullDetailIsKeptAndSimilarPairsAttachToBothWords() throws {
+        let level = #"""
+        {"version":2,"words":[
+          {"word":"abstract","forms":"abstractly","meanings":[
+            {"pos":"adj.","zh":"抽象的","ext":"抽掉細節","examples":[{"en":"An abstract idea.","zh":"抽象概念。"}],
+             "patterns":[{"pattern":"abstract + N","en":"abstract ideas","zh":"抽象的想法"}],
+             "collocations":[{"en":"abstract art","zh":"抽象藝術","star":false},{"en":"abstract idea","zh":"抽象概念","star":true}]},
+            {"pos":"n.","zh":"摘要","examples":[],"collocations":[{"en":"Abstract Idea","star":true},{"en":"write an abstract","star":true}]}],
+           "synonyms":[{"word":"theoretical","note":"理論上的","example":"theoretical question","tag":["gsat"]},{"bad":1}],
+           "antonyms":"concrete",
+           "breakdown":[{"part":"abs-","type":"字首","gloss":"離開"}],
+           "origin":"  ",
+           "related":[{"word":"extract","note":"取出"}]},
+          {"word":"extract","meanings":[{"pos":"v.","zh":"取出","examples":[]}]},
+          {"meanings":[{"pos":"n.","zh":"沒有字"}]}
+        ]}
+        """#
+        let similar = #"{"version":1,"pairs":[{"a":"abstract","b":"extract","diff":"差在字首","points":["abs-","ex-"],"exA":{"en":"A."}},{"a":"x"}]}"#
+        let entries = try PackParser.entries(files: [
+            (name: "similar-level4.json", data: Data(similar.utf8)),
+            (name: "level4.json", data: Data(level.utf8)),
+        ])
+        #expect(entries.map(\.id) == ["w:abstract", "w:extract"])
+
+        let detail = try #require(entries[0].detail).decodedDetail()
+        let word = try #require(detail.word)
+        #expect(word.forms == "abstractly")
+        #expect(word.meanings.first?.ext == "抽掉細節")
+        #expect(word.meanings.first?.patterns.first?.pattern == "abstract + N")
+        // 常用的排前面、大小寫不同算同一個
+        #expect(word.allCollocations.map(\.en) == ["abstract idea", "write an abstract", "abstract art"])
+        #expect(word.synonyms.map(\.word) == ["theoretical"])
+        #expect(word.antonyms.isEmpty)
+        #expect(word.origin == nil)
+        #expect(word.breakdown.first?.gloss == "離開")
+        #expect(word.related.first?.word == "extract")
+        #expect(detail.similar?.first?.diff == "差在字首")
+        #expect(detail.similar?.first?.exA?.en == "A.")
+
+        let other = try #require(entries[1].detail).decodedDetail()
+        #expect(other.similar?.first?.b == "extract")
+    }
+}
+
+private extension Data {
+    func decodedDetail() throws -> CardDetail {
+        try JSONDecoder().decode(CardDetail.self, from: self)
     }
 }
 
@@ -279,6 +331,27 @@ struct PackInstallerTests {
         #expect(decks.count == 1)
         #expect(decks.first?.packVersion == 2)
         #expect(decks.first?.activeCards.count == 3)
+    }
+
+    @Test func oldContentFormatShowsAsUpdateAndReinstallFillsDetail() throws {
+        let context = try makeContext()
+        try PackInstaller.install(pack(version: 2), entries: [entry("ability")], into: context)
+        let deck = try #require(try context.fetch(FetchDescriptor<Deck>()).first)
+        let card = try #require(deck.cards.first)
+        card.reps = 5
+        // 模擬舊版 App 裝的牌組：沒有完整內容
+        deck.contentFormat = 0
+        card.detailData = nil
+        let store = StoreModel(packs: [pack(version: 2)])
+        #expect(store.status(of: pack(version: 2), decks: [deck]) == .updateAvailable)
+
+        var withDetail = entry("ability")
+        withDetail.detail = Data("{}".utf8)
+        try PackInstaller.install(pack(version: 2), entries: [withDetail], into: context)
+        #expect(deck.contentFormat == PackInstaller.contentFormat)
+        #expect(card.detailData == Data("{}".utf8))
+        #expect(card.reps == 5)
+        #expect(store.status(of: pack(version: 2), decks: [deck]) == .downloaded)
     }
 
     @Test func wordAlreadyImportedFromClaudeStaysInItsDeck() throws {

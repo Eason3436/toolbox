@@ -1,12 +1,27 @@
 import SwiftUI
 import SwiftData
 
-/// 複習的記憶卡。點卡片翻面（由外層處理），喇叭按鈕唸單字
+/// 複習的記憶卡。點卡片翻面（由外層處理），喇叭按鈕唸單字。
+/// 背面有常用搭配；單字庫的字可以打開完整解釋（onMore）
 struct FlashCardView: View {
     let card: Card
     let isFlipped: Bool
+    var onMore: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var collocations: [WordDetail.Collocation]
+    @State private var hasDetail: Bool
+
+    private static let collocationLimit = 5
+
+    init(card: Card, isFlipped: Bool, onMore: (() -> Void)? = nil) {
+        self.card = card
+        self.isFlipped = isFlipped
+        self.onMore = onMore
+        let detail = card.detail
+        _collocations = State(initialValue: Array((detail?.word?.allCollocations ?? []).prefix(Self.collocationLimit)))
+        _hasDetail = State(initialValue: detail != nil)
+    }
 
     private var deckLabel: String { card.deck?.name ?? "" }
 
@@ -77,6 +92,31 @@ struct FlashCardView: View {
     // MARK: 背面
 
     private var back: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                backContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            HStack(alignment: .center) {
+                Text(deckLabel)
+                    .font(.erLabel)
+                    .tracking(1.1)
+                    .foregroundStyle(Color.er.textTertiary)
+                Spacer(minLength: 8)
+                if hasDetail, let onMore {
+                    Button("完整解釋", systemImage: "text.book.closed", action: onMore)
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.glass)
+                }
+            }
+            .padding(.top, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var backContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(card.word)
@@ -118,13 +158,20 @@ struct FlashCardView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer(minLength: 0)
-            Text(deckLabel)
-                .font(.erLabel)
-                .tracking(1.1)
-                .foregroundStyle(Color.er.textTertiary)
+
+            if !collocations.isEmpty {
+                Divider().overlay(Color.er.outline)
+                Text("搭配")
+                    .font(.erLabel)
+                    .tracking(1.1)
+                    .foregroundStyle(Color.er.textTertiary)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(collocations.enumerated()), id: \.offset) { _, item in
+                        CollocationLine(item: item)
+                    }
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -151,9 +198,9 @@ struct SpeakButton: View {
 #Preview("淺色") {
     @Previewable @State var flipped = false
     let container = PreviewData.container
-    let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "accommodate" }
+    let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "abstract" }
     if let card {
-        FlashCardView(card: card, isFlipped: flipped)
+        FlashCardView(card: card, isFlipped: flipped, onMore: {})
             .padding(Theme.Spacing.page)
             .onTapGesture { withAnimation(.spring(duration: 0.35)) { flipped.toggle() } }
             .erPageBackground()
