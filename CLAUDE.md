@@ -85,12 +85,12 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 給使用者弟弟用的學測背單字 App（使用者另有一個 EnRecall 網頁／Android 版，資料在他自己的 Supabase）。依「EnRecall iOS 版 開發規劃書」分 M1–M6 做。
 - 從單字商店下載學測 Level 1–6、學測片語總表 → FSRS 複習；Claude App 透過 MCP 連接器把單字丟進收件匣，App 打開時領取
 - **絕對不能修改、刪除或寫入使用者既有 EnRecall Supabase 專案（`souqknwgklqdnhguivaz`）的資料表**。iOS 只讀它的公開 Storage（`packs` bucket 的 `store/catalog.json`、單字包 json.gz）。要動資料表先問使用者
-- iOS 後端（`ios_devices`、`ios_inbox`、配對碼 RPC、Edge Function `enrecall-mcp`）放在**另一個帳號的新 Supabase 專案**，由使用者的 Muse 部署；規劃書在 `EnRecall/supabase/DEPLOY.md`。部署好之後把網址與 publishable key 填進 `EnRecall/EnRecall/Config/App.xcconfig`（現在是 PLACEHOLDER，連接器功能會自動關掉）
+- iOS 後端（`ios_devices`、`ios_inbox`、配對碼 RPC、Edge Function `enrecall-mcp`）放在**另一個帳號的新 Supabase 專案**，由使用者的 Muse 部署；規劃書在 `EnRecall/supabase/DEPLOY.md`。網址與 publishable key 在 `EnRecall/EnRecall/Config/App.xcconfig`（專案 `zjlitlhepabrvvtpcjgz`）
 - App 內不整合 AI、不登入、不做雲端同步；不做新手引導，空狀態只有一行字
 - UI 照設計稿 https://claude.ai/artifact/JenUMptsrMx7mLauGdTiKh ；顏色全部在 Assets 的 colorset（`Color.er.*`，`DesignSystem/Theme.swift`），畫面程式碼不准有 hex、`Color.white`、`Color.black`；玻璃只用在控制層；每個畫面都要淺色、深色兩個 `#Preview`（`PreviewData` 的 in-memory container）
 - 沒用 supabase-swift，網路都用 URLSession
 - iOS 27、Swift 5、SwiftData；`com.eason3436.enrecall`；只有 App 本體（widget 在 M6 才加，要用 SideStore 的 ALTAppGroups）
-- 進度：M1 SQL、M2 部署規劃書、M3 App 骨架（五個分頁、商店、複習畫面）完成；M4 下載單字包＋FSRS、M5 從 Claude 匯入、M6 統計／通知／widget 待做
+- 進度：M1 SQL、M2 部署規劃書、M3 App 骨架、M5 從 Claude 匯入（配對碼在 Keychain、回前景自動領收件匣）完成；M4 下載單字包＋FSRS、M6 統計／通知／widget 待做。M4 下載單字包時要注意：從 Claude 匯入的單字庫字（id 是 `w:…`／`p:…`）可能已經在自訂牌組裡，不能因為 unique id 衝突而失敗或重置進度
 
 ### HealthMi（只有 workflow）
 第三方開源 App [ShawnDiego/HealthMi](https://github.com/ShawnDiego/HealthMi)（Apache-2.0，小米運動健康 → Apple 健康）。`healthmi.yml` clone 上游、xcodegen、ad-hoc 簽 HealthKit entitlement 後打包。手動觸發時可用 `ref` 指定上游版本。注意：SideStore 免費帳號會把 HealthKit entitlement 拿掉。
