@@ -80,6 +80,7 @@ final class Deck {
     var tileLabel: String {
         if let level { return "L\(level)" }
         if category == .phrase { return "Ph" }
+        if category == .pattern { return "St" }
         return String(name.prefix(1))
     }
 }

@@ -24,6 +24,12 @@ struct WordDetailSheet: View {
                 header
                 if !isLoaded {
                     EmptyView()
+                } else if let pattern = detail?.pattern {
+                    Text(card.zh)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color.er.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    PatternDetailContent(pattern: pattern)
                 } else if let word = detail?.word {
                     WordDetailContent(word: word, similar: detail?.similar ?? [])
                 } else if let phrase = detail?.phrase {
@@ -40,7 +46,7 @@ struct WordDetailSheet: View {
         .erPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .environment(\.highlighter, Highlighter(word: card.word, forms: detail?.word?.forms))
+        .environment(\.highlighter, Highlighter.forCard(card, detail: detail))
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             guard !isLoaded else { return }
@@ -55,9 +61,10 @@ struct WordDetailSheet: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.word)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: card.deck?.category == .pattern ? 22 : 30, weight: .bold))
                     .foregroundStyle(Color.er.text)
                     .minimumScaleFactor(0.6)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !metaLine.isEmpty {
                     Text(metaLine)
                         .font(.erMono)
@@ -71,7 +78,9 @@ struct WordDetailSheet: View {
                 }
             }
             Spacer(minLength: 8)
-            SpeakButton(text: card.word, size: 44)
+            if card.deck?.category != .pattern {
+                SpeakButton(text: card.word, size: 44)
+            }
             Button {
                 dismiss()
             } label: {

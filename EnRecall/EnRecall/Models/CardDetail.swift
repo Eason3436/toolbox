@@ -7,6 +7,40 @@ struct CardDetail: Codable, Equatable {
     var phrase: PhraseDetail?
     /// 相似字對比（similar-levelN.json）
     var similar: [SimilarPair]?
+    /// 中翻英／英文填空題（quiz-levelN.json）
+    var quiz: [QuizItem]? = nil
+    /// 句型卡（從 Claude 送來）
+    var pattern: PatternDetail? = nil
+}
+
+// MARK: - 測驗題
+
+/// quiz-levelN.json 的一題：中文句子挖空要寫英文、英文句子挖空要填字
+struct QuizItem: Codable, Equatable {
+    var target: String
+    var chinese: String?
+    var pos: String?
+    /// 「遇到困難時，別＿＿自己的夢想」
+    var contextZh: String?
+    var referenceEn: String?
+    var accepted: [String]
+    /// 「The team had to ＿＿ its outdoor practice」
+    var contextEn: String?
+    var contextEnZh: String?
+    var acceptedEn: [String]
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        target = try c.requiredText(.target)
+        chinese = c.text(.chinese)
+        pos = c.text(.pos)
+        contextZh = c.text(.contextZh)
+        referenceEn = c.text(.referenceEn)
+        accepted = c.list(.accepted)
+        contextEn = c.text(.contextEn)
+        contextEnZh = c.text(.contextEnZh)
+        acceptedEn = c.list(.acceptedEn)
+    }
 }
 
 // MARK: - 寬鬆解碼：單一欄位格式不對就略過那一欄，不要讓整包解析失敗

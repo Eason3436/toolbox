@@ -17,6 +17,9 @@ enum DetailTab: String, Identifiable, Hashable {
     case usage
     case mix
     case years
+    // 句型卡
+    case structure
+    case variations
 
     var id: String { rawValue }
 
@@ -36,11 +39,24 @@ enum DetailTab: String, Identifiable, Hashable {
         case .usage: "用法"
         case .mix: "易混淆"
         case .years: "考過"
+        case .structure: "結構"
+        case .variations: "變化"
         }
     }
 
     /// 沒有完整內容（從 Claude 寫的字）就是空的，卡片照舊只顯示一句例句
     static func available(for detail: CardDetail?) -> [DetailTab] {
+        if let pattern = detail?.pattern {
+            var tabs: [DetailTab] = []
+            if !pattern.slots.isEmpty { tabs.append(.structure) }
+            if !pattern.examples.isEmpty { tabs.append(.examples) }
+            if pattern.explanation != nil || pattern.tips != nil || pattern.register != nil { tabs.append(.usage) }
+            if !pattern.variations.isEmpty { tabs.append(.variations) }
+            if !pattern.collocations.isEmpty { tabs.append(.collocations) }
+            if !pattern.similar.isEmpty { tabs.append(.similar) }
+            if !pattern.errors.isEmpty { tabs.append(.errors) }
+            return tabs
+        }
         if let word = detail?.word {
             var tabs: [DetailTab] = [.examples]
             if !word.allCollocations.isEmpty { tabs.append(.collocations) }
@@ -123,7 +139,9 @@ struct DetailTabContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let word = detail?.word {
+            if let pattern = detail?.pattern {
+                patternContent(pattern)
+            } else if let word = detail?.word {
                 wordContent(word)
             } else if let phrase = detail?.phrase {
                 phraseContent(phrase)
@@ -180,7 +198,31 @@ struct DetailTabContent: View {
                     WordChip(word: item.word, zh: item.note)
                 }
             }
-        case .usage, .mix, .years:
+        case .usage, .mix, .years, .structure, .variations:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func patternContent(_ pattern: PatternDetail) -> some View {
+        switch tab {
+        case .structure:
+            PatternFormula(text: pattern.pattern, size: 17)
+            divider
+            separated(pattern.slots) { PatternSlotLine(slot: $0) }
+        case .examples:
+            separated(pattern.examples) { PatternExampleBlock(example: $0) }
+        case .usage:
+            PatternUsageBlock(pattern: pattern)
+        case .variations:
+            separated(pattern.variations) { PatternVariationBlock(variation: $0) }
+        case .collocations:
+            separated(pattern.collocations) { PatternCollocationLine(item: $0) }
+        case .similar:
+            separated(pattern.similar) { PatternSimilarBlock(item: $0) }
+        case .errors:
+            separated(pattern.errors) { PatternErrorBlock(item: $0) }
+        default:
             EmptyView()
         }
     }

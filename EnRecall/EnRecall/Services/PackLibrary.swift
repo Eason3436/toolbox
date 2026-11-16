@@ -67,6 +67,10 @@ enum PackParser {
         let pairs: [Lenient<SimilarPair>]
     }
 
+    private struct QuizFile: Decodable {
+        let sentences: [Lenient<QuizItem>]
+    }
+
     /// files：檔名（level4.json、fixes-level4.json、similar-level4.json、phrasebook.json）→ 已解壓的 JSON
     static func entries(files: [(name: String, data: Data)]) throws -> [LibraryEntry] {
         let decoder = JSONDecoder()
@@ -82,9 +86,18 @@ enum PackParser {
             }
         }
 
+        // 測驗題：依目標字掛上
+        var quiz: [String: [QuizItem]] = [:]
+        for file in files where file.name.hasPrefix("quiz-") {
+            let items = (try? decoder.decode(QuizFile.self, from: file.data))?.sentences.compactMap(\.value) ?? []
+            for item in items {
+                quiz[Normalizer.normalize(item.target), default: []].append(item)
+            }
+        }
+
         // 主檔在前，補充檔接在後面（排序就是「依序」出新卡的順序）
         let ordered = files
-            .filter { !$0.name.hasPrefix("similar-") }
+            .filter { !$0.name.hasPrefix("similar-") && !$0.name.hasPrefix("quiz-") }
             .sorted { rank($0.name) < rank($1.name) }
         var result: [LibraryEntry] = []
         for file in ordered {
@@ -97,8 +110,8 @@ enum PackParser {
             } else {
                 let words = try decoder.decode(LevelFile.self, from: file.data).words.compactMap(\.value)
                 for word in words {
-                    let pairs = similar[Normalizer.normalize(word.word)]
-                    let detail = CardDetail(word: word, phrase: nil, similar: pairs)
+                    let key = Normalizer.normalize(word.word)
+                    let detail = CardDetail(word: word, phrase: nil, similar: similar[key], quiz: quiz[key])
                     if let item = entry(word: word, detail: try? encoder.encode(detail)) {
                         result.append(item)
                     }
@@ -196,7 +209,7 @@ struct InstallResult: Equatable {
 /// - 新版拿掉的字標成停用（保留進度，不再出現在複習）
 enum PackInstaller {
     /// 1：加上完整內容（CardDetail）；2：完整內容改存在 CardContent
-    static let contentFormat = 2
+    static let contentFormat = 3
 
     @MainActor
     @discardableResult

@@ -215,15 +215,15 @@ struct ReviewView: View {
         dismiss()
     }
 
-    /// 換「混合／新字／複習」：還沒出現的卡重排，已經看過的不動
+    /// 換「混合／新字／複習」：決定下一張起出什麼字，現在這張和已經看過的不動
     private func rebuildUpcoming() {
-        let shownIDs = Set(queue.prefix(index).map(\.id))
-        let requeued = queue.dropFirst(index).filter { shownIDs.contains($0.id) }
+        // 現在這張留著（翻開了也不動），從下一張開始照新的選擇排
+        let keep = current == nil ? index : index + 1
+        let shownIDs = Set(queue.prefix(keep).map(\.id))
+        let requeued = queue.dropFirst(keep).filter { shownIDs.contains($0.id) }
         let fresh = StudyPlanner.arrange(due: plan.due, new: plan.new, mix: mix).filter { !shownIDs.contains($0.id) }
         withAnimation(.spring(duration: 0.35)) {
-            queue = Array(queue.prefix(index)) + fresh + requeued
-            isRevealed = false
-            viewing = nil
+            queue = Array(queue.prefix(keep)) + fresh + requeued
         }
     }
 

@@ -65,7 +65,7 @@ struct RootView: View {
             // 商店清單先在背景抓，首頁才知道有沒有新版
             await store.load()
             if await store.upgradeOutdated(context: context) > 0 {
-                toasts.show("單字已補上搭配與近義字", systemImage: "text.book.closed")
+                toasts.show("單字包已補上新內容", systemImage: "text.book.closed")
             }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in

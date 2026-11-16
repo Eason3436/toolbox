@@ -8,10 +8,12 @@ enum DeckKind: String, Codable {
     case custom
 }
 
-/// 記憶卡／片語卡（牌組頁上方的分段）
+/// 記憶卡／片語卡／句型卡（牌組頁上方的分段）
 enum DeckCategory: String, Codable, CaseIterable, Identifiable {
     case word
     case phrase
+    /// 從 Claude 送來的句型（雜誌、課文整理出來的）
+    case pattern
 
     var id: String { rawValue }
 
@@ -19,6 +21,33 @@ enum DeckCategory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .word: "記憶卡"
         case .phrase: "片語卡"
+        case .pattern: "句型卡"
+        }
+    }
+
+    /// 首頁「練習模式」的名稱
+    var practiceTitle: String {
+        switch self {
+        case .word: "記憶卡"
+        case .phrase: "片語記憶卡"
+        case .pattern: "句型記憶卡"
+        }
+    }
+
+    var tileLabel: String {
+        switch self {
+        case .word: "Aa"
+        case .phrase: "Ph"
+        case .pattern: "St"
+        }
+    }
+
+    /// 「120 字」「80 條」「12 個句型」
+    func countText(_ count: Int) -> String {
+        switch self {
+        case .word: "\(count.formatted()) 字"
+        case .phrase: "\(count.formatted()) 條"
+        case .pattern: "\(count.formatted()) 個句型"
         }
     }
 }

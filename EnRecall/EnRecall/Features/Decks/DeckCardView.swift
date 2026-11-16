@@ -19,7 +19,7 @@ struct DeckCardView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(Color.er.text)
                             .lineLimit(1)
-                        Text("\(cards.count.formatted()) \(deck.category == .phrase ? "條" : "字") · \(deck.order.title)")
+                        Text("\(deck.category.countText(cards.count)) · \(deck.order.title)")
                             .font(.caption)
                             .foregroundStyle(Color.er.textSecondary)
                     }
