@@ -20,7 +20,7 @@ struct NormalizerTests {
 struct StudyPlannerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -95,6 +95,20 @@ struct StudyPlannerTests {
     }
 }
 
+struct ReviewMixTests {
+    @Test func mixedSpreadsNewCardsBetweenReviews() {
+        let due = ["r1", "r2", "r3", "r4"]
+        #expect(StudyPlanner.arrange(due: due, new: ["n1"], mix: .mixed) == ["r1", "r2", "n1", "r3", "r4"])
+        #expect(StudyPlanner.arrange(due: ["r1", "r2", "r3"], new: ["n1", "n2", "n3"], mix: .mixed) == ["r1", "n1", "r2", "n2", "r3", "n3"])
+        #expect(StudyPlanner.arrange(due: [], new: ["n1", "n2"], mix: .mixed) == ["n1", "n2"])
+        #expect(StudyPlanner.arrange(due: due, new: ["n1"], mix: .newOnly) == ["n1"])
+        #expect(StudyPlanner.arrange(due: due, new: ["n1"], mix: .reviewOnly) == due)
+        let many = StudyPlanner.arrange(due: Array(repeating: "r", count: 7), new: Array(repeating: "n", count: 20), mix: .mixed)
+        #expect(many.count == 27)
+        #expect(many.filter { $0 == "n" }.count == 20)
+    }
+}
+
 struct StatsCalculatorTests {
     @Test func heatLevels() {
         #expect(StatsCalculator.heatLevel(0, max: 10) == 0)
@@ -108,7 +122,7 @@ struct StatsCalculatorTests {
 struct InboxImporterTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -296,7 +310,7 @@ private extension Data {
 struct PackInstallerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -341,7 +355,6 @@ struct PackInstallerTests {
         card.reps = 5
         // 模擬舊版 App 裝的牌組：沒有完整內容
         deck.contentFormat = 0
-        card.detailData = nil
         let store = StoreModel(packs: [pack(version: 2)])
         #expect(store.status(of: pack(version: 2), decks: [deck]) == .updateAvailable)
 
@@ -349,7 +362,10 @@ struct PackInstallerTests {
         withDetail.detail = Data("{}".utf8)
         try PackInstaller.install(pack(version: 2), entries: [withDetail], into: context)
         #expect(deck.contentFormat == PackInstaller.contentFormat)
-        #expect(card.detailData == Data("{}".utf8))
+        let content = try #require(try context.fetch(FetchDescriptor<CardContent>()).first)
+        #expect(content.id == "w:ability")
+        #expect(content.data == Data("{}".utf8))
+        #expect(CardDetail.load(for: "w:ability", in: context) == CardDetail(word: nil, phrase: nil, similar: nil))
         #expect(card.reps == 5)
         #expect(store.status(of: pack(version: 2), decks: [deck]) == .downloaded)
     }

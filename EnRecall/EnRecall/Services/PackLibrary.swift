@@ -195,8 +195,8 @@ struct InstallResult: Equatable {
 /// - 已經在別的牌組（例如從 Claude 匯入的）就留在原牌組，只更新內容
 /// - 新版拿掉的字標成停用（保留進度，不再出現在複習）
 enum PackInstaller {
-    /// 1：加上完整內容（CardDetail）
-    static let contentFormat = 1
+    /// 1：加上完整內容（CardDetail）；2：完整內容改存在 CardContent
+    static let contentFormat = 2
 
     @MainActor
     @discardableResult
@@ -226,11 +226,22 @@ enum PackInstaller {
         deck.level = pack.level
 
         let existingCards = try context.fetch(FetchDescriptor<Card>())
+        let contents = try context.fetch(FetchDescriptor<CardContent>())
+        var contentByID = Dictionary(contents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let cardsByID = Dictionary(existingCards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var seen = Set<String>()
 
         for (index, entry) in entries.enumerated() {
             guard seen.insert(entry.id).inserted else { continue }
+            if let data = entry.detail {
+                if let content = contentByID[entry.id] {
+                    if content.data != data { content.data = data }
+                } else {
+                    let content = CardContent(id: entry.id, data: data)
+                    context.insert(content)
+                    contentByID[entry.id] = content
+                }
+            }
             if let card = cardsByID[entry.id] {
                 card.word = entry.word
                 card.wordNorm = Normalizer.normalize(entry.word)
@@ -239,7 +250,6 @@ enum PackInstaller {
                 card.example = entry.example
                 card.exampleZh = entry.exampleZh
                 card.phonetic = entry.phonetic ?? card.phonetic
-                card.detailData = entry.detail
                 card.source = .library
                 if card.deck?.id == deck.id {
                     card.sortIndex = index
@@ -259,7 +269,6 @@ enum PackInstaller {
                     sortIndex: index,
                     addedAt: now
                 )
-                card.detailData = entry.detail
                 card.deck = deck
                 context.insert(card)
                 result.added += 1

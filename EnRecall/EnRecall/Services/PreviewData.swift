@@ -7,7 +7,7 @@ enum PreviewData {
     static let container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         // swiftlint:disable:next force_try
-        let container = try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        let container = try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
         seed(container.mainContext)
         return container
     }()
@@ -15,7 +15,7 @@ enum PreviewData {
     static let emptyContainer: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         // swiftlint:disable:next force_try
-        return try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, configurations: config)
+        return try! ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
     }()
 
     static let store = StoreModel(packs: packs)
@@ -69,7 +69,7 @@ enum PreviewData {
                 card.lastReview = now.addingTimeInterval(-day * 2)
                 card.due = now.addingTimeInterval(i < 4 ? -3600 : day * 3)
             }
-            if s.word == "abstract" { card.detailData = abstractDetail }
+            if s.word == "abstract" { context.insert(CardContent(id: card.id, data: abstractDetail)) }
             card.deck = l4
             context.insert(card)
         }
@@ -82,7 +82,7 @@ enum PreviewData {
         l5Card.deck = l5
         context.insert(l5Card)
         let phrase = Card(id: "p:such as", word: "such as", pos: "轉折／連接用語", zh: "例如；像是", example: "Fruits such as apples and oranges are rich in vitamins.", exampleZh: "蘋果和柳橙等水果富含維生素。")
-        phrase.detailData = suchAsDetail
+        context.insert(CardContent(id: phrase.id, data: suchAsDetail))
         phrase.deck = phrases
         context.insert(phrase)
 

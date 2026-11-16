@@ -10,13 +10,9 @@ struct WordDetailSheet: View {
     var showsProgress = true
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @State private var detail: CardDetail?
-
-    init(card: Card, showsProgress: Bool = true) {
-        self.card = card
-        self.showsProgress = showsProgress
-        _detail = State(initialValue: card.detail)
-    }
+    @State private var isLoaded = false
 
     private var metaLine: String {
         [card.phonetic, card.pos].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
@@ -26,7 +22,9 @@ struct WordDetailSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
                 header
-                if let word = detail?.word {
+                if !isLoaded {
+                    EmptyView()
+                } else if let word = detail?.word {
                     WordDetailContent(word: word, similar: detail?.similar ?? [])
                 } else if let phrase = detail?.phrase {
                     PhraseDetailContent(phrase: phrase)
@@ -42,6 +40,11 @@ struct WordDetailSheet: View {
         .erPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onAppear {
+            guard !isLoaded else { return }
+            detail = CardDetail.load(for: card.id, in: context)
+            isLoaded = true
+        }
     }
 
     // MARK: 標題
@@ -163,7 +166,8 @@ private struct WordDetailContent: View {
 
     var body: some View {
         ForEach(Array(meanings.enumerated()), id: \.offset) { _, meaning in
-            MeaningCard(meaning: meaning)
+            MeaningBlock(meaning: meaning)
+                .erCard()
         }
 
         if !word.allCollocations.isEmpty {
@@ -205,27 +209,31 @@ private struct WordDetailContent: View {
         if !word.confusables.isEmpty {
             SectionHeader(title: "易混淆")
             ForEach(Array(word.confusables.enumerated()), id: \.offset) { _, item in
-                ConfusableCard(item: item)
+                ConfusableBlock(item: item)
+                    .erCard()
             }
         }
 
         if !similar.isEmpty {
             SectionHeader(title: "相似字比較")
             ForEach(Array(similar.enumerated()), id: \.offset) { _, pair in
-                SimilarPairCard(pair: pair)
+                SimilarPairBlock(pair: pair)
+                    .erCard()
             }
         }
 
         if !word.commonErrors.isEmpty {
             SectionHeader(title: "常見錯誤")
             ForEach(Array(word.commonErrors.enumerated()), id: \.offset) { _, item in
-                CommonErrorCard(item: item)
+                CommonErrorBlock(item: item)
+                    .erCard()
             }
         }
 
         if !word.breakdown.isEmpty || word.origin != nil {
             SectionHeader(title: "字源")
-            OriginCard(breakdown: word.breakdown, origin: word.origin)
+            OriginBlock(breakdown: word.breakdown, origin: word.origin)
+                .erCard()
         }
 
         if !word.related.isEmpty {
@@ -330,7 +338,7 @@ private struct PhraseDetailContent: View {
 // MARK: - 小元件
 
 /// 區塊裡的小標（等寬、第三層文字色）
-private struct DetailLabel: View {
+struct DetailLabel: View {
     let text: String
 
     init(_ text: String) {
@@ -371,7 +379,7 @@ struct ExampleLines: View {
 }
 
 /// 一個字義：詞性、中文、延伸說明、例句、句型
-private struct MeaningCard: View {
+struct MeaningBlock: View {
     let meaning: WordDetail.Meaning
 
     var body: some View {
@@ -404,11 +412,11 @@ private struct MeaningCard: View {
                 }
             }
         }
-        .erCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct PatternLine: View {
+struct PatternLine: View {
     let pattern: WordDetail.Pattern
 
     var body: some View {
@@ -461,7 +469,7 @@ struct CollocationLine: View {
     }
 }
 
-private struct PhraseLine: View {
+struct PhraseLine: View {
     let phrase: WordDetail.WordPhrase
 
     var body: some View {
@@ -483,7 +491,7 @@ private struct PhraseLine: View {
     }
 }
 
-private struct SynonymLine: View {
+struct SynonymLine: View {
     let synonym: WordDetail.Synonym
 
     private var tags: [String] {
@@ -530,7 +538,7 @@ private struct SynonymLine: View {
 }
 
 /// 反義字、同字根：英文 + 中文的小膠囊
-private struct WordChip: View {
+struct WordChip: View {
     let word: String
     let zh: String?
 
@@ -554,7 +562,7 @@ private struct WordChip: View {
 }
 
 /// ✗ 錯的句子 ／ ✓ 對的句子
-private struct VerdictLine: View {
+struct VerdictLine: View {
     let isCorrect: Bool
     let text: String
 
@@ -575,7 +583,7 @@ private struct VerdictLine: View {
     }
 }
 
-private struct ConfusableCard: View {
+struct ConfusableBlock: View {
     let item: WordDetail.Confusable
 
     var body: some View {
@@ -594,11 +602,11 @@ private struct ConfusableCard: View {
             if let wrong = item.wrong { VerdictLine(isCorrect: false, text: wrong) }
             if let right = item.right { VerdictLine(isCorrect: true, text: right) }
         }
-        .erCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct CommonErrorCard: View {
+struct CommonErrorBlock: View {
     let item: WordDetail.CommonError
 
     var body: some View {
@@ -631,11 +639,11 @@ private struct CommonErrorCard: View {
             if let exWrong = item.exWrong { VerdictLine(isCorrect: false, text: exWrong) }
             if let exRight = item.exRight { VerdictLine(isCorrect: true, text: exRight) }
         }
-        .erCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct SimilarPairCard: View {
+struct SimilarPairBlock: View {
     let pair: SimilarPair
 
     var body: some View {
@@ -680,7 +688,7 @@ private struct SimilarPairCard: View {
             if let exA = pair.exA { ExampleLines(en: exA.en, zh: exA.zh) }
             if let exB = pair.exB { ExampleLines(en: exB.en, zh: exB.zh) }
         }
-        .erCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func side(_ word: String, zh: String?) -> some View {
@@ -696,7 +704,7 @@ private struct SimilarPairCard: View {
     }
 }
 
-private struct OriginCard: View {
+struct OriginBlock: View {
     let breakdown: [WordDetail.BreakdownPart]
     let origin: String?
 
@@ -727,7 +735,7 @@ private struct OriginCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .erCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
