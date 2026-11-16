@@ -1,7 +1,7 @@
 -- EnRecall iOS：配對碼與收件匣
 --
--- 只新增本專案專用的物件（ios_devices、ios_inbox、三個 ios_* RPC、一個 cron 工作），
--- 不碰任何既有資料表。單字商店直接讀 Storage 的 packs bucket（公開），不需要 view。
+-- 部署在 EnRecall iOS 專用的 Supabase 專案（不是使用者自己的 EnRecall 專案）。
+-- 不碰任何既有資料表。單字商店在 EnRecall 專案的公開 Storage（packs bucket），App 和 MCP 直接用 HTTPS 讀，不需要 view。
 --
 -- anon 能做的事：只能呼叫 ios_register_device / ios_claim_inbox / ios_unregister_device。
 -- ios_* 表開了 RLS 而且沒有 policy，另外也把表權限收回，anon/authenticated 都不能直接讀寫。
