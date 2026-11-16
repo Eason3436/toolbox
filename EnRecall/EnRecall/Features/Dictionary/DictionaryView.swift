@@ -58,111 +58,6 @@ struct DictionaryView: View {
     }
 }
 
-/// 單字詳細（字典、牌組詳細頁共用）
-struct WordDetailSheet: View {
-    let card: Card
-    @Environment(\.dismiss) private var dismiss
-
-    private var metaLine: String {
-        [card.phonetic, card.pos].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(card.word)
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundStyle(Color.er.text)
-                            .minimumScaleFactor(0.6)
-                        if !metaLine.isEmpty {
-                            Text(metaLine)
-                                .font(.erMono)
-                                .foregroundStyle(Color.er.textSecondary)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    SpeakButton(text: card.word, size: 44)
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Color.er.textSecondary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-                    .accessibilityLabel("關閉")
-                }
-
-                Text(card.zh)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.er.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
-
-                if let example = card.example, !example.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Text("例句")
-                                .font(.erLabel)
-                                .tracking(1.1)
-                                .foregroundStyle(Color.er.textTertiary)
-                            if card.source == .claude {
-                                Chip(text: "AI 例句", style: .info)
-                            }
-                        }
-                        Text(example)
-                            .font(.body)
-                            .foregroundStyle(Color.er.text)
-                        if let zh = card.exampleZh, !zh.isEmpty {
-                            Text(zh)
-                                .font(.subheadline)
-                                .foregroundStyle(Color.er.textSecondary)
-                        }
-                    }
-                    .erCard()
-                }
-
-                Grid(horizontalSpacing: Theme.Spacing.stack) {
-                    GridRow {
-                        infoCell(title: "下次複習", value: nextReviewText)
-                        infoCell(title: "已複習", value: "\(card.reps) 次")
-                        infoCell(title: "牌組", value: card.deck?.name ?? "—")
-                    }
-                }
-            }
-            .padding(Theme.Spacing.page)
-        }
-        .erPageBackground()
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-
-    private var nextReviewText: String {
-        if card.isNew { return "新卡" }
-        return card.due.formatted(.relative(presentation: .named))
-    }
-
-    private func infoCell(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(Color.er.textTertiary)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.er.text)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-        }
-        .erCard(padding: Theme.Spacing.row)
-        .frame(maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 #Preview("淺色") {
     NavigationStack {
         DictionaryView()
@@ -176,25 +71,6 @@ struct WordDetailSheet: View {
     }
     .previewEnvironment()
     .preferredColorScheme(.dark)
-}
-
-#Preview("單字 · 淺色") {
-    let container = PreviewData.container
-    let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "accommodate" }
-    if let card {
-        WordDetailSheet(card: card)
-            .modelContainer(container)
-    }
-}
-
-#Preview("單字 · 深色") {
-    let container = PreviewData.container
-    let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.source == .claude }
-    if let card {
-        WordDetailSheet(card: card)
-            .modelContainer(container)
-            .preferredColorScheme(.dark)
-    }
 }
 
 #Preview("空 · 淺色") {

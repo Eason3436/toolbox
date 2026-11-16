@@ -10,6 +10,8 @@ struct LibraryEntry: Equatable, Sendable {
     let example: String?
     let exampleZh: String?
     let phonetic: String?
+    /// CardDetail 的 JSON
+    var detail: Data? = nil
 }
 
 // MARK: - gzip
@@ -54,51 +56,53 @@ enum Gzip {
 
 enum PackParser {
     private struct LevelFile: Decodable {
-        let words: [Word]
-    }
-
-    private struct Word: Decodable {
-        let word: String
-        let phonetic: String?
-        let meanings: [Meaning]?
-    }
-
-    private struct Meaning: Decodable {
-        let pos: String?
-        let zh: String?
-        let examples: [Example]?
-    }
-
-    private struct Example: Decodable {
-        let en: String?
-        let zh: String?
+        let words: [Lenient<WordDetail>]
     }
 
     private struct PhraseFile: Decodable {
-        let items: [Phrase]
+        let items: [Lenient<PhraseDetail>]
     }
 
-    private struct Phrase: Decodable {
-        let p: String
-        let zh: String
-        let pos: String?
-        let ex: String?
-        let exZh: String?
+    private struct SimilarFile: Decodable {
+        let pairs: [Lenient<SimilarPair>]
     }
 
-    /// files：檔名（level4.json、fixes-level4.json、phrasebook.json）→ 已解壓的 JSON
+    /// files：檔名（level4.json、fixes-level4.json、similar-level4.json、phrasebook.json）→ 已解壓的 JSON
     static func entries(files: [(name: String, data: Data)]) throws -> [LibraryEntry] {
-        // 主檔在前，補充檔接在後面（排序就是「依序」出新卡的順序）
-        let ordered = files.sorted { rank($0.name) < rank($1.name) }
-        var result: [LibraryEntry] = []
         let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+
+        // 相似字對比：兩個字都掛上
+        var similar: [String: [SimilarPair]] = [:]
+        for file in files where file.name.hasPrefix("similar-") {
+            let pairs = (try? decoder.decode(SimilarFile.self, from: file.data))?.pairs.compactMap(\.value) ?? []
+            for pair in pairs {
+                similar[Normalizer.normalize(pair.a), default: []].append(pair)
+                similar[Normalizer.normalize(pair.b), default: []].append(pair)
+            }
+        }
+
+        // 主檔在前，補充檔接在後面（排序就是「依序」出新卡的順序）
+        let ordered = files
+            .filter { !$0.name.hasPrefix("similar-") }
+            .sorted { rank($0.name) < rank($1.name) }
+        var result: [LibraryEntry] = []
         for file in ordered {
             if file.name == "phrasebook.json" {
-                let phrases = try decoder.decode(PhraseFile.self, from: file.data).items
-                result += phrases.map(entry(phrase:))
+                let phrases = try decoder.decode(PhraseFile.self, from: file.data).items.compactMap(\.value)
+                for phrase in phrases {
+                    let detail = CardDetail(word: nil, phrase: phrase, similar: nil)
+                    result.append(entry(phrase: phrase, detail: try? encoder.encode(detail)))
+                }
             } else {
-                let words = try decoder.decode(LevelFile.self, from: file.data).words
-                result += words.compactMap(entry(word:))
+                let words = try decoder.decode(LevelFile.self, from: file.data).words.compactMap(\.value)
+                for word in words {
+                    let pairs = similar[Normalizer.normalize(word.word)]
+                    let detail = CardDetail(word: word, phrase: nil, similar: pairs)
+                    if let item = entry(word: word, detail: try? encoder.encode(detail)) {
+                        result.append(item)
+                    }
+                }
             }
         }
         return result
@@ -108,53 +112,47 @@ enum PackParser {
         name.hasPrefix("fixes-") ? 1 : 0
     }
 
-    private static func entry(word: Word) -> LibraryEntry? {
-        let trimmed = word.word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let meanings = (word.meanings ?? []).filter { !($0.zh ?? "").isEmpty }
+    private static func entry(word: WordDetail, detail: Data?) -> LibraryEntry? {
+        let meanings = word.meanings.filter { $0.zh != nil }
         var posList: [String] = []
         for meaning in meanings {
-            if let pos = clean(meaning.pos), !posList.contains(pos) { posList.append(pos) }
+            if let pos = meaning.pos, !posList.contains(pos) { posList.append(pos) }
         }
         let zh: String
         if posList.count <= 1 {
-            zh = meanings.compactMap { clean($0.zh) }.joined(separator: "；")
+            zh = meanings.compactMap(\.zh).joined(separator: "；")
         } else {
             zh = meanings.compactMap { meaning -> String? in
-                guard let text = clean(meaning.zh) else { return nil }
-                guard let pos = clean(meaning.pos) else { return text }
+                guard let text = meaning.zh else { return nil }
+                guard let pos = meaning.pos else { return text }
                 return "\(pos) \(text)"
             }.joined(separator: "\n")
         }
         guard !zh.isEmpty else { return nil }
-        let example = meanings.lazy.compactMap { $0.examples?.first(where: { clean($0.en) != nil }) }.first
+        let example = meanings.lazy.compactMap(\.examples.first).first
         return LibraryEntry(
-            id: Normalizer.wordID(trimmed),
-            word: trimmed,
+            id: Normalizer.wordID(word.word),
+            word: word.word,
             pos: posList.isEmpty ? nil : posList.joined(separator: " / "),
             zh: zh,
-            example: clean(example?.en),
-            exampleZh: clean(example?.zh),
-            phonetic: clean(word.phonetic)
+            example: example?.en,
+            exampleZh: example?.zh,
+            phonetic: word.phonetic,
+            detail: detail
         )
     }
 
-    private static func entry(phrase: Phrase) -> LibraryEntry {
-        let text = phrase.p.trimmingCharacters(in: .whitespacesAndNewlines)
-        return LibraryEntry(
-            id: Normalizer.phraseID(text),
-            word: text,
-            pos: clean(phrase.pos),
-            zh: phrase.zh.trimmingCharacters(in: .whitespacesAndNewlines),
-            example: clean(phrase.ex),
-            exampleZh: clean(phrase.exZh),
-            phonetic: nil
+    private static func entry(phrase: PhraseDetail, detail: Data?) -> LibraryEntry {
+        LibraryEntry(
+            id: Normalizer.phraseID(phrase.p),
+            word: phrase.p,
+            pos: phrase.pos,
+            zh: phrase.zh ?? "",
+            example: phrase.ex,
+            exampleZh: phrase.exZh,
+            phonetic: nil,
+            detail: detail
         )
-    }
-
-    private static func clean(_ s: String?) -> String? {
-        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
-        return t
     }
 }
 
@@ -197,6 +195,9 @@ struct InstallResult: Equatable {
 /// - 已經在別的牌組（例如從 Claude 匯入的）就留在原牌組，只更新內容
 /// - 新版拿掉的字標成停用（保留進度，不再出現在複習）
 enum PackInstaller {
+    /// 1：加上完整內容（CardDetail）
+    static let contentFormat = 1
+
     @MainActor
     @discardableResult
     static func install(_ pack: StorePack, entries: [LibraryEntry], into context: ModelContext, now: Date = Date()) throws -> InstallResult {
@@ -238,6 +239,7 @@ enum PackInstaller {
                 card.example = entry.example
                 card.exampleZh = entry.exampleZh
                 card.phonetic = entry.phonetic ?? card.phonetic
+                card.detailData = entry.detail
                 card.source = .library
                 if card.deck?.id == deck.id {
                     card.sortIndex = index
@@ -257,6 +259,7 @@ enum PackInstaller {
                     sortIndex: index,
                     addedAt: now
                 )
+                card.detailData = entry.detail
                 card.deck = deck
                 context.insert(card)
                 result.added += 1
@@ -268,6 +271,7 @@ enum PackInstaller {
             result.retired += 1
         }
         deck.packVersion = pack.version
+        deck.contentFormat = contentFormat
         try context.save()
         return result
     }

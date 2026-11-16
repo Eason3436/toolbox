@@ -46,7 +46,8 @@ struct StorePack: Decodable, Identifiable, Hashable {
     /// 實際要下載的檔案（單字檔、補充檔、片語檔）
     var neededFiles: [PackFile] {
         files.filter { file in
-            file.name.hasPrefix("level") || file.name.hasPrefix("fixes-") || file.name == "phrasebook.json"
+            file.name.hasPrefix("level") || file.name.hasPrefix("fixes-") || file.name.hasPrefix("similar-")
+                || file.name == "phrasebook.json"
         }
     }
 
@@ -115,6 +116,7 @@ final class StoreModel {
         if let p = progress[pack.id] { return .downloading(p) }
         guard let deck = decks.first(where: { $0.id == pack.id }) else { return .notDownloaded }
         if let installed = deck.packVersion, installed < pack.version { return .updateAvailable }
+        if deck.contentFormat < PackInstaller.contentFormat { return .updateAvailable }
         return .downloaded
     }
 
@@ -158,6 +160,21 @@ final class StoreModel {
         guard !entries.isEmpty else { throw URLError(.cannotParseResponse) }
         progress[pack.id] = 0.95
         return try PackInstaller.install(pack, entries: entries, into: context)
+    }
+
+    /// 舊格式安裝的單字包（例如還沒有搭配、近義字那些內容）：背景重新安裝，進度不動。
+    /// 回傳補好的包數；失敗的下次打開 App 再試
+    func upgradeOutdated(context: ModelContext) async -> Int {
+        guard phase == .loaded, let decks = try? context.fetch(FetchDescriptor<Deck>()) else { return 0 }
+        let outdated = packs.filter { pack in
+            progress[pack.id] == nil
+                && decks.contains { $0.id == pack.id && $0.contentFormat < PackInstaller.contentFormat }
+        }
+        var upgraded = 0
+        for pack in outdated {
+            if (try? await install(pack, context: context)) != nil { upgraded += 1 }
+        }
+        return upgraded
     }
 
     /// 一次下載好幾包，回傳給 toast 用的訊息

@@ -31,6 +31,7 @@ enum PreviewData {
     }
 
     static let level4: [Sample] = [
+        Sample(word: "abstract", phonetic: "/ˈæbstrækt/", pos: "adj. / n.", zh: "adj. 抽象的；理論的\nn. 摘要；概要", example: "The teacher used pictures to explain an abstract idea.", exampleZh: "老師用圖片解釋一個抽象的概念。"),
         Sample(word: "accommodate", phonetic: "/əˈkɑːmədeɪt/", pos: "v.", zh: "容納；提供住宿", example: "The new library can accommodate 500 students.", exampleZh: "新圖書館可以容納 500 名學生。"),
         Sample(word: "accelerate", phonetic: "/əkˈseləreɪt/", pos: "v.", zh: "加速", example: "The car accelerated down the hill.", exampleZh: "車子加速衝下山坡。"),
         Sample(word: "access", phonetic: "/ˈækses/", pos: "n.", zh: "接近；使用權", example: "Students have access to the lab after school.", exampleZh: "學生放學後可以使用實驗室。"),
@@ -68,6 +69,7 @@ enum PreviewData {
                 card.lastReview = now.addingTimeInterval(-day * 2)
                 card.due = now.addingTimeInterval(i < 4 ? -3600 : day * 3)
             }
+            if s.word == "abstract" { card.detailData = abstractDetail }
             card.deck = l4
             context.insert(card)
         }
@@ -80,6 +82,7 @@ enum PreviewData {
         l5Card.deck = l5
         context.insert(l5Card)
         let phrase = Card(id: "p:such as", word: "such as", pos: "轉折／連接用語", zh: "例如；像是", example: "Fruits such as apples and oranges are rich in vitamins.", exampleZh: "蘋果和柳橙等水果富含維生素。")
+        phrase.detailData = suchAsDetail
         phrase.deck = phrases
         context.insert(phrase)
 
