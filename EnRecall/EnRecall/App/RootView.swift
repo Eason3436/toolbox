@@ -19,30 +19,40 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("首頁", systemImage: "house", value: AppTab.home) {
+            Tab(value: AppTab.home) {
                 NavigationStack {
                     HomeView().appDestinations()
                 }
+            } label: {
+                TabIcon(title: "首頁", systemImage: "house")
             }
-            Tab("牌組", systemImage: "rectangle.stack", value: AppTab.decks) {
+            Tab(value: AppTab.decks) {
                 NavigationStack {
                     DecksView().appDestinations()
                 }
+            } label: {
+                TabIcon(title: "牌組", systemImage: "rectangle.stack")
             }
-            Tab("紀錄", systemImage: "chart.bar", value: AppTab.stats) {
+            Tab(value: AppTab.stats) {
                 NavigationStack {
                     StatsView()
                 }
+            } label: {
+                TabIcon(title: "紀錄", systemImage: "chart.bar")
             }
-            Tab("字典", systemImage: "book.closed", value: AppTab.dictionary) {
+            Tab(value: AppTab.dictionary) {
                 NavigationStack {
                     DictionaryView()
                 }
+            } label: {
+                TabIcon(title: "字典", systemImage: "book.closed")
             }
-            Tab("設定", systemImage: "gearshape", value: AppTab.settings) {
+            Tab(value: AppTab.settings) {
                 NavigationStack {
                     SettingsView()
                 }
+            } label: {
+                TabIcon(title: "設定", systemImage: "gearshape")
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -70,6 +80,17 @@ extension RootView {
     private func importFromClaude() async {
         guard let result = await inbox.sync(context: context), let message = result.toastMessage else { return }
         toasts.show(message, systemImage: "square.and.arrow.down")
+    }
+}
+
+/// 分頁列只放圖示（VoiceOver 還是唸名稱）
+private struct TabIcon: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .accessibilityLabel(title)
     }
 }
 
