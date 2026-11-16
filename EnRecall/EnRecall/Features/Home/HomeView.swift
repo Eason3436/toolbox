@@ -13,7 +13,7 @@ struct HomeView: View {
     }
 
     private var latestClaudeDeck: Deck? {
-        decks.filter { $0.kind == .custom }.max { $0.createdAt < $1.createdAt }
+        decks.filter { $0.kind == .custom }.max { ($0.lastImportedAt ?? $0.createdAt) < ($1.lastImportedAt ?? $1.createdAt) }
     }
 
     var body: some View {

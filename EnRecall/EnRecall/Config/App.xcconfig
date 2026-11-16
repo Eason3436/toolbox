@@ -3,8 +3,9 @@
 // App 不上架，這些值都是公開值（anon／publishable key 的權限由 RLS 限制），直接放在這裡。
 // xcconfig 會把 // 當成註解，所以網址只寫主機名稱，程式裡再補 https://
 
-// iOS 後端（ios_devices、ios_inbox、enrecall-mcp 所在的 Supabase 專案）。部署好之後換掉 PLACEHOLDER
-SUPABASE_HOST = PLACEHOLDER.supabase.co
+// iOS 後端（ios_devices、ios_inbox、enrecall-mcp 所在的 Supabase 專案，2026-11-16 由 Muse 部署）
+// anon key 只能呼叫三個 RPC（register／claim／unregister），讀不到任何資料表
+SUPABASE_HOST = <IOS_REF>.supabase.co
 SUPABASE_ANON_KEY = PLACEHOLDER
 
 // 單字商店（使用者 EnRecall 專案的公開 Storage，只讀）
