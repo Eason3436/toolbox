@@ -63,6 +63,7 @@ struct ReviewView: View {
             .toolbar { toolbar }
             .navigationBarTitleDisplayMode(.inline)
         }
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .task {
             guard !isLoaded else { return }
             load()
@@ -166,28 +167,7 @@ struct ReviewView: View {
         }
         ToolbarItem(placement: .principal) {
             if isLoaded {
-                Menu {
-                    Picker("接下來", selection: $mix) {
-                        ForEach(ReviewMix.allCases) { item in
-                            Text(item.title).tag(item)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(mix.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.er.text)
-                        Text("\(min(index, queue.count).formatted()) / \(queue.count.formatted())")
-                            .font(.erMono)
-                            .monospacedDigit()
-                            .foregroundStyle(Color.er.textSecondary)
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.er.textSecondary)
-                    }
-                    .padding(.horizontal, 6)
-                }
-                .accessibilityLabel("接下來：\(mix.title)，\(min(index, queue.count)) / \(queue.count)")
+                MixSwitch(mix: $mix)
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -376,7 +356,7 @@ struct ReviewTimeline: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 6) {
+                LazyHStack(spacing: 2) {
                     ForEach(Array(history.enumerated()), id: \.offset) { position, step in
                         pastChip(position: position, step: step)
                             .id("past-\(position)")
@@ -417,14 +397,12 @@ struct ReviewTimeline: View {
         return Button {
             onSelect(isViewing ? nil : position)
         } label: {
-            Text(step.card.word)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .foregroundStyle(rating.color)
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(rating.color.opacity(isViewing ? 0.3 : 0.14), in: Capsule())
-                .overlay(Capsule().strokeBorder(rating.color, lineWidth: isViewing ? 1.5 : 0))
+            Capsule()
+                .fill(rating.color)
+                .frame(width: isViewing ? 30 : 20, height: isViewing ? 14 : 10)
+                .overlay(Capsule().strokeBorder(Color.er.surface, lineWidth: isViewing ? 2 : 0))
+                .frame(width: 30, height: 36)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(step.card.word)，\(rating.title)")
@@ -433,21 +411,55 @@ struct ReviewTimeline: View {
 
     private func upcomingChip(card: Card, isCurrent: Bool) -> some View {
         let label = card.isNew ? "新字" : (card.state == .review ? "複習" : "再一次")
-        let tint = card.isNew ? Color.er.info : Color.er.textSecondary
+        let isActive = isCurrent && viewing == nil
         return Button {
             onSelect(nil)
         } label: {
-            Text(label)
-                .font(.caption.weight(isCurrent ? .semibold : .medium))
-                .foregroundStyle(tint)
-                .padding(.horizontal, 9)
-                .frame(height: isCurrent ? 30 : 26)
-                .background(card.isNew ? Color.er.infoContainer : Color.er.fill, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.er.primary, lineWidth: isCurrent && viewing == nil ? 1.5 : 0))
+            Capsule()
+                .fill(card.isNew ? Color.er.infoTrack : Color.er.outlineStrong)
+                .frame(width: isCurrent ? 26 : 14, height: isCurrent ? 12 : 8)
+                .overlay(Capsule().strokeBorder(Color.er.text, lineWidth: isActive ? 1.5 : 0).padding(-3))
+                .frame(width: isCurrent ? 36 : 18, height: 36)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isCurrent)
         .accessibilityLabel(isCurrent ? "目前：\(label)" : label)
+    }
+}
+
+/// 上方的「混合／新字／複習」：點一下換下一個，字像拉霸一樣往上捲
+private struct MixSwitch: View {
+    @Binding var mix: ReviewMix
+
+    private var next: ReviewMix {
+        let all = ReviewMix.allCases
+        let position = all.firstIndex(of: mix) ?? 0
+        return all[(position + 1) % all.count]
+    }
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(duration: 0.4, bounce: 0.35)) { mix = next }
+        } label: {
+            ZStack {
+                Text(mix.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color.er.text)
+                    .id(mix)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
+            }
+            .frame(minWidth: 72, minHeight: 36)
+            .clipped()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: mix)
+        .accessibilityLabel("接下來：\(mix.title)")
+        .accessibilityHint("點一下換成\(next.title)")
     }
 }
 

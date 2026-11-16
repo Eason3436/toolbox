@@ -152,3 +152,69 @@ extension View {
         background(Color.er.background.ignoresSafeArea())
     }
 }
+
+// MARK: - 卡片裡的捲動區：上下柔和淡出
+
+/// 卡片裡的 ScrollView 沒有系統列，系統的 soft 邊緣不會出現，用遮罩做同樣的效果。
+/// 只有那一側還有內容時才淡出：停在最上面時上緣不淡、捲到底時下緣不淡，不會蓋到字
+struct SoftScrollEdges: ViewModifier {
+    var axis: Axis = .vertical
+    var length: CGFloat = 22
+
+    @State private var edges = Edges()
+
+    private struct Edges: Equatable {
+        var leading = false
+        var trailing = false
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Edges.self) { geometry in
+                let vertical = axis == .vertical
+                let offset = vertical ? geometry.contentOffset.y : geometry.contentOffset.x
+                let insetStart = vertical ? geometry.contentInsets.top : geometry.contentInsets.leading
+                let insetEnd = vertical ? geometry.contentInsets.bottom : geometry.contentInsets.trailing
+                let visible = vertical ? geometry.containerSize.height : geometry.containerSize.width
+                let total = vertical ? geometry.contentSize.height : geometry.contentSize.width
+                return Edges(leading: offset + insetStart > 1, trailing: offset + visible < total + insetEnd - 1)
+            } action: { _, value in
+                withAnimation(.easeOut(duration: 0.15)) { edges = value }
+            }
+            .mask { mask }
+    }
+
+    @ViewBuilder
+    private var mask: some View {
+        let start = LinearGradient(
+            colors: [Color.er.text.opacity(edges.leading ? 0 : 1), Color.er.text],
+            startPoint: axis == .vertical ? .top : .leading,
+            endPoint: axis == .vertical ? .bottom : .trailing
+        )
+        let end = LinearGradient(
+            colors: [Color.er.text, Color.er.text.opacity(edges.trailing ? 0 : 1)],
+            startPoint: axis == .vertical ? .top : .leading,
+            endPoint: axis == .vertical ? .bottom : .trailing
+        )
+        if axis == .vertical {
+            VStack(spacing: 0) {
+                start.frame(height: length)
+                Rectangle()
+                end.frame(height: length)
+            }
+        } else {
+            HStack(spacing: 0) {
+                start.frame(width: length)
+                Rectangle()
+                end.frame(width: length)
+            }
+        }
+    }
+}
+
+extension View {
+    /// 用在卡片裡的 ScrollView
+    func softScrollEdges(_ axis: Axis = .vertical, length: CGFloat = 22) -> some View {
+        modifier(SoftScrollEdges(axis: axis, length: length))
+    }
+}

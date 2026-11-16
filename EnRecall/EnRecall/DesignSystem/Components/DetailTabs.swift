@@ -108,7 +108,7 @@ struct DetailTabBar: View {
             }
         }
         .scrollIndicators(.hidden)
-        .scrollClipDisabled()
+        .softScrollEdges(.horizontal, length: 18)
         .sensoryFeedback(.selection, trigger: selection)
     }
 }

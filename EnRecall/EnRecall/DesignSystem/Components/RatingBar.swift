@@ -11,7 +11,7 @@ extension Rating {
     }
 }
 
-/// 複習頁底部：「顯示答案」玻璃按鈕，翻面後變形成 4 個評分按鈕
+/// 複習頁底部：沒翻面時 4 個玻璃按鈕併成一條「顯示答案」，翻面時分開成 4 個評分按鈕；評完再併回去
 struct RatingBar: View {
     let isRevealed: Bool
     /// 每個評分下次出現的間隔（例如「10 分」「3 天」）；空的就不顯示
@@ -26,30 +26,33 @@ struct RatingBar: View {
     @Namespace private var namespace
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            if isRevealed {
-                HStack(spacing: 8) {
-                    ForEach(Rating.allCases) { rating in
-                        ratingButton(rating)
-                    }
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: isRevealed ? 10 : 0) {
+                ForEach(Rating.allCases) { rating in
+                    ratingButton(rating)
                 }
-            } else {
+            }
+            .overlay {
                 Button(action: onReveal) {
                     Text("顯示答案")
                         .font(.headline)
                         .foregroundStyle(Color.er.text)
-                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Theme.Radius.rating))
-                .glassEffectID("reveal", in: namespace)
+                .opacity(isRevealed ? 0 : 1)
+                .scaleEffect(isRevealed ? 0.9 : 1)
+                .allowsHitTesting(!isRevealed)
+                .accessibilityHidden(isRevealed)
             }
         }
     }
 
     private func ratingButton(_ rating: Rating) -> some View {
         let isDimmed = selected != nil && selected != rating
+        let tint: Double = selected == rating ? 0.34 : (isDimmed ? 0.06 : 0.16)
+        let glass: Glass = isRevealed ? .regular.tint(rating.color.opacity(tint)).interactive() : .regular.interactive()
         return Button {
             onRate(rating)
         } label: {
@@ -63,18 +66,17 @@ struct RatingBar: View {
                 }
             }
             .foregroundStyle(rating.color)
+            .opacity(isRevealed ? (isDimmed ? 0.4 : 1) : 0)
+            .scaleEffect(isRevealed ? 1 : 0.8)
             .frame(maxWidth: .infinity, minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(isDimmed ? 0.4 : 1)
-        .disabled(isDimmed && isLocked)
-        .glassEffect(
-            .regular.tint(rating.color.opacity(selected == rating ? 0.34 : 0.16)).interactive(),
-            in: .rect(cornerRadius: Theme.Radius.rating)
-        )
+        .disabled(!isRevealed || (isDimmed && isLocked))
+        .glassEffect(glass, in: .rect(cornerRadius: Theme.Radius.rating))
+        .glassEffectUnion(id: isRevealed ? nil : "merged", namespace: namespace)
+        .accessibilityHidden(!isRevealed)
         .accessibilityAddTraits(selected == rating ? .isSelected : [])
-        .glassEffectID("rating-\(rating.rawValue)", in: namespace)
     }
 }
 
