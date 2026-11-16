@@ -9,6 +9,8 @@ enum SettingsKey {
     static let reminderSeconds = "reminderSeconds"
     /// 複習時接下來出什麼：混合／只背新字／只複習
     static let reviewMix = "reviewMix"
+    /// 把學習紀錄傳給 Claude 連接器（預設開）
+    static let shareStats = "shareStats"
 }
 
 /// 複習時接下來出什麼

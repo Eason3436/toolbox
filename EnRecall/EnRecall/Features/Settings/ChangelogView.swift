@@ -11,6 +11,12 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.10.0", date: day(16), notes: [
+            "例句裡的單字用淡淡的螢光筆標出來",
+            "複習畫面上方不再模糊",
+            "剛打開時喇叭按鈕不會先變黑",
+            "可以把複習成績分享給 Claude，請它分析或做複習講義（設定 › Claude 連接器）",
+        ]),
         Entry(version: "0.9.0", date: day(16), notes: [
             "主畫面下方的分頁列只留圖示",
             "設定裡可以看更新日誌",
@@ -76,7 +82,7 @@ struct ChangelogView: View {
             Text(entry.version)
                 .font(.erMono.weight(.semibold))
                 .foregroundStyle(Color.er.text)
-            if entry.version == AppConfig.appVersion {
+            if entry.version == AppConfig.shortVersion {
                 Chip(text: "目前版本", style: .info)
             }
             Spacer(minLength: 8)

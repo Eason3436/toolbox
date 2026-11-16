@@ -118,9 +118,10 @@ private struct ConnectorSection: View {
     @State private var confirmRegenerate = false
     @State private var isWorking = false
     @State private var copied = 0
+    @AppStorage(SettingsKey.shareStats) private var shareStats = true
 
     var body: some View {
-        Section("Claude 連接器") {
+        Section {
             if let url = inbox.connectorURL {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("連接器網址")
@@ -149,6 +150,12 @@ private struct ConnectorSection: View {
                 }
                 .disabled(inbox.status == .syncing)
 
+                Toggle("分享學習紀錄", isOn: $shareStats)
+                    .onChange(of: shareStats) { _, isOn in
+                        guard isOn else { return }
+                        Task { await inbox.uploadSnapshot(context: context, force: true) }
+                    }
+
                 Button("重新產生配對碼", role: .destructive) {
                     confirmRegenerate = true
                 }
@@ -156,6 +163,12 @@ private struct ConnectorSection: View {
             } else {
                 Text("後端還沒設定")
                     .foregroundStyle(Color.er.textTertiary)
+            }
+        } header: {
+            Text("Claude 連接器")
+        } footer: {
+            if inbox.connectorURL != nil {
+                Text("分享後，Claude 看得到最近的複習成績，可以幫忙分析、做複習講義")
             }
         }
         .confirmationDialog("重新產生配對碼？", isPresented: $confirmRegenerate, titleVisibility: .visible) {

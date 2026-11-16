@@ -109,6 +109,7 @@ struct DetailTabBar: View {
         }
         .scrollIndicators(.hidden)
         .softScrollEdges(.horizontal, length: 18)
+        .scrollEdgeEffectHidden(true, for: .all)
         .sensoryFeedback(.selection, trigger: selection)
     }
 }

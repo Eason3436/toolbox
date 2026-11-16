@@ -69,9 +69,22 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
-            // 每次回到前景都領一次 Claude 送來的字
-            guard phase == .active else { return }
-            Task { await importFromClaude() }
+            switch phase {
+            case .active:
+                // 每次回到前景都領一次 Claude 送來的字，順便更新學習紀錄
+                Task {
+                    await importFromClaude()
+                    await inbox.uploadSnapshot(context: context)
+                }
+            case .background:
+                Task { await inbox.uploadSnapshot(context: context, force: true) }
+            default:
+                break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .studyProgressSaved)) { _ in
+            // 複習完關掉：讓 Claude 馬上看得到這次的成績
+            Task { await inbox.uploadSnapshot(context: context, force: true) }
         }
     }
 }

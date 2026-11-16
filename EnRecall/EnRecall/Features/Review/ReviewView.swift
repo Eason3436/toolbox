@@ -63,7 +63,6 @@ struct ReviewView: View {
             .toolbar { toolbar }
             .navigationBarTitleDisplayMode(.inline)
         }
-        .scrollEdgeEffectStyle(.soft, for: .all)
         .task {
             guard !isLoaded else { return }
             load()
@@ -206,7 +205,9 @@ struct ReviewView: View {
 
     private func save() {
         guard let context, context.hasChanges else { return }
-        try? context.save()
+        if (try? context.save()) != nil {
+            NotificationCenter.default.post(name: .studyProgressSaved, object: nil)
+        }
     }
 
     private func close() {
@@ -376,6 +377,8 @@ struct ReviewTimeline: View {
             }
             .scrollIndicators(.hidden)
             .scrollClipDisabled()
+            // 這一排在導覽列正下方，不要系統的 soft 邊緣（會把卡片頂端糊掉）
+            .scrollEdgeEffectHidden(true, for: .all)
             .frame(height: 36)
             .onAppear { proxy.scrollTo("current", anchor: .center) }
             .onChange(of: history.count) {
