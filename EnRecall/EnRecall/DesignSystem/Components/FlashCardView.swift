@@ -2,28 +2,17 @@ import SwiftUI
 import SwiftData
 
 /// 複習的記憶卡。點卡片翻面（由外層處理），喇叭按鈕唸單字。
-/// 背面有常用搭配；單字庫的字可以打開完整解釋（onMore）
+/// 背面在例句的位置放分頁（例句、搭配、近義字…），點了直接在卡片裡切換
 struct FlashCardView: View {
     let card: Card
+    let detail: CardDetail?
     let isFlipped: Bool
-    var onMore: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var collocations: [WordDetail.Collocation]
-    @State private var hasDetail: Bool
-
-    private static let collocationLimit = 5
-
-    init(card: Card, isFlipped: Bool, onMore: (() -> Void)? = nil) {
-        self.card = card
-        self.isFlipped = isFlipped
-        self.onMore = onMore
-        let detail = card.detail
-        _collocations = State(initialValue: Array((detail?.word?.allCollocations ?? []).prefix(Self.collocationLimit)))
-        _hasDetail = State(initialValue: detail != nil)
-    }
+    @State private var tab: DetailTab = .examples
 
     private var deckLabel: String { card.deck?.name ?? "" }
+    private var tabs: [DetailTab] { DetailTab.available(for: detail) }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.flashCard, style: .continuous)
@@ -38,7 +27,7 @@ struct FlashCardView: View {
                 .accessibilityHidden(!isFlipped)
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: 560)
+        .frame(maxWidth: .infinity, maxHeight: 600)
         .background(Color.er.surface, in: shape)
         .overlay(shape.strokeBorder(Color.er.outline, lineWidth: 1))
         .shadow(color: Color.er.shadow, radius: 2, y: 1)
@@ -92,32 +81,7 @@ struct FlashCardView: View {
     // MARK: 背面
 
     private var back: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                backContent
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.hidden)
-            HStack(alignment: .center) {
-                Text(deckLabel)
-                    .font(.erLabel)
-                    .tracking(1.1)
-                    .foregroundStyle(Color.er.textTertiary)
-                Spacer(minLength: 8)
-                if hasDetail, let onMore {
-                    Button("完整解釋", systemImage: "text.book.closed", action: onMore)
-                        .font(.subheadline.weight(.semibold))
-                        .buttonStyle(.glass)
-                }
-            }
-            .padding(.top, 12)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var backContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(card.word)
                     .font(.system(size: 26, weight: .bold))
@@ -136,41 +100,44 @@ struct FlashCardView: View {
                 .foregroundStyle(Color.er.text)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let example = card.example, !example.isEmpty {
-                Divider().overlay(Color.er.outline)
-                HStack(spacing: 6) {
-                    Text("例句")
-                        .font(.erLabel)
-                        .tracking(1.1)
-                        .foregroundStyle(Color.er.textTertiary)
-                    if card.source == .claude {
-                        Chip(text: "AI 例句", style: .info)
-                    }
+            Divider().overlay(Color.er.outline)
+
+            if tabs.isEmpty {
+                basicExample
+            } else {
+                DetailTabBar(tabs: tabs, selection: $tab)
+                ScrollView {
+                    DetailTabContent(tab: tab, detail: detail, card: card)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Text(example)
-                    .font(.system(size: 17))
-                    .foregroundStyle(Color.er.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let exampleZh = card.exampleZh, !exampleZh.isEmpty {
-                    Text(exampleZh)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.er.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .id(tab)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
             }
 
-            if !collocations.isEmpty {
-                Divider().overlay(Color.er.outline)
-                Text("搭配")
-                    .font(.erLabel)
-                    .tracking(1.1)
-                    .foregroundStyle(Color.er.textTertiary)
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(collocations.enumerated()), id: \.offset) { _, item in
-                        CollocationLine(item: item)
-                    }
+            Spacer(minLength: 0)
+            Text(deckLabel)
+                .font(.erLabel)
+                .tracking(1.1)
+                .foregroundStyle(Color.er.textTertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// 從 Claude 寫的字：只有一句例句
+    @ViewBuilder
+    private var basicExample: some View {
+        if let example = card.example, !example.isEmpty {
+            HStack(spacing: 6) {
+                DetailLabel("例句")
+                if card.source == .claude {
+                    Chip(text: "AI 例句", style: .info)
                 }
             }
+            ScrollView {
+                ExampleLines(en: example, zh: card.exampleZh)
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 }
@@ -200,7 +167,7 @@ struct SpeakButton: View {
     let container = PreviewData.container
     let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "abstract" }
     if let card {
-        FlashCardView(card: card, isFlipped: flipped, onMore: {})
+        FlashCardView(card: card, detail: CardDetail.load(for: card.id, in: container.mainContext), isFlipped: flipped)
             .padding(Theme.Spacing.page)
             .onTapGesture { withAnimation(.spring(duration: 0.35)) { flipped.toggle() } }
             .erPageBackground()
@@ -212,7 +179,7 @@ struct SpeakButton: View {
     let container = PreviewData.container
     let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.source == .claude }
     if let card {
-        FlashCardView(card: card, isFlipped: true)
+        FlashCardView(card: card, detail: nil, isFlipped: true)
             .padding(Theme.Spacing.page)
             .erPageBackground()
             .modelContainer(container)

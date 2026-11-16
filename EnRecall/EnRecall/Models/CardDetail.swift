@@ -1,19 +1,12 @@
 import Foundation
 
 /// 單字庫的完整內容（字義分組、例句、句型、搭配、近義字、易混淆字、常見錯誤、字源…）。
-/// 存在 Card.detailData（JSON），畫面要用時才解開。從 Claude 寫的字沒有這些
+/// 存在 CardContent（JSON），畫面要用時才解開。從 Claude 寫的字沒有這些
 struct CardDetail: Codable, Equatable {
     var word: WordDetail?
     var phrase: PhraseDetail?
     /// 相似字對比（similar-levelN.json）
     var similar: [SimilarPair]?
-}
-
-extension Card {
-    var detail: CardDetail? {
-        guard let detailData else { return nil }
-        return try? JSONDecoder().decode(CardDetail.self, from: detailData)
-    }
 }
 
 // MARK: - 寬鬆解碼：單一欄位格式不對就略過那一欄，不要讓整包解析失敗

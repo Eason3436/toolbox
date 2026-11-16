@@ -16,6 +16,10 @@ struct RatingBar: View {
     let isRevealed: Bool
     /// 每個評分下次出現的間隔（例如「10 分」「3 天」）；空的就不顯示
     var intervals: [Rating: String] = [:]
+    /// 回頭看前面的卡：當時選的評分（其他按鈕變淡）
+    var selected: Rating?
+    /// 回頭看的卡已經又複習過一次，不能改評分
+    var isLocked = false
     let onReveal: () -> Void
     let onRate: (Rating) -> Void
 
@@ -45,7 +49,8 @@ struct RatingBar: View {
     }
 
     private func ratingButton(_ rating: Rating) -> some View {
-        Button {
+        let isDimmed = selected != nil && selected != rating
+        return Button {
             onRate(rating)
         } label: {
             VStack(spacing: 2) {
@@ -62,7 +67,13 @@ struct RatingBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.tint(rating.color.opacity(0.16)).interactive(), in: .rect(cornerRadius: Theme.Radius.rating))
+        .opacity(isDimmed ? 0.4 : 1)
+        .disabled(isDimmed && isLocked)
+        .glassEffect(
+            .regular.tint(rating.color.opacity(selected == rating ? 0.34 : 0.16)).interactive(),
+            in: .rect(cornerRadius: Theme.Radius.rating)
+        )
+        .accessibilityAddTraits(selected == rating ? .isSelected : [])
         .glassEffectID("rating-\(rating.rawValue)", in: namespace)
     }
 }

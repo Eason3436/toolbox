@@ -94,6 +94,34 @@ enum StudyPlanner {
         return summary
     }
 
+    /// 依「混合／只背新字／只複習」排出這一輪。混合：新卡平均穿插在複習卡之間
+    static func arrange<T>(due: [T], new: [T], mix: ReviewMix) -> [T] {
+        switch mix {
+        case .reviewOnly:
+            return due
+        case .newOnly:
+            return new
+        case .mixed:
+            guard !due.isEmpty, !new.isEmpty else { return due + new }
+            let total = due.count + new.count
+            var result: [T] = []
+            result.reserveCapacity(total)
+            var d = 0
+            var n = 0
+            for position in 0..<total {
+                let target = Int((Double(n) + 0.5) * Double(total) / Double(new.count))
+                if n < new.count && (position >= target || d >= due.count) {
+                    result.append(new[n])
+                    n += 1
+                } else {
+                    result.append(due[d])
+                    d += 1
+                }
+            }
+            return result
+        }
+    }
+
     /// 複習順序：先到期的複習卡，再新卡（新卡穿插在後面，避免一開始全是沒看過的字）
     static func queue(
         decks: [Deck],

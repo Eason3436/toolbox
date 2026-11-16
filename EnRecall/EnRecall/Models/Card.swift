@@ -18,8 +18,6 @@ final class Card {
     /// 依序出新卡時的順序
     var sortIndex: Int = 0
     var addedAt: Date = Date()
-    /// 單字庫的完整內容（CardDetail 的 JSON）；從 Claude 寫的字是 nil
-    var detailData: Data?
     var deck: Deck?
 
     // FSRS 狀態

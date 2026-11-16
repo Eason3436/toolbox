@@ -7,6 +7,25 @@ enum SettingsKey {
     static let reminderEnabled = "reminderEnabled"
     /// 一天中的秒數（預設 21:00）
     static let reminderSeconds = "reminderSeconds"
+    /// 複習時接下來出什麼：混合／只背新字／只複習
+    static let reviewMix = "reviewMix"
+}
+
+/// 複習時接下來出什麼
+enum ReviewMix: String, CaseIterable, Identifiable {
+    case mixed
+    case newOnly
+    case reviewOnly
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mixed: "混合"
+        case .newOnly: "新字"
+        case .reviewOnly: "複習"
+        }
+    }
 }
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
