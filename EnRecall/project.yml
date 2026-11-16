@@ -1,0 +1,76 @@
+name: EnRecall
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  EnRecall:
+    type: application
+    platform: iOS
+    configFiles:
+      Debug: EnRecall/Config/App.xcconfig
+      Release: EnRecall/Config/App.xcconfig
+    sources:
+      - path: EnRecall
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+          - "Config/**"
+      - path: EnRecall/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: EnRecall/Info.plist
+      properties:
+        CFBundleDisplayName: EnRecall
+        CFBundleName: EnRecall
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # 後端與商店網址（xcconfig 裡不能寫 //，所以只放主機名稱）
+        ERSupabaseHost: $(SUPABASE_HOST)
+        ERSupabaseAnonKey: $(SUPABASE_ANON_KEY)
+        ERStoreHost: $(STORE_HOST)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.enrecall
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # 顏色一律用 Color.er.*（Theme.swift），不要自動產生的 Color.xxx 符號，避免跟 Color.primary 之類撞名
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+
+  EnRecallTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: EnRecall
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.enrecall.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/EnRecall.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EnRecall
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  EnRecall:
+    build:
+      targets:
+        EnRecall: all
+    test:
+      targets:
+        - EnRecallTests
