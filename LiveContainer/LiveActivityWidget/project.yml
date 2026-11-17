@@ -1,5 +1,7 @@
 # 只用來編譯 LiveContainer 的即時動態 widget extension。
 # livecontainer.yml 會把編好的 LCLiveActivityWidget.appex 複製進 LiveContainer.app/PlugIns。
+# 同一個 extension 也放主畫面／鎖定畫面小工具（LCAppWidget），不會多用 App ID。
+# 小工具要讀 LiveContainer 的 App Group，CI 用 LCLiveActivityWidget.entitlements 簽 ad-hoc，SideStore 安裝時會換成真的群組。
 name: LCLiveActivity
 options:
   deploymentTarget:
@@ -16,6 +18,8 @@ targets:
     platform: iOS
     sources:
       - path: LCLiveActivityWidget.swift
+      - path: LCAppWidget.swift
+      - path: LCWidgetSnapshot.swift
       - path: ../overlay/LiveContainerSwiftUI/LCLiveActivityAttributes.swift
     info:
       path: Info.plist

@@ -37,7 +37,7 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.er.surface)
 
-            Section("學習") {
+            Section {
                 Stepper(value: $dailyNewLimit, in: 0...200, step: 5) {
                     LabeledContent("每日新卡上限") {
                         Text(dailyNewLimit, format: .number).monospacedDigit()
@@ -46,6 +46,12 @@ struct SettingsView: View {
                 Toggle("每日提醒", isOn: $reminderEnabled)
                 if reminderEnabled {
                     DatePicker("提醒時間", selection: reminderTime, displayedComponents: .hourAndMinute)
+                }
+            } header: {
+                Text("學習")
+            } footer: {
+                if reminderEnabled && LiveContainerBridge.isInside {
+                    Text("在 LiveContainer 裡要打開這個 App 設定的「修復本地通知」，提醒才會出現")
                 }
             }
             .listRowBackground(Color.er.surface)
@@ -81,6 +87,27 @@ struct SettingsView: View {
         .erPageBackground()
         .navigationTitle("設定")
         .animation(.spring(duration: 0.3), value: reminderEnabled)
+        .onChange(of: reminderEnabled) { _, enabled in
+            guard enabled else {
+                Task { await ReminderScheduler.reschedule(context: context) }
+                return
+            }
+            Task {
+                if await ReminderScheduler.requestPermission() {
+                    await ReminderScheduler.reschedule(context: context)
+                } else {
+                    reminderEnabled = false
+                    toasts.show("通知被關掉了，到系統設定打開", systemImage: "bell.slash")
+                }
+            }
+        }
+        .onChange(of: reminderSeconds) {
+            Task { await ReminderScheduler.reschedule(context: context) }
+        }
+        .onChange(of: dailyNewLimit) {
+            Task { await ReminderScheduler.reschedule(context: context) }
+            HomeWidgetPublisher.publish(context: context)
+        }
         .confirmationDialog("重置所有進度？", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("重置", role: .destructive, action: resetProgress)
         } message: {
@@ -103,6 +130,8 @@ struct SettingsView: View {
             try context.delete(model: ReviewLog.self)
             try context.save()
             toasts.show("已重置所有進度", systemImage: "arrow.counterclockwise")
+            Task { await ReminderScheduler.reschedule(context: context) }
+            HomeWidgetPublisher.publish(context: context)
         } catch {
             toasts.show("重置失敗", systemImage: "exclamationmark.triangle")
         }

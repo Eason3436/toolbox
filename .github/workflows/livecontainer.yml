@@ -85,6 +85,10 @@ jobs:
           grep -E "error:" widget.log | sort -u | head -50 || true
           tail -5 widget.log
           [ $STATUS -eq 0 ] || exit $STATUS
+          # 主畫面小工具要讀 LiveContainer 的 App Group：簽 ad-hoc 帶 entitlements，SideStore 才會給這個 extension 群組
+          codesign --force --sign - --entitlements LCLiveActivityWidget.entitlements \
+            build/Release-iphoneos/LCLiveActivityWidget.appex
+          codesign -d --entitlements - build/Release-iphoneos/LCLiveActivityWidget.appex | grep -q "group.com.SideStore.SideStore"
           APP="$GITHUB_WORKSPACE/src/$archive_path.xcarchive/Products/Applications/LiveContainer.app"
           mkdir -p "$APP/PlugIns"
           cp -R build/Release-iphoneos/LCLiveActivityWidget.appex "$APP/PlugIns/"
@@ -133,5 +137,5 @@ jobs:
           gh release create livecontainer-latest $FILES -R "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "LiveContainer 捷徑版（上游 ${LC_SHA}）" \
-            --notes "LiveContainer（AGPL-3.0，上游 commit ${LC_SHA}）加上捷徑動作：開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳：從通知記帳／快速記一筆；裝在裡面的 App 可以顯示即時動態（動態島）。修改的原始碼在 toolbox repo 的 LiveContainer/ 資料夾。用 SideStore 安裝 LiveContainer.ipa 時，選「保留 App 延伸功能」。" \
+            --notes "LiveContainer（AGPL-3.0，上游 commit ${LC_SHA}）加上捷徑動作：開啟 LiveContainer 裡的 App、在背景傳資料給 App、記帳：從通知記帳／快速記一筆；裝在裡面的 App 可以顯示即時動態（動態島）和主畫面／鎖定畫面小工具。修改的原始碼在 toolbox repo 的 LiveContainer/ 資料夾。用 SideStore 安裝 LiveContainer.ipa 時，選「保留 App 延伸功能」。" \
             --prerelease

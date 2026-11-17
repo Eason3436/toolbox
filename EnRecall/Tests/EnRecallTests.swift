@@ -733,3 +733,108 @@ struct HandoutTests {
         #expect(!sheet.contains("還不熟"))
     }
 }
+
+@MainActor
+struct ReminderAndWidgetTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    /// A 牌組：3 張新卡、2 張複習卡（一張已到期、一張 5 小時後到期）；B 牌組暫停
+    private func seed(_ context: ModelContext, now: Date) throws -> [Deck] {
+        let a = Deck(id: "a", name: "A", kind: .storePack, dailyNewLimit: 2, sortIndex: 0)
+        let b = Deck(id: "b", name: "B", kind: .storePack, sortIndex: 1)
+        b.mode = .paused
+        context.insert(a)
+        context.insert(b)
+        for i in 0..<5 {
+            let card = Card(id: "a\(i)", word: "a\(i)", zh: "字", sortIndex: i)
+            card.deck = a
+            if i >= 3 {
+                card.state = .review
+                card.due = now.addingTimeInterval(i == 3 ? -60 : 5 * 3600)
+            }
+            context.insert(card)
+        }
+        let paused = Card(id: "b0", word: "b0", zh: "字")
+        paused.deck = b
+        paused.state = .review
+        paused.due = now.addingTimeInterval(-60)
+        context.insert(paused)
+        try context.save()
+        return [a, b]
+    }
+
+    @Test func forecastMatchesPlannerAtEveryTime() throws {
+        let context = try makeContext()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 9))!
+        let decks = try seed(context, now: now)
+        let forecast = StudyForecast.load(context: context, now: now, calendar: calendar)
+        for hours in [0, 4, 6, 20] {
+            let date = now.addingTimeInterval(Double(hours) * 3600)
+            let expected = StudyPlanner.summary(decks: decks, logs: [], globalNewLimit: forecast.newLimit, now: date, calendar: calendar).all
+            #expect(forecast.counts(at: date, calendar: calendar) == expected)
+        }
+        #expect(forecast.counts(at: now, calendar: calendar) == StudyCounts(due: 1, new: 2))
+        #expect(forecast.counts(at: now.addingTimeInterval(6 * 3600), calendar: calendar) == StudyCounts(due: 2, new: 2))
+    }
+
+    @Test func remindersSkipPastTimesAndFreeDays() throws {
+        let context = try makeContext()
+        let calendar = Calendar(identifier: .gregorian)
+        // 晚上 10 點：今天 9 點的提醒已經過了
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 22))!
+        _ = try seed(context, now: now)
+        let forecast = StudyForecast.load(context: context, now: now, calendar: calendar)
+        let plan = ReminderScheduler.plan(forecast: forecast, reminderSeconds: 21 * 3600, now: now, calendar: calendar)
+        #expect(plan.count == ReminderScheduler.days - 1)
+        #expect(calendar.component(.day, from: plan[0].0) == 18)
+        #expect(calendar.component(.hour, from: plan[0].0) == 21)
+
+        // 沒有要背的字就不排
+        let empty = StudyForecast(decks: [], todayLogs: [], newLimit: 20, now: now)
+        #expect(ReminderScheduler.plan(forecast: empty, reminderSeconds: 21 * 3600, now: now, calendar: calendar).isEmpty)
+    }
+
+    @Test func reminderMessages() {
+        #expect(ReminderScheduler.message(StudyCounts(due: 12, new: 0)) == "還有 12 張要複習")
+        #expect(ReminderScheduler.message(StudyCounts(due: 0, new: 5)) == "今天的 5 個新字還沒背")
+        #expect(ReminderScheduler.message(StudyCounts(due: 3, new: 5)) == "還有 3 張要複習、5 個新字")
+    }
+
+    @Test func widgetTimelineAndEntries() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 9, minute: 30))!
+        let times = HomeWidgetPublisher.times(after: now, calendar: calendar)
+        #expect(times.first == now)
+        #expect(times.count == 14)
+        #expect(times.contains(calendar.date(from: DateComponents(year: 2026, month: 11, day: 18))!))
+
+        let entry = HomeWidgetPublisher.entry(counts: StudyCounts(due: 30, new: 10), date: now, done: 10, streak: 4)
+        #expect(entry.value == 40.formatted())
+        #expect(entry.subtitle == "複習 30 · 新字 10")
+        #expect(entry.details == ["連續 4 天", "今天背了 10 張"])
+        #expect(entry.progress == 0.2)
+        #expect(HomeWidgetPublisher.entry(counts: StudyCounts(), date: now, done: 0, streak: 0).caption == "今天背完了")
+    }
+
+    @Test func widgetSnapshotRoundTripsAndOpensTheApp() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = LCWidgetSnapshot(
+            appName: "EnRecall", bundleName: "EnRecall.app", containerName: "ABC", lcScheme: "livecontainer2",
+            updatedAt: now,
+            entries: [.init(date: now.addingTimeInterval(3600), value: "5"), .init(date: now, value: "9")])
+        let data = try LCWidgetSnapshot.encoder.encode(snapshot)
+        let decoded = try LCWidgetSnapshot.decoder.decode(LCWidgetSnapshot.self, from: data)
+        #expect(decoded == snapshot)
+        #expect(decoded.entry(at: now.addingTimeInterval(60))?.value == "9")
+        #expect(decoded.entry(at: now.addingTimeInterval(7200))?.value == "5")
+        let url = try #require(decoded.launchURL)
+        #expect(url.scheme == "livecontainer2")
+        #expect(url.host == "livecontainer-launch")
+        #expect(url.query?.contains("bundle-name=EnRecall.app") == true)
+    }
+}

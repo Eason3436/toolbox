@@ -77,21 +77,34 @@ struct RootView: View {
                 Task {
                     await importFromClaude()
                     await inbox.uploadSnapshot(context: context)
+                    await refreshReminders()
                 }
             case .background:
-                Task { await inbox.uploadSnapshot(context: context, force: true) }
+                Task {
+                    await refreshReminders()
+                    await inbox.uploadSnapshot(context: context, force: true)
+                }
             default:
                 break
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .studyProgressSaved)) { _ in
             // 複習完關掉：讓 Claude 馬上看得到這次的成績
-            Task { await inbox.uploadSnapshot(context: context, force: true) }
+            Task {
+                await refreshReminders()
+                await inbox.uploadSnapshot(context: context, force: true)
+            }
         }
     }
 }
 
 extension RootView {
+    /// 通知和桌面小工具：照現在還有多少要背重排（App 在背景跑不了，每次用完都更新）
+    private func refreshReminders() async {
+        HomeWidgetPublisher.publish(context: context)
+        await ReminderScheduler.reschedule(context: context)
+    }
+
     private func importFromClaude() async {
         guard let result = await inbox.sync(context: context), let message = result.toastMessage else { return }
         toasts.show(message, systemImage: "square.and.arrow.down")
