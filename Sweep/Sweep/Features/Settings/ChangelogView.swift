@@ -11,6 +11,12 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "1.1.0", date: DateComponents(year: 2026, month: 11, day: 17), notes: [
+            "打開時這一組的照片從底部浮上來攤成扇子，點一下才開始整理",
+            "整理畫面：上方返回、進度、分享；下方收藏、幾天前和地點（點一下看詳情）、復原",
+            "按住往上拖，動態島會慢慢變大；放開照片就被吸進動態島",
+            "背景換成目前這張照片的模糊版本",
+        ]),
         Entry(version: "1.0.0", date: DateComponents(year: 2026, month: 11, day: 17), notes: [
             "照片頁：每次隨機抽一組，往左下一張、往右上一張、往上甩放進待刪除，可以復原",
             "分類：照片、截圖、自拍、原況照片、動圖；每組數量可以調",

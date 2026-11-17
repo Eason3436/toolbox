@@ -36,6 +36,8 @@ struct RootView: View {
                 NavigationStack {
                     PhotosView(isLimited: status == .limited)
                 }
+                // 照片頁的背景是模糊照片壓暗，字一律用深色模式的配色
+                .environment(\.colorScheme, .dark)
             }
             Tab("影片", systemImage: "play.rectangle", value: AppTab.videos) {
                 VideosView(isActive: tab == .videos)
@@ -48,6 +50,10 @@ struct RootView: View {
         }
         .overlay(alignment: .top) {
             ResultBanner()
+        }
+        .overlay {
+            // 往上拖刪除時，蓋在動態島上的黑色膠囊
+            IslandOverlay()
         }
     }
 }
@@ -100,12 +106,14 @@ enum AppLinks {
 #Preview("淺色") {
     RootView()
         .environment(DeletionQueue())
+        .environment(IslandModel())
         .modelContainer(PreviewData.container)
 }
 
 #Preview("深色") {
     RootView()
         .environment(DeletionQueue())
+        .environment(IslandModel())
         .modelContainer(PreviewData.container)
         .preferredColorScheme(.dark)
 }

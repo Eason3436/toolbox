@@ -300,7 +300,7 @@ struct VideosView: View {
         exporting = true
         Task {
             defer { exporting = false }
-            shareURL = try? await PhotoLibrary.exportVideo(asset)
+            shareURL = try? await PhotoLibrary.exportOriginal(asset)
         }
     }
 }
@@ -385,22 +385,6 @@ private struct PlayerLayerView: UIViewRepresentable {
             view.playerLayer.player = player
         }
     }
-}
-
-private struct ShareItem: Identifiable {
-    let url: URL
-    var id: URL { url }
-}
-
-/// 系統分享表
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 #Preview("深色") {

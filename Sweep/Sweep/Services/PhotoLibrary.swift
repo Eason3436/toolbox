@@ -126,11 +126,17 @@ enum PhotoLibrary {
         }
     }
 
-    /// 把影片原檔寫到暫存資料夾，給分享用
-    static func exportVideo(_ asset: PHAsset) async throws -> URL {
+    /// 把原檔（照片或影片，有編輯就用編輯後的）寫到暫存資料夾，給分享用
+    static func exportOriginal(_ asset: PHAsset) async throws -> URL {
         let resources = PHAssetResource.assetResources(for: asset)
-        guard let resource = resources.first(where: { $0.type == .fullSizeVideo })
-                ?? resources.first(where: { $0.type == .video }) else {
+        let preferred: [PHAssetResourceType] = asset.mediaType == .video
+            ? [.fullSizeVideo, .video]
+            : [.fullSizePhoto, .photo]
+        var picked: PHAssetResource?
+        for type in preferred where picked == nil {
+            picked = resources.first { $0.type == type }
+        }
+        guard let resource = picked ?? resources.first else {
             throw CocoaError(.fileNoSuchFile)
         }
         let folder = FileManager.default.temporaryDirectory.appending(path: "share", directoryHint: .isDirectory)

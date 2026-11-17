@@ -35,6 +35,10 @@ final class PhotoDeckModel {
     var current: PHAsset? { assets.indices.contains(index) ? assets[index] : nil }
     var remaining: Int { max(assets.count - index, 0) }
     var canUndo: Bool { !history.isEmpty }
+    /// 第幾張（從 1 開始）
+    var position: Int { min(index + 1, assets.count) }
+    /// 這組看到哪（0–1），給上方進度條
+    var progress: Double { assets.isEmpty ? 0 : Double(position) / Double(assets.count) }
     var canGoBack: Bool { index > 0 }
 
     /// 目前這張和後面兩張（卡片堆疊用）

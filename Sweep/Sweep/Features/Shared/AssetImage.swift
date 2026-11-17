@@ -6,6 +6,8 @@ struct AssetImage: View {
     let asset: PHAsset
     var targetSize: CGSize
     var contentMode: ContentMode = .fill
+    /// 背景模糊圖之類的地方不要轉圈
+    var showsProgress = true
 
     @State private var image: UIImage?
     @State private var failed = false
@@ -16,11 +18,11 @@ struct AssetImage: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
-            } else if failed {
+            } else if failed && showsProgress {
                 Image(systemName: "exclamationmark.icloud")
                     .font(.title)
                     .foregroundStyle(.secondary)
-            } else {
+            } else if showsProgress {
                 ProgressView()
             }
         }

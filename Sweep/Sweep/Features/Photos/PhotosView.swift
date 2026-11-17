@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 import Photos
 
-/// 照片頁：隨機一組卡片，往左下一張、往右上一張、往上甩刪除
+/// 照片頁首頁：抽好的一組攤成扇子，點一下進入整理
 struct PhotosView: View {
     let isLimited: Bool
 
@@ -11,19 +11,13 @@ struct PhotosView: View {
     @AppStorage(SettingsKey.groupSize) private var groupSize = SettingsDefault.groupSize
     @AppStorage(SettingsKey.excludeViewed) private var excludeViewed = true
     @AppStorage(SettingsKey.excludeFavorites) private var excludeFavorites = true
-    @AppStorage(SettingsKey.hapticsOn) private var hapticsOn = true
     @AppStorage(SettingsKey.photoFilter) private var filterRaw = MediaFilter.photos.rawValue
 
+    @Namespace private var namespace
     @State private var deck = PhotoDeckModel()
+    @State private var entered = false
     @State private var includeViewedOnce = false
     @State private var showReview = false
-    @State private var detail: AssetRef?
-    @State private var place: String?
-
-    // 觸覺回饋的觸發器
-    @State private var markTick = 0
-    @State private var moveTick = 0
-    @State private var undoTick = 0
 
     private var filter: MediaFilter {
         MediaFilter(rawValue: filterRaw).flatMap { MediaFilter.photoFilters.contains($0) ? $0 : nil } ?? .photos
@@ -37,47 +31,31 @@ struct PhotosView: View {
             }
             content
         }
+        .background { Backdrop(asset: deck.current) }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .toolbarColorScheme(.dark, for: .tabBar)
+        .navigationDestination(isPresented: $entered) {
+            PhotoDeckView(deck: deck, onGroupDone: groupDone)
+                .navigationTransition(.zoom(sourceID: FanView.transitionID, in: namespace))
+        }
         .task {
             if deck.generation == 0 { await reload() }
         }
         .onChange(of: filterRaw) {
             Task { await reload() }
         }
-        .onChange(of: deck.current?.localIdentifier, initial: true) { _, id in
-            if let id {
-                StatsRecorder.recordViewed(id, kind: deck.filter.statsKind, context: context)
-            }
+        .onChange(of: deck.current?.localIdentifier) {
             ImageLoader.shared.preheat(deck.neighbors, targetSize: CardStack.targetSize)
-        }
-        .onChange(of: deck.phase) { _, phase in
-            guard phase == .finished else { return }
-            if queue.count > 0 {
-                showReview = true
-            } else {
-                Task { await reload() }
-            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sweepAssetsDeleted)) { note in
             if let ids = note.userInfo?["ids"] as? Set<String> {
                 withAnimation(.snappy) { deck.removeDeleted(ids) }
             }
         }
-        .sheet(isPresented: $showReview, onDismiss: {
-            // 這組看完、也處理完待刪除了，就抽下一組
-            if deck.phase == .finished, queue.count == 0 {
-                Task { await reload() }
-            }
-        }) {
+        .sheet(isPresented: $showReview) {
             DeleteReviewView()
         }
-        .sheet(item: $detail) { ref in
-            PhotoDetailView(asset: ref.asset)
-        }
-        .sensoryFeedback(.impact(weight: .medium), trigger: markTick) { _, _ in hapticsOn }
-        .sensoryFeedback(.selection, trigger: moveTick) { _, _ in hapticsOn }
-        .sensoryFeedback(.impact(weight: .light), trigger: undoTick) { _, _ in hapticsOn }
     }
 
     // MARK: - 內容
@@ -107,89 +85,14 @@ struct PhotosView: View {
                     Task { await reload() }
                 }
             }
-        case .finished:
-            finished
-        case .ready:
-            VStack(spacing: 16) {
-                CardStack(
-                    deck: deck,
-                    onMark: mark,
-                    onNext: next,
-                    onPrevious: previous,
-                    onOpen: { detail = AssetRef(asset: $0) }
-                )
-                .padding(.horizontal, 20)
-                infoRow
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+        case .ready, .finished:
+            FanView(cards: deck.visible, namespace: namespace) {
+                guard deck.phase == .ready else { return }
+                entered = true
             }
+            // 換組時重新從底部浮上來
+            .id(deck.generation)
         }
-    }
-
-    private var finished: some View {
-        ContentUnavailableView {
-            Label("這組看完了", systemImage: "checkmark.circle")
-        } description: {
-            if queue.count > 0 {
-                Text("有 \(queue.count.formatted()) 項等著刪除。")
-            } else {
-                Text("馬上抽下一組。")
-            }
-        } actions: {
-            if queue.count > 0 {
-                Button("檢查並刪除") { showReview = true }
-                    .buttonStyle(.borderedProminent)
-            }
-            Button("下一組") { Task { await reload() } }
-            if deck.canUndo {
-                Button("復原上一步", systemImage: "arrow.uturn.backward") { undo() }
-            }
-        }
-    }
-
-    /// 卡片下方：復原、日期地點、詳情
-    private var infoRow: some View {
-        HStack(spacing: 12) {
-            Button("復原", systemImage: "arrow.uturn.backward") { undo() }
-                .labelStyle(.iconOnly)
-                .font(.title3)
-                .frame(width: 48, height: 48)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .disabled(!deck.canUndo)
-
-            VStack(spacing: 2) {
-                if let asset = deck.current {
-                    Text(caption(for: asset))
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
-                    Text(asset.takenAt.formatted(date: .long, time: .omitted))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .task(id: deck.current?.localIdentifier) {
-                place = nil
-                guard let location = deck.current?.location else { return }
-                place = await PlaceLookup.shared.place(for: location)?.short
-            }
-
-            Button("詳細資訊", systemImage: "info") {
-                if let asset = deck.current { detail = AssetRef(asset: asset) }
-            }
-            .labelStyle(.iconOnly)
-            .font(.title3)
-            .frame(width: 48, height: 48)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .disabled(deck.current == nil)
-        }
-    }
-
-    private func caption(for asset: PHAsset) -> String {
-        let day = RelativeDay.text(for: asset.takenAt)
-        guard let place else { return day }
-        return "\(day)・\(place)"
     }
 
     // MARK: - 工具列
@@ -216,35 +119,37 @@ struct PhotosView: View {
                     Task { await reload() }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text(filter.title)
-                        .fontWeight(.semibold)
-                    if deck.phase == .ready {
-                        Text("剩 \(deck.remaining.formatted()) 張")
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.numericText())
-                    }
+                HStack(spacing: 8) {
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                    Text(filter.title)
+                        .fontWeight(.semibold)
+                    if deck.phase == .ready {
+                        Text(deck.remaining.formatted())
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.white.opacity(0.2), in: .capsule)
+                            .contentTransition(.numericText())
+                    }
                 }
                 .fixedSize()
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showReview = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "trash")
-                    if queue.count > 0 {
+        if queue.count > 0 {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showReview = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
                         Text(queue.count.formatted())
                             .contentTransition(.numericText())
                     }
                 }
+                .accessibilityLabel("待刪除 \(queue.count) 項")
             }
-            .disabled(queue.count == 0)
-            .accessibilityLabel("待刪除 \(queue.count) 項")
         }
     }
 
@@ -259,24 +164,10 @@ struct PhotosView: View {
                         pending: queue.ids, context: context)
     }
 
-    private func mark() {
-        withAnimation(.snappy) { deck.markForDeletion(queue: queue) }
-        markTick += 1
-    }
-
-    private func next() {
-        withAnimation(.snappy) { deck.next() }
-        moveTick += 1
-    }
-
-    private func previous() {
-        withAnimation(.snappy) { deck.previous() }
-        moveTick += 1
-    }
-
-    private func undo() {
-        withAnimation(.snappy) { deck.undo(queue: queue) }
-        undoTick += 1
+    /// 一組看完：回到首頁，下一組浮上來
+    private func groupDone() {
+        entered = false
+        Task { await reload() }
     }
 }
 
@@ -293,23 +184,25 @@ private struct LimitedAccessBanner: View {
                 .font(.footnote.weight(.semibold))
         }
         .padding(12)
-        .background(.orange.opacity(0.12), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
-}
-
-#Preview("淺色") {
-    NavigationStack {
-        PhotosView(isLimited: true)
-    }
-    .environment(DeletionQueue())
-    .modelContainer(PreviewData.container)
 }
 
 #Preview("深色") {
     NavigationStack {
+        PhotosView(isLimited: true)
+    }
+    .environment(DeletionQueue())
+    .environment(IslandModel())
+    .environment(\.colorScheme, .dark)
+    .modelContainer(PreviewData.container)
+}
+
+#Preview("淺色") {
+    NavigationStack {
         PhotosView(isLimited: false)
     }
     .environment(DeletionQueue())
+    .environment(IslandModel())
     .modelContainer(PreviewData.container)
-    .preferredColorScheme(.dark)
 }
