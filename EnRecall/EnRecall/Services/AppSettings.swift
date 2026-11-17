@@ -3,6 +3,8 @@ import SwiftUI
 /// @AppStorage 的 key 集中在這裡
 enum SettingsKey {
     static let appearance = "appearance"
+    /// 配色主題（AppPalette）
+    static let palette = "palette"
     static let dailyNewLimit = "dailyNewLimit"
     static let reminderEnabled = "reminderEnabled"
     /// 一天中的秒數（預設 21:00）

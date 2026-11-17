@@ -710,16 +710,24 @@ struct HandoutTests {
         var options = HandoutOptions(kind: .test, range: .deck, deckID: "custom:x")
         let entries = try HandoutBuilder.entries(options, context: context)
         let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
-        let parts = html.components(separatedBy: "<section class=\"answers\">")
-        #expect(parts.count == 2)
-        #expect(!parts[0].lowercased().contains("abandon"))
-        #expect(parts[0].contains("They \(HandoutHTML.blank) the plan"))
-        #expect(parts[0].contains("a _ _ _ _ _ _"))
-        #expect(parts[1].contains("abandon"))
+        // 答案只在右邊折起來的那一欄
+        let key = try #require(html.firstRange(of: #/<div class="key[^"]*">[^<]*</div>/#))
+        #expect(html[key].contains("abandon"))
+        var question = html
+        question.removeSubrange(key)
+        #expect(!question.lowercased().contains("abandon"))
+        #expect(question.contains("They \(HandoutHTML.blank) the plan"))
+        #expect(question.contains("a _ _ _ _ _ _"))
 
         options.kind = .notes
         let notes = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
         #expect(notes.contains("They <b>abandoned</b> the plan"))
         #expect(notes.contains("第 3 課 · 1 字"))
+
+        // 速查表照熟悉度分組：還沒背過的是新字
+        options.kind = .sheet
+        let sheet = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        #expect(sheet.contains("新字<span>1 字</span>"))
+        #expect(!sheet.contains("還不熟"))
     }
 }

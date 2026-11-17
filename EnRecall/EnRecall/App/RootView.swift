@@ -55,7 +55,9 @@ struct RootView: View {
                 TabIcon(title: "設定", systemImage: "gearshape")
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        // 分頁列一直保持完整大小，捲動時不縮小
+        .tabBarMinimizeBehavior(.never)
+        .tint(Color.er.primary)
         // 全部捲動區用柔和的邊緣（系統依列的高度決定範圍，內容本身有留邊距，不會蓋到字）
         .scrollEdgeEffectStyle(.soft, for: .all)
         .overlay(alignment: .top) {

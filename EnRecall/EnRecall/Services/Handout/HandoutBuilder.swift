@@ -1,13 +1,13 @@
 import Foundation
 import SwiftData
 
-/// PDF 的用途（跟 Android 版一樣）
+/// PDF 的用途
 enum HandoutKind: String, CaseIterable, Identifiable {
     /// 講義：一字一列，字義、例句、延伸
     case notes
-    /// 自測卷：一題一列＋答案線，答案在最後一頁
+    /// 自測卷：一題一列＋作答線，答案在右邊折起來的那欄
     case test
-    /// 速查表：四欄，一行一字
+    /// 速查表：照記得的程度分組，三欄，一行一字
     case sheet
 
     var id: String { rawValue }
@@ -22,9 +22,9 @@ enum HandoutKind: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .notes: "讀：完整字義、例句、搭配"
-        case .test: "考：看中文寫英文，答案在最後一頁"
-        case .sheet: "查：考前快速掃過，一頁約 120 字"
+        case .notes: "讀：雙欄字卡，字義、例句、搭配"
+        case .test: "考：答案在右邊，沿虛線往後折就蓋住"
+        case .sheet: "查：照熟不熟分組，考前快速掃過"
         }
     }
 }

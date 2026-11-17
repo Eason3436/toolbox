@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import QuickLook
+import UIKit
 
 extension HandoutOptions {
     /// 上次在設定頁選的（首頁一鍵產生用）
@@ -19,6 +20,16 @@ extension HandoutOptions {
     /// 首頁那一列的說明：「講義 · 最常忘 · 30 字」
     var summary: String {
         "\(kind.title) · \(range == .deck ? "牌組" : range.title) · \(count) 字"
+    }
+}
+
+extension HandoutStyle {
+    /// 跟著 App 現在的配色：取主色的淺色版本（紙是白的）
+    @MainActor static var current: HandoutStyle {
+        let color = UIColor(Color.er.primary).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return .ink }
+        return HandoutStyle(red: Double(red), green: Double(green), blue: Double(blue))
     }
 }
 
@@ -42,7 +53,7 @@ enum HandoutMaker {
         let entries = try HandoutBuilder.entries(options, context: context, now: now)
         guard !entries.isEmpty else { throw Failure.empty(options.range) }
         let range = HandoutBuilder.rangeTitle(options, context: context)
-        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: range, date: now)
+        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: range, date: now, style: .current)
         var footer = range
         if options.kind == .notes { footer += " · \(options.amount.title)份量" }
         if options.kind == .test { footer += " · \(options.direction.title)" }
@@ -57,7 +68,7 @@ enum HandoutMaker {
     }
 }
 
-/// 單字 PDF：講義、自測卷、速查表（跟 Android 版一樣），做好直接預覽，可以分享或列印
+/// 單字 PDF：講義、自測卷、速查表，做好直接預覽，可以分享或列印
 struct HandoutView: View {
     /// 從牌組打開：範圍預設是這個牌組
     var presetDeckID: String?
