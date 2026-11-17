@@ -6,6 +6,10 @@
 #   Everforest（sainnhe）              https://github.com/sainnhe/everforest
 #   Flexoki（Steph Ango）              https://stephango.com/flexoki
 #   Radix Colors Sand ＋ Bronze（WorkOS）https://www.radix-ui.com/colors
+#   Gruvbox Material（sainnhe）        https://github.com/sainnhe/gruvbox-material
+#   Solarized（Ethan Schoonover）      https://ethanschoonover.com/solarized
+#   Iceberg（cocopon）                 https://github.com/cocopon/iceberg.vim
+#   Melange（savq）                    https://github.com/savq/melange-nvim
 # 文字、按鈕、資訊色若對比不足，會往同一套的最深／最淺色微調到 WCAG 標準（mix），不另外發明顏色。
 #
 # 用法：python3 EnRecall/scripts/palettes.py
@@ -173,12 +177,108 @@ def radix_sand_bronze():
     return light, dark
 
 
+def gruvbox_material():
+    # medium 背景、material 前景
+    lb = dict(dim="#f2e5bc", bg0="#fbf1c7", bg1="#f4e8be", bg2="#f2e5bc", bg3="#eee0b7", bg4="#e5d5ad", bg5="#ddccab",
+              visual_blue="#dadec0")
+    lf = dict(fg0="#654735", fg1="#4f3829", grey0="#a89984", grey1="#928374", grey2="#7c6f64",
+              aqua="#4c7a5d", blue="#45707a", orange="#c35e0a")
+    db = dict(dim="#1b1b1b", bg0="#282828", bg1="#32302f", bg3="#45403d", bg5="#5a524c")
+    df = dict(fg0="#d4be98", fg1="#ddc7a1", grey0="#7c6f64", grey1="#928374", grey2="#a89984",
+              aqua="#89b482", blue="#7daea3", orange="#e78a4e")
+    light = dict(
+        background=lb["bg0"], surface=mix(lb["bg0"], "#FFFFFF", 0.55), surfaceHigh=mix(lb["bg0"], "#FFFFFF", 0.55),
+        surfaceMuted=lb["bg1"], fill=lb["bg2"], outline=lb["bg4"], outlineStrong=lb["bg5"], mid=lf["grey1"],
+        text=lf["fg1"], textSecondary=lf["fg0"], textTertiary=lf["grey2"],
+        primary=lf["blue"], onPrimary=lb["bg0"], accent=lf["aqua"], info=lf["blue"],
+        infoContainer=lb["visual_blue"], infoTrack=mix(lf["blue"], lb["bg0"], 0.6),
+        hero=db["bg0"], heroTile=db["bg1"], heroOutline=db["bg3"], heroText=df["fg1"],
+        heroTextSecondary=df["fg0"], heroMuted=df["grey2"])
+    dark = dict(
+        background=db["bg0"], surface=db["bg1"], surfaceHigh=db["bg3"], surfaceMuted=db["bg3"], fill=db["bg3"],
+        outline=db["bg3"], outlineStrong=db["bg5"], mid=df["grey0"],
+        text=df["fg1"], textSecondary=df["fg0"], textTertiary=df["grey2"],
+        primary=df["blue"], onPrimary=db["bg0"], accent=df["aqua"], info=df["blue"],
+        infoContainer=alpha(df["blue"], 0.14), infoTrack=alpha(df["blue"], 0.3),
+        hero=db["bg1"], heroTile=db["bg3"], heroOutline=db["bg5"], heroText=df["fg1"],
+        heroTextSecondary=df["fg0"], heroMuted=df["grey2"])
+    return light, dark
+
+
+def solarized():
+    b03, b02, b01, b00 = "#002b36", "#073642", "#586e75", "#657b83"
+    b0, b1, b2, b3 = "#839496", "#93a1a1", "#eee8d5", "#fdf6e3"
+    violet, blue, cyan = "#6c71c4", "#268bd2", "#2aa198"
+    light = dict(
+        background=b3, surface=mix(b3, "#FFFFFF", 0.5), surfaceHigh=mix(b3, "#FFFFFF", 0.5),
+        surfaceMuted=b2, fill=b2, outline=mix(b2, b1, 0.3), outlineStrong=mix(b2, b1, 0.55), mid=b1,
+        text=b02, textSecondary=b01, textTertiary=b00,
+        primary=violet, onPrimary=b3, accent=cyan, info=blue,
+        infoContainer=mix(blue, b3, 0.88), infoTrack=mix(blue, b3, 0.65),
+        hero=b03, heroTile=b02, heroOutline=mix(b02, b01, 0.35), heroText=b2, heroTextSecondary=b1, heroMuted=b0)
+    dark = dict(
+        background=b03, surface=b02, surfaceHigh=mix(b02, b01, 0.2), surfaceMuted=mix(b02, b01, 0.2),
+        fill=mix(b02, b01, 0.2), outline=mix(b02, b01, 0.3), outlineStrong=mix(b02, b01, 0.55), mid=b01,
+        text=b2, textSecondary=b1, textTertiary=b0,
+        primary=mix(violet, b2, 0.25), onPrimary=b03, accent=cyan, info=mix(blue, b2, 0.2),
+        infoContainer=alpha(blue, 0.16), infoTrack=alpha(blue, 0.32),
+        hero=b02, heroTile=mix(b02, b01, 0.2), heroOutline=mix(b02, b01, 0.45), heroText=b2, heroTextSecondary=b1, heroMuted=b0)
+    return light, dark
+
+
+def iceberg():
+    light = dict(
+        background="#e8e9ec", surface=mix("#e8e9ec", "#FFFFFF", 0.65), surfaceHigh=mix("#e8e9ec", "#FFFFFF", 0.65),
+        surfaceMuted="#dcdfe7", fill="#dcdfe7", outline="#cad0de", outlineStrong="#a7b2cd", mid="#8389a3",
+        text="#33374c", textSecondary="#606374", textTertiary="#757ca3",
+        primary="#2d539e", onPrimary="#e8e9ec", accent="#3f83a6", info="#2d539e",
+        infoContainer="#ced9e1", infoTrack="#acc5d3",
+        hero="#161821", heroTile="#1e2132", heroOutline="#272c42", heroText="#c6c8d1", heroTextSecondary="#a0a3b1", heroMuted="#6b7089")
+    dark = dict(
+        background="#161821", surface="#1e2132", surfaceHigh="#272c42", surfaceMuted="#272c42", fill="#272c42",
+        outline="#272c42", outlineStrong="#444b71", mid="#6b7089",
+        text="#c6c8d1", textSecondary=mix("#c6c8d1", "#6b7089", 0.35), textTertiary="#6b7089",
+        primary="#84a0c6", onPrimary="#161821", accent="#89b8c2", info="#84a0c6",
+        infoContainer=alpha("#84a0c6", 0.14), infoTrack=alpha("#84a0c6", 0.3),
+        hero="#1e2132", heroTile="#272c42", heroOutline="#444b71", heroText="#c6c8d1",
+        heroTextSecondary=mix("#c6c8d1", "#6b7089", 0.35), heroMuted="#6b7089")
+    return light, dark
+
+
+def melange():
+    la = dict(bg="#F1F1F1", float="#E9E1DB", sel="#D9D3CE", ui="#A98A78", com="#7D6658", fg="#54433A")
+    lb = dict(yellow="#A06D00", green="#3A684A", cyan="#3D6568", blue="#465AA4")
+    ld = dict(yellow="#CCA478", cyan="#CDE8E7", blue="#E0E2E8")
+    da = dict(bg="#292522", float="#34302C", sel="#403A36", ui="#867462", com="#C1A78E", fg="#ECE1D7")
+    db = dict(yellow="#EBC06D", green="#85B695", cyan="#89B3B6", blue="#A3A9CE")
+    light = dict(
+        background=la["bg"], surface=mix(la["bg"], "#FFFFFF", 0.7), surfaceHigh=mix(la["bg"], "#FFFFFF", 0.7),
+        surfaceMuted=la["float"], fill=la["float"], outline=la["sel"], outlineStrong=mix(la["sel"], la["ui"], 0.35), mid=la["ui"],
+        text=la["fg"], textSecondary=la["com"], textTertiary=mix(la["com"], la["ui"], 0.4),
+        primary=lb["yellow"], onPrimary=la["bg"], accent=ld["yellow"], info=lb["cyan"],
+        infoContainer=ld["cyan"], infoTrack=mix(lb["cyan"], la["bg"], 0.6),
+        hero=da["bg"], heroTile=da["float"], heroOutline=da["sel"], heroText=da["fg"], heroTextSecondary=da["com"], heroMuted=da["ui"])
+    dark = dict(
+        background=da["bg"], surface=da["float"], surfaceHigh=da["sel"], surfaceMuted=da["sel"], fill=da["sel"],
+        outline=da["sel"], outlineStrong=mix(da["sel"], da["ui"], 0.4), mid=da["ui"],
+        text=da["fg"], textSecondary=da["com"], textTertiary=mix(da["com"], da["ui"], 0.4),
+        primary=db["yellow"], onPrimary=da["bg"], accent=db["yellow"], info=db["cyan"],
+        infoContainer=alpha(db["cyan"], 0.14), infoTrack=alpha(db["cyan"], 0.3),
+        hero=da["float"], heroTile=da["sel"], heroOutline=mix(da["sel"], da["ui"], 0.4), heroText=da["fg"],
+        heroTextSecondary=da["com"], heroMuted=da["ui"])
+    return light, dark
+
+
 THEMES = [
     ("Nord", nord),
     ("RosePine", rose_pine),
     ("Everforest", everforest),
     ("Flexoki", flexoki),
     ("Sand", radix_sand_bronze),
+    ("GruvboxMaterial", gruvbox_material),
+    ("Solarized", solarized),
+    ("Iceberg", iceberg),
+    ("Melange", melange),
 ]
 
 

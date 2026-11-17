@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.16.0", date: day(17), notes: [
+            "新圖示：一張字卡加一個循環箭頭，背單字就是一直回來複習",
+            "配色多四組：暖木、日曬、冰山、焦糖，一樣是設計師配好的低彩度色票",
+        ]),
         Entry(version: "0.15.0", date: day(17), notes: [
             "每日提醒會真的跳通知了：到時間還有字要背才提醒，寫還有幾張要複習、幾個新字；背完那天就不吵",
             "桌面小工具：在 LiveContainer 的小工具裡選「App」再選 EnRecall，顯示還有幾張要背、連續幾天，點了直接打開",

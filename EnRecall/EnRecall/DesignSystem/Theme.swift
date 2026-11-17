@@ -5,7 +5,7 @@ import SwiftUI
 // 全部取自 Assets 的 Color Set（每組都有淺色／深色），畫面程式碼一律用 Color.er.*，
 // 不准出現 hex、Color.white、Color.black。色票來源：設計稿「EnRecall iOS」。
 // 配色主題（設定 → 外觀 → 配色）：色票取自設計師公開的配色系統（Nord、Rosé Pine、Everforest、
-// Flexoki、Radix Colors），對應到下面的角色，放在 Assets 的 Themes/<名稱>/，用 scripts/palettes.py 產生。
+// Flexoki、Radix Colors、Gruvbox Material、Solarized、Iceberg、Melange），對應到下面的角色，放在 Assets 的 Themes/<名稱>/，用 scripts/palettes.py 產生。
 // 評分、危險色、螢光筆、陰影每個主題都一樣。
 
 extension Color {
@@ -26,6 +26,14 @@ enum AppPalette: String, CaseIterable, Identifiable {
     case flexoki
     /// Radix Sand ＋ Bronze：沙色、銅
     case sand
+    /// Gruvbox Material：暖木色、灰藍
+    case gruvbox
+    /// Solarized：米黃底、紫藍
+    case solarized
+    /// Iceberg：冷灰藍
+    case iceberg
+    /// Melange：焦糖、暖灰
+    case melange
 
     var id: String { rawValue }
 
@@ -37,6 +45,10 @@ enum AppPalette: String, CaseIterable, Identifiable {
         case .everforest: "常青"
         case .flexoki: "紙本"
         case .sand: "砂金"
+        case .gruvbox: "暖木"
+        case .solarized: "日曬"
+        case .iceberg: "冰山"
+        case .melange: "焦糖"
         }
     }
 
@@ -49,6 +61,10 @@ enum AppPalette: String, CaseIterable, Identifiable {
         case .everforest: "Everforest"
         case .flexoki: "Flexoki"
         case .sand: "Sand"
+        case .gruvbox: "GruvboxMaterial"
+        case .solarized: "Solarized"
+        case .iceberg: "Iceberg"
+        case .melange: "Melange"
         }
     }
 
