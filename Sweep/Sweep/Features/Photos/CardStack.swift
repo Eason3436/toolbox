@@ -78,13 +78,21 @@ struct CardStack: View {
             .zIndex(-Double(card.depth))
             .allowsHitTesting(isTop)
             .onTapGesture { onOpen(card.asset) }
-            .transition(.asymmetric(
-                insertion: goingBack && !reduceMotion ? .move(edge: .leading).combined(with: .opacity) : .opacity,
-                removal: .opacity
-            ))
+            .transition(insertion)
             .accessibilityElement()
             .accessibilityLabel(RelativeDay.text(for: card.asset.takenAt))
             .accessibilityHidden(!isTop)
+    }
+
+    /// 往回走時從前緣滑進來，其他時候淡入
+    private var insertion: AnyTransition {
+        let enter: AnyTransition
+        if goingBack && !reduceMotion {
+            enter = AnyTransition.move(edge: .leading).combined(with: AnyTransition.opacity)
+        } else {
+            enter = AnyTransition.opacity
+        }
+        return AnyTransition.asymmetric(insertion: enter, removal: AnyTransition.opacity)
     }
 
     /// 原況照片、動圖、已經在待刪除
