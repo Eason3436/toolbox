@@ -129,6 +129,24 @@ struct StudyPlannerTests {
     }
 }
 
+struct DeckPauseTests {
+    @Test func pauseRemembersRunMode() {
+        let deck = Deck(id: "a", name: "A", kind: .storePack, mode: .reviewOnly)
+        deck.isPaused = true
+        #expect(deck.mode == .paused)
+        #expect(deck.runMode == .reviewOnly)
+        // 暫停中換成出新卡：繼續之後就是出新卡
+        deck.runMode = .active
+        #expect(deck.mode == .paused)
+        deck.isPaused = false
+        #expect(deck.mode == .active)
+        deck.isPaused = true
+        deck.isPaused = true
+        deck.isPaused = false
+        #expect(deck.mode == .active)
+    }
+}
+
 struct ReviewMixTests {
     @Test func mixedSpreadsNewCardsBetweenReviews() {
         let due = ["r1", "r2", "r3", "r4"]

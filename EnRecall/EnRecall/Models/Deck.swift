@@ -9,6 +9,8 @@ final class Deck {
     var kindRaw: String = DeckKind.custom.rawValue
     var categoryRaw: String = DeckCategory.word.rawValue
     var modeRaw: String = DeckMode.active.rawValue
+    /// 暫停前是「出新卡」還是「只出複習」：按繼續就回到那個
+    var resumeModeRaw: String = DeckMode.active.rawValue
     var orderRaw: String = NewCardOrder.sequential.rawValue
     /// 這個牌組每天最多出幾張新卡
     var dailyNewLimit: Int = 10
@@ -70,6 +72,34 @@ final class Deck {
     var mode: DeckMode {
         get { DeckMode(rawValue: modeRaw) ?? .active }
         set { modeRaw = newValue.rawValue }
+    }
+
+    /// 牌組卡旁邊的暫停鍵
+    var isPaused: Bool {
+        get { mode == .paused }
+        set {
+            guard newValue != isPaused else { return }
+            if newValue {
+                resumeModeRaw = modeRaw
+                mode = .paused
+            } else {
+                let resume = DeckMode(rawValue: resumeModeRaw) ?? .active
+                mode = resume == .paused ? .active : resume
+            }
+        }
+    }
+
+    /// 出新卡／只出複習（暫停時是按繼續之後會回到的那個）
+    var runMode: DeckMode {
+        get {
+            guard isPaused else { return mode }
+            let resume = DeckMode(rawValue: resumeModeRaw) ?? .active
+            return resume == .paused ? .active : resume
+        }
+        set {
+            guard newValue != .paused else { isPaused = true; return }
+            if isPaused { resumeModeRaw = newValue.rawValue } else { mode = newValue }
+        }
     }
 
     var order: NewCardOrder {

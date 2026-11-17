@@ -52,6 +52,50 @@ def ensure(color, against, minimum, toward):
     return c
 
 
+def _lin(v):
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+
+def _gam(v):
+    v = min(max(v, 0.0), 1.0)
+    return 12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+
+
+def to_oklab(c):
+    r, g, b = (_lin(v) for v in c)
+    l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    return (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
+
+
+def from_oklab(lab):
+    L, A, B = lab
+    l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3
+    m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3
+    s = (L - 0.0894841775 * A - 1.2914855480 * B) ** 3
+    return (_gam(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+            _gam(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+            _gam(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s))
+
+
+def chroma(c):
+    _, a, b = to_oklab(c)
+    return (a * a + b * b) ** 0.5
+
+
+def calm(c, limit):
+    """彩度（OKLCH C）超過 limit 就往灰收，色相、亮度不變：背景不要黃黃綠綠的"""
+    L, a, b = to_oklab(c)
+    C = (a * a + b * b) ** 0.5
+    if C <= limit:
+        return c
+    k = limit / C
+    return from_oklab((L, a * k, b * k))
+
+
 def solid(c):
     return (rgb(c) if isinstance(c, str) else c, 1.0)
 
@@ -282,9 +326,22 @@ THEMES = [
 ]
 
 
+BACKGROUND_KEYS = ("background", "surface", "surfaceHigh", "surfaceMuted", "fill", "outline", "outlineStrong")
+# 首頁那張深色大卡淺色模式也是深的，用深色的上限
+HERO_KEYS = ("hero", "heroTile", "heroOutline")
+BACKGROUND_CHROMA_LIGHT = 0.012
+BACKGROUND_CHROMA_DARK = 0.026
+
+
 def finalize(tokens, is_dark):
     """補對比：文字、按鈕、資訊色"""
     out = {k: (v if isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], float) else solid(v)) for k, v in tokens.items()}
+    # 大面積的底色壓低彩度（使用者 2026-11-17：背景不要太黃）；文字、按鈕、主色照原本的色票
+    limit = BACKGROUND_CHROMA_DARK if is_dark else BACKGROUND_CHROMA_LIGHT
+    for key in BACKGROUND_KEYS:
+        out[key] = (calm(out[key][0], limit), out[key][1])
+    for key in HERO_KEYS:
+        out[key] = (calm(out[key][0], BACKGROUND_CHROMA_DARK), out[key][1])
     bg = out["surface"][0]
     far = out["text"][0]
     extreme = "#FFFFFF" if is_dark else "#000000"

@@ -233,7 +233,7 @@ struct ReviewView: View {
         guard !isRevealed, let card = current else { return }
         let now = Date()
         intervals = scheduler.preview(card.memory, now: now).mapValues { $0.intervalLabel(from: now) }
-        withAnimation(.spring(duration: 0.35)) { isRevealed = true }
+        withAnimation(RatingBar.morph) { isRevealed = true }
     }
 
     private func rate(_ rating: Rating) {
@@ -258,7 +258,7 @@ struct ReviewView: View {
         let requeue = outcome.memory.state.isLearning
         history.append(Step(index: index, card: card, before: before, log: log, requeued: requeue))
         ratedCount += 1
-        withAnimation(.spring(duration: 0.35)) {
+        withAnimation(RatingBar.morph) {
             if requeue { queue.append(card) }
             isRevealed = false
             index += 1
@@ -309,7 +309,7 @@ struct ReviewView: View {
         step.log.scheduledDays = outcome.scheduledDays
         let requeue = outcome.memory.state.isLearning
         ratedCount += 1
-        withAnimation(.spring(duration: 0.35)) {
+        withAnimation(RatingBar.morph) {
             if step.requeued, !requeue,
                let copy = queue.lastIndex(where: { $0.id == step.card.id }), copy >= index {
                 queue.remove(at: copy)
@@ -353,6 +353,8 @@ struct ReviewTimeline: View {
     let onSelect: (Int?) -> Void
 
     private static let upcomingLimit = 40
+    /// 這一排的可見寬度：點不多時整排置中，多到放不下才靠捲動
+    @State private var width: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -374,15 +376,17 @@ struct ReviewTimeline: View {
                     }
                 }
                 .padding(.vertical, 2)
+                .frame(minWidth: width)
             }
             .scrollIndicators(.hidden)
             .scrollClipDisabled()
             // 這一排在導覽列正下方，不要系統的 soft 邊緣（會把卡片頂端糊掉）
             .scrollEdgeEffectHidden(true, for: .all)
             .frame(height: 36)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .onAppear { proxy.scrollTo("current", anchor: .center) }
             .onChange(of: history.count) {
-                withAnimation(.spring(duration: 0.35)) { proxy.scrollTo("current", anchor: .center) }
+                withAnimation(RatingBar.morph) { proxy.scrollTo("current", anchor: .center) }
             }
             .onChange(of: viewing) { _, value in
                 withAnimation(.spring(duration: 0.35)) {

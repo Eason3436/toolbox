@@ -122,7 +122,9 @@ struct DecksView: View {
 
     private func setMode(_ mode: DeckMode) {
         withAnimation(.spring(duration: 0.3)) {
-            for deck in filtered { deck.mode = mode }
+            for deck in filtered {
+                if mode == .paused { deck.isPaused = true } else { deck.mode = mode }
+            }
         }
     }
 }

@@ -32,12 +32,30 @@ struct DeckCardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .opacity(deck.isPaused ? 0.55 : 1)
 
-            Picker("模式", selection: $deck.mode) {
-                ForEach(DeckMode.allCases) { Text($0.title).tag($0) }
+            HStack(spacing: 10) {
+                Picker("模式", selection: $deck.runMode) {
+                    ForEach(DeckMode.running) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(deck.isPaused)
+
+                Button {
+                    withAnimation(.spring(duration: 0.25)) { deck.isPaused.toggle() }
+                } label: {
+                    Image(systemName: deck.isPaused ? "play.fill" : "pause.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .tint(deck.isPaused ? Color.er.primary : Color.er.textSecondary)
+                .sensoryFeedback(.selection, trigger: deck.isPaused)
+                .accessibilityLabel(deck.isPaused ? "繼續" : "暫停")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -51,6 +69,7 @@ struct DeckCardView: View {
                 .font(.caption)
                 LinearMeter(value: cards.isEmpty ? 0 : Double(learned) / Double(cards.count))
             }
+            .opacity(deck.isPaused ? 0.55 : 1)
 
             Stepper(value: $deck.dailyNewLimit, in: 0...100) {
                 HStack {
@@ -66,7 +85,6 @@ struct DeckCardView: View {
             .disabled(deck.mode != .active)
         }
         .erCard(padding: Theme.Spacing.cardLarge, elevated: true)
-        .opacity(deck.mode == .paused ? 0.7 : 1)
         .animation(.spring(duration: 0.25), value: deck.mode)
     }
 }
