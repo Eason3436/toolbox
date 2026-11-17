@@ -146,6 +146,8 @@ enum InboxImporter {
             } else {
                 deck = Deck(id: "custom:" + UUID().uuidString, name: deckName, kind: .custom, category: category,
                             sortIndex: nextDeckIndex, createdAt: now)
+                // 雜誌、課本的字一次背完，不分每天幾個
+                deck.newCardsAll = true
                 nextDeckIndex += 1
                 context.insert(deck)
                 customDecks[deckKey(deckName, category)] = deck

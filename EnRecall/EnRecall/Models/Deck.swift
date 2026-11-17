@@ -14,6 +14,8 @@ final class Deck {
     var orderRaw: String = NewCardOrder.sequential.rawValue
     /// 這個牌組每天最多出幾張新卡
     var dailyNewLimit: Int = 10
+    /// 新卡一次出完：不看每天新卡，也不佔全部的每日上限（雜誌、課本單字這種一次背完的牌組）
+    var newCardsAll: Bool = false
     /// 牌組頁的排序，也是領新卡的順序（小的先）
     var sortIndex: Int = 0
     /// 單字包版本（catalog.json 的 version）

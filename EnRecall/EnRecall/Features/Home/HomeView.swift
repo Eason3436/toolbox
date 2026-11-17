@@ -7,6 +7,7 @@ struct HomeView: View {
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
     @Environment(StoreModel.self) private var store
     @State private var session: ReviewSession?
+    @State private var studyCache = StudySummaryCache()
     @State private var isQuizzing = false
     @State private var isPickingHandout = false
     @State private var isMakingHandout = false
@@ -15,7 +16,7 @@ struct HomeView: View {
     @Environment(ToastCenter.self) private var toasts
 
     private var summary: StudySummary {
-        StudyPlanner.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
+        studyCache.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
     }
 
     /// 句型卡要有句型牌組才出現在練習模式

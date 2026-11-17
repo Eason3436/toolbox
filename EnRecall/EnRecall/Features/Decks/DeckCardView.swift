@@ -8,8 +8,6 @@ struct DeckCardView: View {
     let position: Int
 
     var body: some View {
-        let cards = deck.activeCards
-        let learned = cards.filter { !$0.isNew }.count
         VStack(alignment: .leading, spacing: 12) {
             NavigationLink(value: Route.deck(deck)) {
                 HStack(spacing: Theme.Spacing.row) {
@@ -19,7 +17,7 @@ struct DeckCardView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(Color.er.text)
                             .lineLimit(1)
-                        Text("\(deck.category.countText(cards.count)) · \(deck.order.title)")
+                        DeckSubtitle(deck: deck)
                             .font(.caption)
                             .foregroundStyle(Color.er.textSecondary)
                     }
@@ -57,35 +55,80 @@ struct DeckCardView: View {
                 .accessibilityLabel(deck.isPaused ? "繼續" : "暫停")
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("已背")
-                        .foregroundStyle(Color.er.textSecondary)
-                    Spacer()
-                    Text("\(learned.formatted()) / \(cards.count.formatted())")
-                        .monospacedDigit()
-                        .foregroundStyle(Color.er.text)
-                }
-                .font(.caption)
-                LinearMeter(value: cards.isEmpty ? 0 : Double(learned) / Double(cards.count))
-            }
-            .opacity(deck.isPaused ? 0.55 : 1)
+            DeckProgress(deck: deck)
+                .opacity(deck.isPaused ? 0.55 : 1)
 
-            Stepper(value: $deck.dailyNewLimit, in: 0...100) {
-                HStack {
-                    Text("每天新卡")
-                        .foregroundStyle(Color.er.textSecondary)
-                    Spacer()
-                    Text(deck.dailyNewLimit, format: .number)
-                        .monospacedDigit()
-                        .foregroundStyle(Color.er.text)
-                }
-                .font(.subheadline)
-            }
-            .disabled(deck.mode != .active)
+            DailyNewRow(deck: deck)
+                .disabled(deck.mode != .active)
         }
         .erCard(padding: Theme.Spacing.cardLarge, elevated: true)
         .animation(.spring(duration: 0.25), value: deck.mode)
+        .animation(.spring(duration: 0.25), value: deck.newCardsAll)
+    }
+}
+
+// 下面這幾塊要讀牌組裡的每一張卡，拆成自己的 View：
+// 按暫停、調每天新卡時只重畫牌組卡本身，不用把上千張卡再數一遍
+
+private struct DeckSubtitle: View {
+    let deck: Deck
+
+    var body: some View {
+        Text("\(deck.category.countText(deck.activeCards.count)) · \(deck.order.title)")
+    }
+}
+
+private struct DeckProgress: View {
+    let deck: Deck
+
+    var body: some View {
+        let cards = deck.activeCards
+        let learned = cards.filter { !$0.isNew }.count
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("已背")
+                    .foregroundStyle(Color.er.textSecondary)
+                Spacer()
+                Text("\(learned.formatted()) / \(cards.count.formatted())")
+                    .monospacedDigit()
+                    .foregroundStyle(Color.er.text)
+            }
+            .font(.caption)
+            LinearMeter(value: cards.isEmpty ? 0 : Double(learned) / Double(cards.count))
+        }
+    }
+}
+
+/// 每天新卡。自己加的牌組（雜誌、課本）可以「新卡一次出完」，不分每天幾個
+private struct DailyNewRow: View {
+    @Bindable var deck: Deck
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if deck.kind == .custom {
+                Toggle(isOn: $deck.newCardsAll) {
+                    Text("新卡一次出完")
+                        .foregroundStyle(Color.er.textSecondary)
+                }
+                .font(.subheadline)
+                .sensoryFeedback(.selection, trigger: deck.newCardsAll)
+            }
+            if !deck.newCardsAll {
+                Stepper(value: $deck.dailyNewLimit, in: 0...100) {
+                    HStack {
+                        Text("每天新卡")
+                            .foregroundStyle(Color.er.textSecondary)
+                        Spacer()
+                        Text(deck.dailyNewLimit, format: .number)
+                            .monospacedDigit()
+                            .contentTransition(.numericText(value: Double(deck.dailyNewLimit)))
+                            .foregroundStyle(Color.er.text)
+                    }
+                    .font(.subheadline)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }
 

@@ -116,6 +116,33 @@ struct StudyPlannerTests {
         #expect(plan.new.count == 1)
     }
 
+    @Test func newCardsAllIgnoresLimitsAndKeepsGlobalQuota() throws {
+        let context = try makeContext()
+        let now = Date()
+        let magazine = Deck(id: "m", name: "Enjoy English", kind: .custom, dailyNewLimit: 3, sortIndex: 0)
+        magazine.newCardsAll = true
+        let level = Deck(id: "l", name: "L1", kind: .storePack, dailyNewLimit: 10, sortIndex: 1)
+        context.insert(magazine)
+        context.insert(level)
+        addCards(30, to: magazine, in: context, prefix: "m")
+        addCards(10, to: level, in: context, prefix: "l")
+        // 雜誌今天已經學了 8 個：不算進全部上限
+        let logs = (0..<8).map { i in
+            ReviewLog(cardId: "m\(i)x", deckId: "m", rating: .good, stateBefore: .new, reviewedAt: now.addingTimeInterval(-60))
+        }
+        let plan = StudyPlanner.plan(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(plan.new.filter { $0.deck?.id == "m" }.count == 30)
+        #expect(plan.new.filter { $0.deck?.id == "l" }.count == 5)
+
+        let summary = StudyPlanner.summary(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(summary.newDoneToday == 0)
+        #expect(summary.all.new == 35)
+
+        // 首頁、牌組頁用的快取數字跟 StudyPlanner 一樣
+        let cached = StudySummaryCache().summary(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(cached == summary)
+    }
+
     @Test func randomOrderIsStableWithinADay() throws {
         let context = try makeContext()
         let deck = Deck(id: "r", name: "R", kind: .storePack, order: .random, dailyNewLimit: 5, sortIndex: 0)

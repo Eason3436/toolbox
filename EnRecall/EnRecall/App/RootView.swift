@@ -64,6 +64,7 @@ struct RootView: View {
             ToastHost()
         }
         .task {
+            enableNewCardsAllOnce()
             // 商店清單先在背景抓，首頁才知道有沒有新版
             await store.load()
             if await store.upgradeOutdated(context: context) > 0 {
@@ -103,6 +104,18 @@ extension RootView {
     private func refreshReminders() async {
         HomeWidgetPublisher.publish(context: context)
         await ReminderScheduler.reschedule(context: context)
+    }
+
+    /// 0.16.2：自己加的牌組（雜誌、課本）改成新卡一次出完。只在第一次打開新版時做一次，之後照使用者自己的設定
+    private func enableNewCardsAllOnce() {
+        let key = "didEnableNewCardsAll"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let decks = (try? context.fetch(FetchDescriptor<Deck>())) ?? []
+        for deck in decks where deck.kind == .custom {
+            deck.newCardsAll = true
+        }
+        try? context.save()
     }
 
     private func importFromClaude() async {
