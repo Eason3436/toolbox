@@ -11,6 +11,9 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.16.3", date: day(17), notes: [
+            "牌組卡的每天新卡按一下加減 5 個",
+        ]),
         Entry(version: "0.16.2", date: day(17), notes: [
             "牌組頁按暫停、調每天新卡不會再卡：只重算數字，不再每按一下就把幾千張卡重讀一遍",
             "自己加的牌組（雜誌、課本）可以「新卡一次出完」：不分每天幾個，也不佔每日新卡上限。原本的自訂牌組已經幫你打開",

@@ -114,7 +114,7 @@ private struct DailyNewRow: View {
                 .sensoryFeedback(.selection, trigger: deck.newCardsAll)
             }
             if !deck.newCardsAll {
-                Stepper(value: $deck.dailyNewLimit, in: 0...100) {
+                Stepper(value: $deck.dailyNewLimit, in: 0...100, step: 5) {
                     HStack {
                         Text("每天新卡")
                             .foregroundStyle(Color.er.textSecondary)
