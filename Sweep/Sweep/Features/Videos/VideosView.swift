@@ -24,6 +24,9 @@ struct VideosView: View {
     @State private var shareURL: URL?
     @State private var exporting = false
 
+    /// 浮在影片上的玻璃加一點黑，亮的畫面也看得清楚
+    static let glassTint = Color.black.opacity(0.35)
+
     @State private var markTick = 0
     @State private var favoriteTick = 0
     @State private var undoTick = 0
@@ -49,8 +52,12 @@ struct VideosView: View {
                     }
                 }
             case .ready:
-                feedScroll
-                overlays
+                // 讀安全區域：清楚的影片只放在狀態列和進度條之間，其他地方用模糊填滿
+                GeometryReader { geo in
+                    feedScroll(videoInsets: EdgeInsets(top: geo.safeAreaInsets.top, leading: 0,
+                                                       bottom: geo.safeAreaInsets.bottom + Self.progressHeight, trailing: 0))
+                    overlays
+                }
             }
         }
         .environment(\.colorScheme, .dark)
@@ -87,11 +94,14 @@ struct VideosView: View {
 
     // MARK: - 捲動
 
-    private var feedScroll: some View {
+    /// 進度條和它下面的留白
+    private static let progressHeight: CGFloat = 24
+
+    private func feedScroll(videoInsets: EdgeInsets) -> some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(feed.ids, id: \.self) { id in
-                    VideoPage(id: id, player: pool.player(for: id))
+                    VideoPage(id: id, player: pool.player(for: id), insets: videoInsets)
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(.rect)
                         .onTapGesture { pool.togglePause() }
@@ -126,7 +136,7 @@ struct VideosView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .glassEffect(.regular.tint(Self.glassTint).interactive(), in: .capsule)
                 }
                 Spacer()
                 Button {
@@ -141,7 +151,7 @@ struct VideosView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .glassEffect(.regular.tint(Self.glassTint).interactive(), in: .capsule)
                 }
                 .disabled(queue.count == 0)
                 .accessibilityLabel("待刪除 \(queue.count) 項")
@@ -309,6 +319,8 @@ struct VideosView: View {
 private struct VideoPage: View {
     let id: String
     let player: AVQueuePlayer?
+    /// 清楚的影片要避開的上下範圍（狀態列、進度條和分頁列）
+    let insets: EdgeInsets
 
     @State private var asset: PHAsset?
 
@@ -324,12 +336,16 @@ private struct VideoPage: View {
             if let player {
                 PlayerLayerView(player: player, fill: true, blurred: true)
             }
-            if let asset {
-                AssetImage(asset: asset, targetSize: CGSize(width: 600, height: 1000), contentMode: .fit, showsProgress: false)
+            // 原本比例放在中間
+            ZStack {
+                if let asset {
+                    AssetImage(asset: asset, targetSize: CGSize(width: 600, height: 1000), contentMode: .fit, showsProgress: false)
+                }
+                if let player {
+                    PlayerLayerView(player: player)
+                }
             }
-            if let player {
-                PlayerLayerView(player: player)
-            }
+            .padding(insets)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
@@ -358,15 +374,18 @@ private struct RailButton: View {
                         Image(systemName: systemImage)
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(tint)
+                            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
                 .frame(width: 50, height: 50)
-                .glassEffect(.regular.interactive(), in: .circle)
+                // 影片很亮時也看得清楚：玻璃加深色、圖示和字加陰影
+                .glassEffect(.regular.tint(VideosView.glassTint).interactive(), in: .circle)
                 Text(title)
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 4)
+                    .shadow(color: .black.opacity(0.8), radius: 3, y: 1)
+                    .shadow(color: .black.opacity(0.4), radius: 8)
             }
         }
         .buttonStyle(.plain)

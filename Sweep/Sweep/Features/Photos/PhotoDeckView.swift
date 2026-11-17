@@ -16,6 +16,8 @@ struct PhotoDeckView: View {
     @State private var showReview = false
     /// 翻到背面看資訊的那張
     @State private var flippedID: String?
+    /// 兩指捏小時打開的「前後幾天」
+    @State private var dayAnchor: AssetRef?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var place: String?
     @State private var favorites: [String: Bool] = [:]
@@ -42,7 +44,8 @@ struct PhotoDeckView: View {
                         onNext: next,
                         onPrevious: previous,
                         flippedID: $flippedID,
-                        onFlip: flip
+                        onFlip: flip,
+                        onZoomOut: zoomOut
                     )
                 } else {
                     // 看完了，馬上會回首頁或跳出刪除確認
@@ -60,8 +63,19 @@ struct PhotoDeckView: View {
         }
         .background { Backdrop(asset: deck.current) }
         .environment(\.colorScheme, .dark)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
+        .overlay {
+            if let ref = dayAnchor {
+                DayGridView(anchor: ref.asset) {
+                    withAnimation(.snappy) { dayAnchor = nil }
+                }
+                .environment(\.colorScheme, .dark)
+                .transition(.opacity.combined(with: .scale(scale: 1.06)))
+            }
+        }
+        .overlay {
+            // 往上拖刪除時，蓋在動態島上的黑色膠囊（要在全螢幕這一層才看得到）
+            IslandOverlay()
+        }
         .onChange(of: deck.current?.localIdentifier, initial: true) { _, id in
             flippedID = nil
             if let id {
@@ -186,6 +200,12 @@ struct PhotoDeckView: View {
     private func undo() {
         withAnimation(.snappy) { deck.undo(queue: queue) }
         undoTick += 1
+    }
+
+    private func zoomOut() {
+        guard let asset = deck.current else { return }
+        withAnimation(.snappy) { dayAnchor = AssetRef(asset: asset) }
+        flipTick += 1
     }
 
     /// 點照片或下面的膠囊：翻面看資訊，再點一下翻回來

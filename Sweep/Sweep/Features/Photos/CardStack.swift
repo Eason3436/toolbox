@@ -10,6 +10,8 @@ struct CardStack: View {
     /// 翻到背面（資訊）的那張
     @Binding var flippedID: String?
     let onFlip: () -> Void
+    /// 兩指捏小：看前後幾天的照片
+    let onZoomOut: () -> Void
 
     @Environment(DeletionQueue.self) private var queue
     @Environment(IslandModel.self) private var island
@@ -25,6 +27,10 @@ struct CardStack: View {
     @State private var armed = false
     /// 往回走時新出現的卡從前緣滑進來
     @State private var goingBack = false
+    /// 兩指捏的縮放（1 = 沒捏）
+    @State private var pinch: CGFloat = 1
+    @State private var pinching = false
+    @State private var pinchEndedAt = Date.distantPast
 
     /// 跟 iPhone 17 Pro Max 卡片差不多大的像素
     static let targetSize = CGSize(width: 1290, height: 2000)
@@ -42,6 +48,7 @@ struct CardStack: View {
             .contentShape(.rect)
             // 翻到背面時可以捲動資訊，不拖卡片
             .gesture(dragGesture(size: size, frame: frame), including: flippedID == nil ? .all : .subviews)
+            .simultaneousGesture(pinchGesture, including: flippedID == nil ? .all : .subviews)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: armed) { old, new in
             hapticsOn && new && !old
@@ -49,6 +56,7 @@ struct CardStack: View {
         .accessibilityElement(children: .contain)
         .accessibilityActions {
             Button("翻過來看資訊", action: onFlip)
+            Button("看前後幾天的照片", action: onZoomOut)
             Button("加入待刪除", action: onMark)
             Button("下一張", action: onNext)
             if deck.canGoBack {
@@ -71,13 +79,14 @@ struct CardStack: View {
             angle: isFlipped ? 180 : 0,
             front: AssetImage(asset: card.asset, targetSize: Self.targetSize)
                 .background(.white.opacity(0.08)),
-            back: PhotoInfoView(asset: card.asset)
+            // 背面只幫最上面那張先建好（在背景讀資訊），翻的時候不用臨時建畫面
+            back: isTop ? PhotoInfoView(asset: card.asset, isActive: isFlipped) : nil
         )
             .frame(width: frame.width, height: frame.height)
             .overlay(alignment: .topLeading) {
                 if isTop && !swallowing && !isFlipped { badges(for: card.asset) }
             }
-            .shadow(color: .black.opacity(card.depth == 0 ? 0.3 : 0), radius: 18, y: 10)
+            .shadow(color: .black.opacity(card.depth == 0 && !isFlipped ? 0.3 : 0), radius: 18, y: 10)
             .blur(radius: blur(depth: card.depth, size: size))
             .scaleEffect(scale(depth: card.depth, isActive: isActive, size: size))
             .opacity(opacity(depth: card.depth, isActive: isActive, size: size))
@@ -103,10 +112,11 @@ struct CardStack: View {
 
     private func scale(depth: Int, isActive: Bool, size: CGSize) -> CGFloat {
         if depth == 0 {
-            guard isActive else { return 1 }
+            // 兩指捏小時跟著縮
+            guard isActive else { return pinch }
             if swallowing { return 0.04 }
             // 往上拖時慢慢縮小，像被吸走
-            return 1 - 0.22 * deleteProgress(size: size)
+            return (1 - 0.22 * deleteProgress(size: size)) * pinch
         }
         // 下一張藏在後面，拖得越遠越大
         return 0.9 + 0.1 * revealProgress(size: size)
@@ -189,7 +199,7 @@ struct CardStack: View {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
                 guard let top = deck.current else { return }
-                guard flippedID == nil else { return }
+                guard flippedID == nil, !pinching else { return }
                 if activeID != top.localIdentifier {
                     activeID = top.localIdentifier
                     swallowing = false
@@ -206,6 +216,11 @@ struct CardStack: View {
             }
             .onEnded { value in
                 guard !swallowing, flippedID == nil else { return }
+                // 兩指捏的時候手指也會拖：捏完不要當成滑動
+                if pinching || Date.now.timeIntervalSince(pinchEndedAt) < 0.3 {
+                    withAnimation(.snappy) { drag = .zero }
+                    return
+                }
                 let t = value.translation
                 let p = value.predictedEndTranslation
                 let vertical = abs(t.height) > abs(t.width)
@@ -223,6 +238,27 @@ struct CardStack: View {
                 } else {
                     withAnimation(.spring(duration: 0.35, bounce: 0.3)) { drag = .zero }
                 }
+            }
+    }
+
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                guard !swallowing else { return }
+                if !pinching {
+                    pinching = true
+                    island.release()
+                    withAnimation(.snappy) { drag = .zero }
+                }
+                pinch = min(max(value.magnification, 0.5), 1)
+            }
+            .onEnded { value in
+                pinching = false
+                pinchEndedAt = .now
+                if value.magnification < 0.82 {
+                    onZoomOut()
+                }
+                withAnimation(.spring(duration: 0.35, bounce: 0.2)) { pinch = 1 }
             }
     }
 
@@ -262,11 +298,12 @@ struct CardStack: View {
     }
 }
 
-/// 可以翻面的卡片：轉到 90 度時換成背面，背面先轉 180 度才不會是反的
+/// 可以翻面的卡片：轉到 90 度時換成背面，背面先轉 180 度才不會是反的。
+/// 兩面一直都在（只切換透明度），翻的時候不用重建畫面。
 private struct FlipCard<Front: View, Back: View>: View, Animatable {
     var angle: Double
     let front: Front
-    let back: Back
+    let back: Back?
 
     var animatableData: Double {
         get { angle }
@@ -274,14 +311,15 @@ private struct FlipCard<Front: View, Back: View>: View, Animatable {
     }
 
     var body: some View {
+        let showBack = angle >= 90
         ZStack {
-            if angle < 90 {
-                front
-                    .transition(.identity)
-            } else {
+            front
+                .opacity(showBack ? 0 : 1)
+            if let back {
                 back
                     .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
-                    .transition(.identity)
+                    .opacity(showBack ? 1 : 0)
+                    .allowsHitTesting(showBack)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

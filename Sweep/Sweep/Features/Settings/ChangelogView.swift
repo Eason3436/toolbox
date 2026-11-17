@@ -11,6 +11,13 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "1.3.0", date: DateComponents(year: 2026, month: 11, day: 17), notes: [
+            "整理照片時兩指捏小，可以看這張前後幾天的照片：左右滑換一天，點一下放進待刪除，兩指撐開回來",
+            "影片照原本比例放在中間，上下和進度條下方都是模糊畫面",
+            "影片右側按鈕加深底色，亮的畫面也看得清楚",
+            "翻面看資訊不再卡一下：資訊先在背景讀好，地圖改成截圖",
+            "整理畫面改成全螢幕蓋上去，按返回時排版不會跳",
+        ]),
         Entry(version: "1.2.0", date: DateComponents(year: 2026, month: 11, day: 17), notes: [
             "後面那張照片平常淡淡、模糊的，不會跟前面那張的形狀打架；拖動時才慢慢變清楚",
             "點一下照片會翻過來，背面就是拍攝資訊、檔案和地圖；再點一下翻回來",

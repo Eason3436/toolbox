@@ -7,6 +7,7 @@ struct PhotosView: View {
     let isLimited: Bool
 
     @Environment(DeletionQueue.self) private var queue
+    @Environment(IslandModel.self) private var island
     @Environment(\.modelContext) private var context
     @AppStorage(SettingsKey.groupSize) private var groupSize = SettingsDefault.groupSize
     @AppStorage(SettingsKey.excludeViewed) private var excludeViewed = true
@@ -35,8 +36,12 @@ struct PhotosView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .toolbarColorScheme(.dark, for: .tabBar)
-        .navigationDestination(isPresented: $entered) {
+        // 用全螢幕蓋上去（不是 push）：分頁列、導覽列不用藏起來再出現，返回時排版不會跳
+        .fullScreenCover(isPresented: $entered) {
             PhotoDeckView(deck: deck, onGroupDone: groupDone)
+                .environment(queue)
+                .environment(island)
+                .environment(\.modelContext, context)
                 .navigationTransition(.zoom(sourceID: FanView.transitionID, in: namespace))
         }
         .task {

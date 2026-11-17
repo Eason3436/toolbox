@@ -6,6 +6,8 @@ import ImageIO
 /// 照片背面：拍攝資訊、檔案、地圖。點一下照片翻過來就是這一面，背景是這張照片的模糊版本。
 struct PhotoInfoView: View {
     let asset: PHAsset
+    /// 翻到這一面了：這時才允許從 iCloud 下載原檔讀 EXIF（平常只先讀手機上有的）
+    var isActive = false
 
     @State private var exif: ExifSummary?
     @State private var fileSize: Int64?
@@ -40,7 +42,8 @@ struct PhotoInfoView: View {
                 Color.black.opacity(0.35)
             }
         }
-        .task { await load() }
+        // 卡片一到最上面就先在背景讀好，翻面時不用等、也不會卡
+        .task(id: isActive) { await load(network: isActive) }
         .task {
             if let location = asset.location {
                 place = await PlaceLookup.shared.place(for: location)
@@ -109,13 +112,8 @@ struct PhotoInfoView: View {
 
     private func locationSection(_ location: CLLocation) -> some View {
         DetailCard(title: "位置", systemImage: "mappin.and.ellipse") {
-            Map(initialPosition: .region(MKCoordinateRegion(center: location.coordinate,
-                                                             latitudinalMeters: 800, longitudinalMeters: 800)),
-                interactionModes: []) {
-                Marker("", coordinate: location.coordinate)
-            }
-            .frame(height: 160)
-            .clipShape(.rect(cornerRadius: 12))
+            // 用靜態截圖，不放即時地圖：翻轉時才不會卡
+            MapSnapshot(coordinate: location.coordinate)
 
             if let full = place?.full {
                 Text(full)
@@ -141,32 +139,40 @@ struct PhotoInfoView: View {
 
     // MARK: - 讀取
 
-    private func load() async {
+    private func load(network: Bool) async {
         let asset = asset
-        async let info: (Int64, String?) = Task.detached {
-            (PhotoLibrary.fileSize(of: asset), PhotoLibrary.originalFilename(of: asset))
-        }.value
-        let props = await Self.properties(of: asset)
-        exif = props.map(ExifSummary.init(properties:))
-        loadingExif = false
-        let (size, name) = await info
-        fileSize = size
-        filename = name
+        if fileSize == nil {
+            let (size, name) = await Task.detached(priority: .utility) {
+                (PhotoLibrary.fileSize(of: asset), PhotoLibrary.originalFilename(of: asset))
+            }.value
+            fileSize = size
+            filename = name
+        }
+        guard exif == nil else { return }
+        if network { loadingExif = true }
+        if let props = await Self.properties(of: asset, network: network) {
+            exif = props
+        }
+        // 沒下載過的 iCloud 照片：翻到背面才去下載
+        loadingExif = exif == nil && !network
     }
 
-    /// 原檔的 ImageIO 屬性（iCloud 上的會先下載）
-    private static func properties(of asset: PHAsset) async -> [String: Any]? {
+    /// 原檔的 ImageIO 屬性。讀檔、解析都在背景，不佔主執行緒
+    private static func properties(of asset: PHAsset, network: Bool) async -> ExifSummary? {
         await withCheckedContinuation { continuation in
             let options = PHContentEditingInputRequestOptions()
-            options.isNetworkAccessAllowed = true
+            options.isNetworkAccessAllowed = network
             asset.requestContentEditingInput(with: options) { input, _ in
-                guard let url = input?.fullSizeImageURL,
-                      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
-                    continuation.resume(returning: nil)
-                    return
+                let url = input?.fullSizeImageURL
+                DispatchQueue.global(qos: .userInitiated).async {
+                    guard let url,
+                          let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                          let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: ExifSummary(properties: props))
                 }
-                continuation.resume(returning: props)
             }
         }
     }
@@ -187,7 +193,8 @@ private struct DetailCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 18))
+        // 不用毛玻璃：翻轉動畫每一格都要重算模糊，會卡
+        .background(.white.opacity(0.1), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -204,5 +211,40 @@ private struct InfoRow: View {
                 .textSelection(.enabled)
         }
         .font(.subheadline)
+    }
+}
+
+/// 地圖截圖：中間放一根大頭針
+private struct MapSnapshot: View {
+    let coordinate: CLLocationCoordinate2D
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color.white.opacity(0.08)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+                Image(systemName: "mappin.circle.fill")
+                    .font(.title)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .red)
+                    .shadow(color: .black.opacity(0.3), radius: 3)
+            }
+        }
+        .frame(height: 150)
+        .frame(maxWidth: .infinity)
+        .clipShape(.rect(cornerRadius: 12))
+        .task {
+            let options = MKMapSnapshotter.Options()
+            options.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 800, longitudinalMeters: 800)
+            options.size = CGSize(width: 420, height: 150)
+            options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+            let shot = try? await MKMapSnapshotter(options: options).start()
+            withAnimation(.easeOut(duration: 0.2)) { image = shot?.image }
+        }
     }
 }

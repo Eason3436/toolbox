@@ -51,10 +51,6 @@ struct RootView: View {
         .overlay(alignment: .top) {
             ResultBanner()
         }
-        .overlay {
-            // 往上拖刪除時，蓋在動態島上的黑色膠囊
-            IslandOverlay()
-        }
     }
 }
 
