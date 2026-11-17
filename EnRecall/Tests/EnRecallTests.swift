@@ -723,6 +723,8 @@ struct HandoutTests {
         let notes = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
         #expect(notes.contains("They <b>abandoned</b> the plan"))
         #expect(notes.contains("第 3 課 · 1 字"))
+        // 印成 PDF 時透明會變黑，樣式不能有透明
+        #expect(!notes.contains("transparent") && !notes.contains("rgba") && !notes.contains("gradient"))
 
         // 速查表照熟悉度分組：還沒背過的是新字
         options.kind = .sheet

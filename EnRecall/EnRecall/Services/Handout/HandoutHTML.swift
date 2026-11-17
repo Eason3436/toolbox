@@ -57,6 +57,7 @@ enum HandoutHTML {
 
     // MARK: 共同
 
+    /// 不能用透明（transparent、rgba、漸層）：印成 PDF 時透明的地方會變成黑色
     private static let css = """
     html { zoom: 0.75; }
     * { box-sizing: border-box; }
@@ -95,7 +96,7 @@ enum HandoutHTML {
     .mn .ps { font: italic 9.5px ui-serif, "New York", Georgia, serif; color: rgb(110,110,115); margin-right: 3px; }
     .mn .sep { color: rgb(200,200,204); margin: 0 4px; }
     .ex { margin-top: 4px; padding: 1px 0 1px 8px; border-left: 2px solid var(--r); font: 10.4px/1.4 ui-serif, "New York", Georgia, serif; }
-    .ex b { font-weight: 700; background: linear-gradient(transparent 55%, var(--t) 55%); }
+    .ex b { font-weight: 700; background: var(--t); border-radius: 2px; padding: 0 1px; -webkit-box-decoration-break: clone; }
     .ex .zh { display: block; font: 9.2px/1.4 -apple-system, "PingFang TC", sans-serif; color: rgb(110,110,115); }
     .x { margin-top: 3px; font-size: 9.2px; line-height: 1.4; color: rgb(72,72,74); }
     .x .l { font-weight: 700; font-size: 7.8px; color: var(--a); margin-right: 4px; letter-spacing: .06em; }

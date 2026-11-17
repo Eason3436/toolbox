@@ -11,6 +11,9 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.14.1", date: day(17), notes: [
+            "PDF 講義例句裡的單字不會再被黑色塊蓋住",
+        ]),
         Entry(version: "0.14.0", date: day(17), notes: [
             "設定 › 外觀可以換配色：黑白、北境、玫瑰松、常青、紙本、砂金，都是設計師配好的低彩度色票，淺色深色各一套",
             "單字 PDF 換新版面：講義是雙欄字卡、自測卷的答案在右邊往後折就蓋住、速查表照熟不熟分組；強調色跟著 App 的配色",
