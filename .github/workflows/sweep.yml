@@ -1,0 +1,98 @@
+name: Build Sweep IPA
+
+# Sweep：照片／影片清理（隨機卡片、短影音、批次刪除）
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "Sweep/**"
+      - ".github/workflows/sweep.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sweep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Xcode 27（iOS 27 SDK）
+    runs-on: xcode-27
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Sweep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          STATUS=0
+          xcodebuild \
+            -project Sweep.xcodeproj \
+            -scheme Sweep \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || STATUS=$?
+          grep -E "error:" build.log | sort -u | head -150 || true
+          tail -3 build.log
+          exit $STATUS
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Sweep.app Payload/
+          zip -qry Sweep.ipa Payload
+          ls -lh Sweep.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sweep-build-log
+          path: Sweep/build.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sweep-ipa
+          path: Sweep/Sweep.ipa
+
+      - name: Publish to "sweep-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete sweep-latest --yes --cleanup-tag || true
+          gh release create sweep-latest Sweep.ipa \
+            --target "$GITHUB_SHA" \
+            --title "Sweep（${GITHUB_SHA::7}）" \
+            --notes "Sweep 照片清理（iOS 27）。用 SideStore 安裝：在 iPhone 上下載 Sweep.ipa，然後在 SideStore 的 My Apps 按 + 選這個檔案。" \
+            --prerelease
+
+      - name: Unit tests (simulator)
+        continue-on-error: true
+        run: |
+          DEST=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          echo "Simulator: $DEST"
+          xcodebuild test \
+            -project Sweep.xcodeproj \
+            -scheme Sweep \
+            -destination "id=$DEST" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || STATUS=$?
+          grep -E "(error:|✘|✔|Test run|failed|passed|Executed)" test.log | tail -80 || true
+          exit ${STATUS:-0}

@@ -1,0 +1,67 @@
+name: Sweep
+options:
+  bundleIdPrefix: com.eason3436
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Sweep:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sweep
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: Sweep/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: Sweep/Info.plist
+      properties:
+        CFBundleDisplayName: Sweep
+        CFBundleName: Sweep
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: 讀取相簿裡的照片和影片，讓你一張一張看、決定要留還是要刪。
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.sweep
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  SweepTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Sweep
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.sweep.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Sweep.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Sweep
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Sweep:
+    build:
+      targets:
+        Sweep: all
+    test:
+      targets:
+        - SweepTests

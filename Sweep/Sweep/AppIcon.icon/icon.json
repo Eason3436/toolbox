@@ -1,0 +1,47 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.26000,0.80000,0.48000,1.00000",
+      "display-p3:0.06000,0.52000,0.36000,1.00000"
+    ]
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "front.svg",
+          "name": "front"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.2
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "back.svg",
+          "name": "back"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

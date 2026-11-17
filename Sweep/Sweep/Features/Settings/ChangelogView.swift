@@ -1,0 +1,64 @@
+import SwiftUI
+
+/// 設定 → 更新日誌。每次更新在最上面加一筆，並同步改 project.yml 的 MARKETING_VERSION
+struct ChangelogView: View {
+    struct Entry: Identifiable {
+        let version: String
+        let date: DateComponents
+        let notes: [String]
+
+        var id: String { version }
+    }
+
+    static let entries: [Entry] = [
+        Entry(version: "1.0.0", date: DateComponents(year: 2026, month: 11, day: 17), notes: [
+            "照片頁：每次隨機抽一組，往左下一張、往右上一張、往上甩放進待刪除，可以復原",
+            "分類：照片、截圖、自拍、原況照片、動圖；每組數量可以調",
+            "影片頁：上下滑像短影音，自動循環播放；右側收藏、分享、刪除、復原",
+            "刪除前先看縮圖確認，一次刪掉，系統確認視窗只跳一次",
+            "照片詳情：拍攝設備、光圈、快門、ISO、焦距、檔案大小、地圖和地址",
+            "統計：照片、截圖、影片各自的查看數、刪除數、騰出空間",
+        ]),
+    ]
+
+    var body: some View {
+        List {
+            ForEach(Self.entries) { entry in
+                Section {
+                    ForEach(entry.notes, id: \.self) { note in
+                        Text(note)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } header: {
+                    HStack {
+                        Text(entry.version).font(.subheadline.monospacedDigit().weight(.semibold))
+                        if entry.version == AppInfo.version {
+                            Text("目前版本")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.tint.opacity(0.15), in: .capsule)
+                        }
+                        Spacer()
+                        if let date = Calendar.current.date(from: entry.date) {
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
+                                .font(.caption)
+                        }
+                    }
+                    .textCase(nil)
+                }
+            }
+        }
+        .navigationTitle("更新日誌")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+#Preview("淺色") {
+    NavigationStack { ChangelogView() }
+}
+
+#Preview("深色") {
+    NavigationStack { ChangelogView() }
+        .preferredColorScheme(.dark)
+}
