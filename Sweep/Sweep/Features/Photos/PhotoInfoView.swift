@@ -3,11 +3,10 @@ import MapKit
 import Photos
 import ImageIO
 
-/// 照片詳情：拍攝資訊、檔案、地圖。背景是這張照片的模糊版本。
-struct PhotoDetailView: View {
+/// 照片背面：拍攝資訊、檔案、地圖。點一下照片翻過來就是這一面，背景是這張照片的模糊版本。
+struct PhotoInfoView: View {
     let asset: PHAsset
 
-    @Environment(\.dismiss) private var dismiss
     @State private var exif: ExifSummary?
     @State private var fileSize: Int64?
     @State private var filename: String?
@@ -15,28 +14,30 @@ struct PhotoDetailView: View {
     @State private var loadingExif = true
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    header
-                    cameraSection
-                    fileSection
-                    if let location = asset.location {
-                        locationSection(location)
-                    }
+        ScrollView {
+            VStack(spacing: 12) {
+                header
+                cameraSection
+                fileSection
+                if let location = asset.location {
+                    locationSection(location)
                 }
-                .padding(20)
+                Label("點一下翻回照片", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
             }
-            .background {
-                AssetImage(asset: asset, targetSize: CGSize(width: 300, height: 300))
-                    .blur(radius: 50)
-                    .overlay(Color(.systemBackground).opacity(0.55))
-                    .ignoresSafeArea()
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成", systemImage: "checkmark") { dismiss() }
-                }
+            .padding(16)
+        }
+        .scrollIndicators(.hidden)
+        .background {
+            ZStack {
+                Color.black
+                AssetImage(asset: asset, targetSize: CGSize(width: 200, height: 200), showsProgress: false)
+                    .scaleEffect(1.3)
+                    .blur(radius: 40)
+                    .opacity(0.8)
+                Color.black.opacity(0.35)
             }
         }
         .task { await load() }
@@ -52,13 +53,13 @@ struct PhotoDetailView: View {
     private var header: some View {
         VStack(spacing: 4) {
             Text(RelativeDay.text(for: asset.takenAt))
-                .font(.largeTitle.bold())
+                .font(.title.bold())
             Text(asset.takenAt.formatted(.dateTime.year().month().day().weekday(.wide).hour().minute()))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 
     private var cameraSection: some View {
@@ -186,7 +187,7 @@ private struct DetailCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.regularMaterial, in: .rect(cornerRadius: 20))
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 18))
     }
 }
 

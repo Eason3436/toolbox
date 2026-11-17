@@ -314,14 +314,25 @@ private struct VideoPage: View {
 
     var body: some View {
         ZStack {
+            // 上下（或左右）留黑邊的地方：同一支影片放大、模糊填滿。
+            // 影片還沒出畫面前先用封面墊著
             if let asset {
-                AssetImage(asset: asset, targetSize: CGSize(width: 600, height: 1000), contentMode: .fit)
+                AssetImage(asset: asset, targetSize: CGSize(width: 120, height: 200), showsProgress: false)
+                    .blur(radius: 40)
+                    .overlay(Color.black.opacity(0.3))
+            }
+            if let player {
+                PlayerLayerView(player: player, fill: true, blurred: true)
+            }
+            if let asset {
+                AssetImage(asset: asset, targetSize: CGSize(width: 600, height: 1000), contentMode: .fit, showsProgress: false)
             }
             if let player {
                 PlayerLayerView(player: player)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .background(.black)
         .task(id: id) {
             asset = PhotoLibrary.asset(for: id)
@@ -364,8 +375,11 @@ private struct RailButton: View {
 }
 
 /// AVPlayerLayer
+/// 同一個 AVPlayer 可以接好幾個 layer：前面一個完整顯示，後面一個放大填滿再模糊
 private struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    var fill = false
+    var blurred = false
 
     final class PlayerUIView: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }
@@ -374,9 +388,16 @@ private struct PlayerLayerView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PlayerUIView {
         let view = PlayerUIView()
-        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
         view.playerLayer.player = player
         view.backgroundColor = .clear
+        view.clipsToBounds = true
+        if blurred {
+            let effect = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterialDark))
+            effect.frame = view.bounds
+            effect.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(effect)
+        }
         return view
     }
 

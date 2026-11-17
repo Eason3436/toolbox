@@ -7,7 +7,9 @@ struct CardStack: View {
     let onMark: () -> Void
     let onNext: () -> Void
     let onPrevious: () -> Void
-    let onOpen: (PHAsset) -> Void
+    /// 翻到背面（資訊）的那張
+    @Binding var flippedID: String?
+    let onFlip: () -> Void
 
     @Environment(DeletionQueue.self) private var queue
     @Environment(IslandModel.self) private var island
@@ -38,13 +40,15 @@ struct CardStack: View {
             }
             .frame(width: size.width, height: size.height)
             .contentShape(.rect)
-            .gesture(dragGesture(size: size, frame: frame))
+            // 翻到背面時可以捲動資訊，不拖卡片
+            .gesture(dragGesture(size: size, frame: frame), including: flippedID == nil ? .all : .subviews)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: armed) { old, new in
             hapticsOn && new && !old
         }
         .accessibilityElement(children: .contain)
         .accessibilityActions {
+            Button("翻過來看資訊", action: onFlip)
             Button("加入待刪除", action: onMark)
             Button("下一張", action: onNext)
             if deck.canGoBack {
@@ -58,27 +62,34 @@ struct CardStack: View {
     private func cardView(_ card: DeckCard, size: CGSize) -> some View {
         let isTop = card.depth == 0
         let isActive = card.id == activeID
+        let isFlipped = isTop && flippedID == card.id
         let offset = isActive ? drag : .zero
-        let fitted = Self.fit(card.asset, in: size)
+        // 翻到背面時放大到整個區域，資訊才放得下
+        let frame = isFlipped ? size : Self.fit(card.asset, in: size)
 
-        return AssetImage(asset: card.asset, targetSize: Self.targetSize)
-            .frame(width: fitted.width, height: fitted.height)
-            .background(.white.opacity(0.08))
-            .clipShape(.rect(cornerRadius: 22))
+        return FlipCard(
+            angle: isFlipped ? 180 : 0,
+            front: AssetImage(asset: card.asset, targetSize: Self.targetSize)
+                .background(.white.opacity(0.08)),
+            back: PhotoInfoView(asset: card.asset)
+        )
+            .frame(width: frame.width, height: frame.height)
             .overlay(alignment: .topLeading) {
-                if isTop && !swallowing { badges(for: card.asset) }
+                if isTop && !swallowing && !isFlipped { badges(for: card.asset) }
             }
-            .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+            .shadow(color: .black.opacity(card.depth == 0 ? 0.3 : 0), radius: 18, y: 10)
+            .blur(radius: blur(depth: card.depth, size: size))
             .scaleEffect(scale(depth: card.depth, isActive: isActive, size: size))
-            .opacity(opacity(depth: card.depth, isActive: isActive))
+            .opacity(opacity(depth: card.depth, isActive: isActive, size: size))
             .offset(offset)
             .rotationEffect(.degrees(isActive && !swallowing ? Double(offset.width) / 30 : 0), anchor: .bottom)
             .zIndex(-Double(card.depth))
             .allowsHitTesting(isTop)
-            .onTapGesture { onOpen(card.asset) }
+            .onTapGesture { onFlip() }
             .transition(insertion)
-            .accessibilityElement()
+            .accessibilityElement(children: isFlipped ? .contain : .ignore)
             .accessibilityLabel(RelativeDay.text(for: card.asset.takenAt))
+            .accessibilityHint(isFlipped ? "" : "點兩下翻過來看資訊")
             .accessibilityHidden(!isTop)
     }
 
@@ -101,10 +112,20 @@ struct CardStack: View {
         return 0.9 + 0.1 * revealProgress(size: size)
     }
 
-    private func opacity(depth: Int, isActive: Bool) -> Double {
+    /// 後面那張平常淡淡、糊糊的，形狀不會跟前面那張打架；拖得越遠越清楚
+    private func opacity(depth: Int, isActive: Bool, size: CGSize) -> Double {
         if depth >= 2 { return 0 }
-        if depth == 0, isActive, swallowing { return 0.3 }
+        if depth == 1 {
+            if flippedID != nil { return 0 }
+            return 0.15 + 0.85 * Double(revealProgress(size: size))
+        }
+        if isActive, swallowing { return 0.3 }
         return 1
+    }
+
+    private func blur(depth: Int, size: CGSize) -> CGFloat {
+        guard depth == 1 else { return 0 }
+        return 24 * (1 - revealProgress(size: size))
     }
 
     /// 往回走時從前緣滑進來，其他時候淡入
@@ -168,6 +189,7 @@ struct CardStack: View {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
                 guard let top = deck.current else { return }
+                guard flippedID == nil else { return }
                 if activeID != top.localIdentifier {
                     activeID = top.localIdentifier
                     swallowing = false
@@ -183,7 +205,7 @@ struct CardStack: View {
                 armed = progress >= 1
             }
             .onEnded { value in
-                guard !swallowing else { return }
+                guard !swallowing, flippedID == nil else { return }
                 let t = value.translation
                 let p = value.predictedEndTranslation
                 let vertical = abs(t.height) > abs(t.width)
@@ -237,5 +259,33 @@ struct CardStack: View {
     private func back() {
         goingBack = true
         onPrevious()
+    }
+}
+
+/// 可以翻面的卡片：轉到 90 度時換成背面，背面先轉 180 度才不會是反的
+private struct FlipCard<Front: View, Back: View>: View, Animatable {
+    var angle: Double
+    let front: Front
+    let back: Back
+
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    var body: some View {
+        ZStack {
+            if angle < 90 {
+                front
+                    .transition(.identity)
+            } else {
+                back
+                    .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                    .transition(.identity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(.rect(cornerRadius: 22))
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
     }
 }

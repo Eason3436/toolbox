@@ -14,7 +14,9 @@ struct PhotoDeckView: View {
     @AppStorage(SettingsKey.hapticsOn) private var hapticsOn = true
 
     @State private var showReview = false
-    @State private var detail: AssetRef?
+    /// 翻到背面看資訊的那張
+    @State private var flippedID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var place: String?
     @State private var favorites: [String: Bool] = [:]
     @State private var shareURL: URL?
@@ -25,6 +27,7 @@ struct PhotoDeckView: View {
     @State private var moveTick = 0
     @State private var undoTick = 0
     @State private var favoriteTick = 0
+    @State private var flipTick = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +41,8 @@ struct PhotoDeckView: View {
                         onMark: mark,
                         onNext: next,
                         onPrevious: previous,
-                        onOpen: { detail = AssetRef(asset: $0) }
+                        flippedID: $flippedID,
+                        onFlip: flip
                     )
                 } else {
                     // 看完了，馬上會回首頁或跳出刪除確認
@@ -59,6 +63,7 @@ struct PhotoDeckView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .onChange(of: deck.current?.localIdentifier, initial: true) { _, id in
+            flippedID = nil
             if let id {
                 StatsRecorder.recordViewed(id, kind: deck.filter.statsKind, context: context)
             }
@@ -77,9 +82,6 @@ struct PhotoDeckView: View {
         }) {
             DeleteReviewView()
         }
-        .sheet(item: $detail) { ref in
-            PhotoDetailView(asset: ref.asset)
-        }
         .sheet(item: Binding(get: { shareURL.map(ShareItem.init) }, set: { shareURL = $0?.url })) { item in
             ShareSheet(items: [item.url])
                 .presentationDetents([.medium, .large])
@@ -88,6 +90,7 @@ struct PhotoDeckView: View {
         .sensoryFeedback(.selection, trigger: moveTick) { _, _ in hapticsOn }
         .sensoryFeedback(.impact(weight: .light), trigger: undoTick) { _, _ in hapticsOn }
         .sensoryFeedback(.success, trigger: favoriteTick) { _, _ in hapticsOn }
+        .sensoryFeedback(.selection, trigger: flipTick) { _, _ in hapticsOn }
     }
 
     // MARK: - 上方
@@ -119,7 +122,7 @@ struct PhotoDeckView: View {
                 .disabled(deck.current == nil)
 
             Button {
-                if let asset = deck.current { detail = AssetRef(asset: asset) }
+                flip()
             } label: {
                 HStack(spacing: 10) {
                     VStack(spacing: 1) {
@@ -134,7 +137,8 @@ struct PhotoDeckView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    Image(systemName: "info.circle.fill")
+                    Image(systemName: flippedID == nil ? "info.circle.fill" : "photo.circle.fill")
+                        .contentTransition(.symbolEffect(.replace))
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -144,7 +148,7 @@ struct PhotoDeckView: View {
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .capsule)
-            .accessibilityLabel("詳細資訊")
+            .accessibilityLabel(flippedID == nil ? "翻過來看資訊" : "翻回照片")
             .task(id: deck.current?.localIdentifier) {
                 place = nil
                 guard let location = deck.current?.location else { return }
@@ -182,6 +186,16 @@ struct PhotoDeckView: View {
     private func undo() {
         withAnimation(.snappy) { deck.undo(queue: queue) }
         undoTick += 1
+    }
+
+    /// 點照片或下面的膠囊：翻面看資訊，再點一下翻回來
+    private func flip() {
+        guard let id = deck.current?.localIdentifier else { return }
+        let animation: Animation = reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.55, bounce: 0.15)
+        withAnimation(animation) {
+            flippedID = flippedID == id ? nil : id
+        }
+        flipTick += 1
     }
 
     private func toggleFavorite() {

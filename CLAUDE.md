@@ -97,7 +97,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 依使用者的「照片／影片清理 App 開發規劃書（自用版）」做的相簿清理 App（2026-11-17）。照片頁每次隨機抽一組，先攤成扇子從底部浮上來（`FanView`），點一下用 zoom 轉場進整理畫面（`PhotoDeckView`）：往左下一張、往右上一張、按住往上拖時假動態島變大、放開吸進動態島（`Features/Shared/DynamicIsland.swift`，在動態島位置畫純黑膠囊）、可復原；影片頁是直向分頁短影音（最多 3 個 `AVPlayer`）。刪除一律「先標記、再批次刪除」（`Services/DeletionQueue.swift`），系統確認視窗只跳一次。
 - 分類：照片／截圖／自拍／原況照片／動圖（自拍、動圖用系統智慧相簿）；統計只分照片、截圖、影片三類
 - SwiftData：`ViewedAsset`（`assetID`、`wasDeleted`；`id`／`isDeleted` 會跟 SwiftData 撞名）、`CleanStats`；設定用 `@AppStorage`（`Services/Settings.swift`）
-- 照片詳情是點卡片或下方膠囊打開（往上拖是刪除，所以不是往上拉）；照片分頁整個用深色配色（背景是模糊照片壓暗）；地名用 `MKReverseGeocodingRequest`
+- 照片資訊在卡片背面：點照片或下方膠囊翻面（`PhotoInfoView`，往上拖是刪除，所以不是往上拉）；後面那張平常淡、模糊，拖動時才變清楚；影片黑邊用同一個 AVPlayer 的第二個 layer 放大＋模糊填滿；照片分頁整個用深色配色（背景是模糊照片壓暗）；地名用 `MKReverseGeocodingRequest`
 - iOS 27、Swift 5；`com.eason3436.sweep`；只有 App 本體，沒有 extension
 - 更新日誌：`Sweep/Sweep/Features/Settings/ChangelogView.swift`（統計 → 齒輪 → 更新日誌），每次更新加一筆並同步改 `Sweep/project.yml` 的 `MARKETING_VERSION`
 - 細節、跟規劃書不同的地方、驗收步驟見 `Sweep/README.md`
