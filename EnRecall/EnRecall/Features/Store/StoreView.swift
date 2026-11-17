@@ -42,6 +42,13 @@ struct StoreView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 60)
+                case .needsPassword:
+                    VStack(spacing: 12) {
+                        EmptyLine("輸入下載密碼才能下載單字包")
+                        StorePasswordField()
+                            .erCard()
+                    }
+                    .frame(maxWidth: .infinity)
                 case .failed:
                     VStack(spacing: 12) {
                         EmptyLine("無法連上單字商店")

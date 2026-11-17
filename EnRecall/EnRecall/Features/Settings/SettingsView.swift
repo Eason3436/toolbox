@@ -5,6 +5,7 @@ import UIKit
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(ToastCenter.self) private var toasts
+    @Environment(StoreModel.self) private var store
 
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceMode.system
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
@@ -53,6 +54,15 @@ struct SettingsView: View {
                 if reminderEnabled && LiveContainerBridge.isInside {
                     Text("在 LiveContainer 裡要打開這個 App 設定的「修復本地通知」，提醒才會出現")
                 }
+            }
+            .listRowBackground(Color.er.surface)
+
+            Section {
+                StorePasswordField()
+            } header: {
+                Text("單字商店")
+            } footer: {
+                Text(store.phase == .needsPassword ? "下載、更新單字包要用，只要輸入一次" : "已經輸入過了。換密碼時再輸入一次")
             }
             .listRowBackground(Color.er.surface)
 

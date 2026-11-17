@@ -173,11 +173,9 @@ enum PackParser {
 
 enum PackDownloader {
     /// 邊下載邊回報已收到的 bytes
-    static func fetch(_ url: URL, onProgress: @escaping @Sendable (Int) async -> Void) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
+    static func fetch(_ request: URLRequest, onProgress: @escaping @Sendable (Int) async -> Void) async throws -> Data {
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        if StoreAccess.isDenied(response) { throw StoreDeniedError() }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         var data = Data()
         if response.expectedContentLength > 0 { data.reserveCapacity(Int(response.expectedContentLength)) }

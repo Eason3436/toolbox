@@ -11,6 +11,9 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.17.0", date: day(17), notes: [
+            "單字商店要輸入下載密碼：單字包不再公開，設定 → 單字商店輸入一次就好，已經下載的牌組和進度都不受影響",
+        ]),
         Entry(version: "0.16.3", date: day(17), notes: [
             "牌組卡的每天新卡按一下加減 5 個",
         ]),
