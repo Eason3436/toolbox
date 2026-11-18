@@ -86,7 +86,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 給使用者家人用的學測背單字 App（使用者另有一個 EnRecall 網頁／Android 版，資料在他自己的 Supabase）。依「EnRecall iOS 版 開發規劃書」分 M1–M6 做。
 - 從單字商店下載學測 Level 1–6、學測片語總表 → FSRS 複習；Claude App 透過 MCP 連接器把單字丟進收件匣，App 打開時領取
 - **絕對不能修改、刪除或寫入使用者既有 EnRecall Supabase 專案的資料表**（另一個帳號；ref 不寫在公開 repo，要用時以 Supabase MCP 的 list_projects 查或問使用者）。要動資料表先問使用者
-- **這個 repo 是公開的：專案 ref、網址、金鑰、密碼、使用者個人資料都不能進 repo（含 commit 訊息）**。2026-11-17 已改寫整個 git 歷史把它們清掉。單字包在 EnRecall 專案的 Storage bucket `packs`（0.17.0 起改私有）：App 經過 iOS 後端的 Edge Function `enrecall-packs` 下載，要帶使用者在 App 輸入的下載密碼（`Services/StoreAccess.swift`，存 Keychain），規格在 `EnRecall/supabase/DEPLOY-6.md`
+- **這個 repo 是公開的：專案 ref、網址、金鑰、密碼、使用者個人資料都不能進 repo（含 commit 訊息）**。2026-11-17 已改寫整個 git 歷史把它們清掉。單字包在 EnRecall 專案的 Storage bucket `packs`（0.17.0 起改私有）：App 經過 iOS 後端的 Edge Function `enrecall-packs` 下載，要帶使用者在 App 輸入的下載密碼（`Services/StoreAccess.swift`，存 Keychain），規格在 `EnRecall/supabase/DEPLOY-6.md`。2026-11-18 起單字庫改成**複製一份**到 iOS 後端自己的私有 bucket `packs`，`enrecall-packs`／`enrecall-mcp` 只讀自己專案（`EnRecall/supabase/DEPLOY-7.md`，App 不用改）；EnRecall 專案的單字庫更新不會自動同步，要照 DEPLOY-7 第 7 節手動搬
 - iOS 後端（`ios_devices`、`ios_inbox`、配對碼 RPC、Edge Function `enrecall-mcp`）放在**另一個帳號的新 Supabase 專案**，由使用者的 Muse 部署；規劃書在 `EnRecall/supabase/DEPLOY.md`。網址與 anon key 放在 GitHub Actions Secrets（`ENRECALL_SUPABASE_HOST`、`ENRECALL_SUPABASE_ANON_KEY`），CI 寫成 `Config/Secrets.xcconfig`（gitignore）讓 `App.xcconfig` include；沒設 secrets 時照樣編譯測試但不發 release
 - App 內不整合 AI、不登入、不做雲端同步；不做新手引導，空狀態只有一行字
 - UI 照設計稿 https://claude.ai/artifact/JenUMptsrMx7mLauGdTiKh ；顏色全部在 Assets 的 colorset（`Color.er.*`，`DesignSystem/Theme.swift`），畫面程式碼不准有 hex、`Color.white`、`Color.black`；玻璃只用在控制層；每個畫面都要淺色、深色兩個 `#Preview`（`PreviewData` 的 in-memory container）
