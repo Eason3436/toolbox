@@ -38,6 +38,24 @@ jobs:
           HOST: ${{ secrets.ENRECALL_SUPABASE_HOST }}
           KEY: ${{ secrets.ENRECALL_SUPABASE_ANON_KEY }}
         run: |
+          # 沒設 secrets：從目前發佈的 EnRecall.ipa 讀回同一組值（本來就在 App 的 Info.plist 裡），不經過 repo
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            OLD=$(mktemp -d)
+            if curl -sSfL -o "$OLD/old.ipa" https://github.com/${{ github.repository }}/releases/download/enrecall-latest/EnRecall.ipa \
+              && unzip -q -o "$OLD/old.ipa" 'Payload/EnRecall.app/Info.plist' -d "$OLD"; then
+              PLIST="$OLD/Payload/EnRecall.app/Info.plist"
+              HOST=$(plutil -extract ERSupabaseHost raw -o - "$PLIST" 2>/dev/null || true)
+              KEY=$(plutil -extract ERSupabaseAnonKey raw -o - "$PLIST" 2>/dev/null || true)
+              [ "$HOST" = "PLACEHOLDER" ] && HOST=""
+              [ "$KEY" = "PLACEHOLDER" ] && KEY=""
+            fi
+            rm -rf "$OLD"
+            if [ -n "$HOST" ]; then echo "::add-mask::$HOST"; fi
+            if [ -n "$KEY" ]; then echo "::add-mask::$KEY"; fi
+            if [ -n "$HOST" ] && [ -n "$KEY" ]; then
+              echo "沒有設定 secrets，改用目前發佈版本裡的後端設定"
+            fi
+          fi
           if [ -z "$HOST" ] || [ -z "$KEY" ]; then
             echo "::warning::沒有設定 ENRECALL_SUPABASE_HOST／ENRECALL_SUPABASE_ANON_KEY：照樣編譯和測試，但不發佈 release"
             echo "configured=false" >> "$GITHUB_OUTPUT"
