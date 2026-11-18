@@ -129,6 +129,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - **SideStore 免費 Apple ID**：同時最多 3 個 App、每 7 天 10 個 App ID（每個 extension 也算一個）、7 天要重簽。新增 extension 前要想清楚
 - SideStore 不接受非 ASCII 的 App 名稱，`CFBundleName`／`CFBundleDisplayName` 要用英文（例如 Toolbox，不是工具箱）
 - 不能用 CloudKit、HealthKit 等需要付費帳號的權限
+- **SwiftData 不要用預設的 `default.store`**（`.modelContainer(for:)`、沒給 url 的 `ModelConfiguration`）：預設會放進 App Group，在 LiveContainer 裡就是 LC 的 App Group，所有 App 共用同一個檔案，輪流打開會互相把資料表遷移掉（2026-11-18 EnRecall、Sweep 因此掉資料）。一律用 `ModelConfiguration(schema:url:)` 指到 App 自己 Application Support 裡、有 App 名稱的檔案（見 `EnRecall/EnRecall/App/AppDatabase.swift`）
 - **使用者不付費 API**（包括 Claude API）。可以用 Apple 裝置端模型（Foundation Models）、Gemini 免費額度、Groq 免費額度
 - 盡量用 Apple 原生框架，不加第三方套件（例外要先問使用者，例如 PulsoIcon）
 - App 圖示用 Icon Composer 格式（`AppIcon.icon`，Liquid Glass）

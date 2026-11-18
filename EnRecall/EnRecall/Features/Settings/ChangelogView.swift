@@ -11,6 +11,9 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.17.1", date: day(18), notes: [
+            "修正更新後牌組和進度不見：資料庫改放在 App 自己的資料夾，不會再跟 LiveContainer 裡的其他 App 共用同一個檔案",
+        ]),
         Entry(version: "0.17.0", date: day(17), notes: [
             "單字商店要輸入下載密碼：單字包不再公開，設定 → 單字商店輸入一次就好，已經下載的牌組和進度都不受影響",
         ]),
