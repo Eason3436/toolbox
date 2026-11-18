@@ -148,9 +148,6 @@ struct FlashCardView: View {
         if let example = card.example, !example.isEmpty {
             HStack(spacing: 6) {
                 DetailLabel("例句")
-                if card.source == .claude {
-                    Chip(text: "AI 例句", style: .info)
-                }
             }
             ScrollView {
                 ExampleLines(en: example, zh: card.exampleZh)

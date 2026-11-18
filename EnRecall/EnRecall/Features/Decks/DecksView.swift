@@ -11,11 +11,12 @@ struct DecksView: View {
     @State private var session: ReviewSession?
     @State private var showLimitSheet = false
     @State private var pendingDelete: Deck?
+    @State private var studyCache = StudySummaryCache()
 
     private var filtered: [Deck] { decks.filter { $0.category == category } }
 
     var body: some View {
-        let summary = StudyPlanner.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
+        let summary = studyCache.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
         let counts = summary.counts(for: category)
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
@@ -122,7 +123,9 @@ struct DecksView: View {
 
     private func setMode(_ mode: DeckMode) {
         withAnimation(.spring(duration: 0.3)) {
-            for deck in filtered { deck.mode = mode }
+            for deck in filtered {
+                if mode == .paused { deck.isPaused = true } else { deck.mode = mode }
+            }
         }
     }
 }
@@ -198,7 +201,7 @@ struct NewCardLimitSheet: View {
                         }
                     }
                 } footer: {
-                    Text("全部牌組合計。各牌組自己的上限在牌組卡片上調，順序長按牌組調整")
+                    Text("全部牌組合計，「新卡一次出完」的牌組不算在內。各牌組自己的上限在牌組卡片上調，順序長按牌組調整")
                 }
             }
             .scrollContentBackground(.hidden)

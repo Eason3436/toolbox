@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.11.1"
+    MARKETING_VERSION: "0.17.2"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
 targets:
@@ -39,10 +39,9 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # 後端與商店網址（xcconfig 裡不能寫 //，所以只放主機名稱）
+        # iOS 後端（xcconfig 裡不能寫 //，所以只放主機名稱）。單字商店也經過它（enrecall-packs）
         ERSupabaseHost: $(SUPABASE_HOST)
         ERSupabaseAnonKey: $(SUPABASE_ANON_KEY)
-        ERStoreHost: $(STORE_HOST)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eason3436.enrecall

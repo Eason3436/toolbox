@@ -39,6 +39,7 @@ struct WordDetailSheet: View {
                 }
                 if showsProgress {
                     progressGrid
+                    DeckMembershipSection(card: card)
                 }
             }
             .padding(Theme.Spacing.page)
@@ -109,9 +110,6 @@ struct WordDetailSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     DetailLabel("例句")
-                    if card.source == .claude {
-                        Chip(text: "AI 例句", style: .info)
-                    }
                 }
                 ExampleLines(en: example, zh: card.exampleZh)
             }
@@ -126,10 +124,16 @@ struct WordDetailSheet: View {
             GridRow {
                 infoCell(title: "下次複習", value: nextReviewText)
                 infoCell(title: "已複習", value: "\(card.reps.formatted()) 次")
-                infoCell(title: "牌組", value: card.deck?.name ?? "—")
+                infoCell(title: "牌組", value: deckSummary)
             }
         }
         .padding(.top, Theme.Spacing.sectionTop)
+    }
+
+    private var deckSummary: String {
+        let decks = card.allDecks
+        if decks.count > 1 { return "\(decks.count.formatted()) 個" }
+        return decks.first?.name ?? "—"
     }
 
     private var nextReviewText: String {
@@ -151,6 +155,88 @@ struct WordDetailSheet: View {
         .erCard(padding: Theme.Spacing.row)
         .frame(maxHeight: .infinity)
         .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - 所在牌組
+
+/// 卡片在哪些牌組：可以放進別的自訂牌組，或從連過去的牌組移出（原本的牌組不能移出，進度只有一份）
+private struct DeckMembershipSection: View {
+    let card: Card
+
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Deck.sortIndex) private var decks: [Deck]
+
+    /// 可以放進去的牌組：同類別的自訂牌組，還沒有這張卡的
+    private var candidates: [Deck] {
+        let category = card.deck?.category ?? .word
+        return decks.filter { $0.kind == .custom && $0.category == category && !$0.contains(card) }
+    }
+
+    var body: some View {
+        let memberships = card.allDecks
+        SectionHeader(title: "所在牌組", trailing: memberships.count.formatted())
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(memberships.enumerated()), id: \.element.id) { index, deck in
+                if index > 0 { Divider().overlay(Color.er.outline) }
+                row(deck, isHome: index == 0)
+            }
+            if !candidates.isEmpty {
+                if !memberships.isEmpty { Divider().overlay(Color.er.outline) }
+                Menu {
+                    ForEach(candidates) { deck in
+                        Button(deck.name) { add(to: deck) }
+                    }
+                } label: {
+                    Label("放進其他牌組", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.er.primary)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                }
+            }
+        }
+        .erCard()
+        .sensoryFeedback(.selection, trigger: memberships.count)
+    }
+
+    private func row(_ deck: Deck, isHome: Bool) -> some View {
+        HStack(spacing: 10) {
+            Text(deck.name)
+                .font(.subheadline)
+                .foregroundStyle(Color.er.text)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if isHome {
+                Text("原本的牌組")
+                    .font(.caption)
+                    .foregroundStyle(Color.er.textTertiary)
+            } else {
+                Button("移出", systemImage: "minus.circle", role: .destructive) {
+                    remove(from: deck)
+                }
+                .labelStyle(.iconOnly)
+                .font(.body)
+                .foregroundStyle(Color.er.textSecondary)
+                .frame(minWidth: 32, minHeight: 32)
+                .accessibilityLabel("從〈\(deck.name)〉移出")
+            }
+        }
+    }
+
+    private func add(to deck: Deck) {
+        withAnimation(.spring(duration: 0.3)) {
+            if DeckMembership.add(card, to: deck, in: context) {
+                try? context.save()
+            }
+        }
+    }
+
+    private func remove(from deck: Deck) {
+        withAnimation(.spring(duration: 0.3)) {
+            if DeckMembership.remove(card, from: deck, in: context) {
+                try? context.save()
+            }
+        }
     }
 }
 

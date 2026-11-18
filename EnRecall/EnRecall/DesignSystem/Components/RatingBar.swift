@@ -11,7 +11,11 @@ extension Rating {
     }
 }
 
-/// 複習頁底部：沒翻面時 4 個玻璃按鈕併成一條「顯示答案」，翻面時分開成 4 個評分按鈕；評完再併回去
+/// 複習頁底部的一塊玻璃，從頭到尾是同一塊在變形：
+/// - 沒翻面：一條「顯示答案」
+/// - 翻面：從這一條分出 4 個評分鍵（玻璃自己裂開）
+/// - 評分：另外 3 個融回你按的那一顆，它帶著那個評分的顏色變回下一張的「顯示答案」，顏色一路退掉；
+///   下一次翻面也從這一顆分開。卡片換下一張、上方時間軸多一顆同色的點，都用同一個 spring，中途再點會接著動
 struct RatingBar: View {
     let isRevealed: Bool
     /// 每個評分下次出現的間隔（例如「10 分」「3 天」）；空的就不顯示
@@ -23,59 +27,71 @@ struct RatingBar: View {
     let onReveal: () -> Void
     let onRate: (Rating) -> Void
 
+    /// 複習頁卡片、時間軸、這條按鈕共用的動畫
+    static let morph = Animation.spring(duration: 0.4, bounce: 0.15)
+
+    /// 上一次按的評分：沒翻面時就是這一顆撐滿整條
+    @State private var anchor: Rating = .good
     @Namespace private var namespace
 
+    private var shown: [Rating] { isRevealed ? Rating.allCases : [anchor] }
+
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: isRevealed ? 10 : 0) {
-                ForEach(Rating.allCases) { rating in
-                    ratingButton(rating)
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                ForEach(shown) { rating in
+                    key(rating)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
-            }
-            .overlay {
-                Button(action: onReveal) {
-                    Text("顯示答案")
-                        .font(.headline)
-                        .foregroundStyle(Color.er.text)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .opacity(isRevealed ? 0 : 1)
-                .scaleEffect(isRevealed ? 0.9 : 1)
-                .allowsHitTesting(!isRevealed)
-                .accessibilityHidden(isRevealed)
             }
         }
     }
 
-    private func ratingButton(_ rating: Rating) -> some View {
+    private func key(_ rating: Rating) -> some View {
         let isDimmed = selected != nil && selected != rating
         let tint: Double = selected == rating ? 0.34 : (isDimmed ? 0.06 : 0.16)
         let glass: Glass = isRevealed ? .regular.tint(rating.color.opacity(tint)).interactive() : .regular.interactive()
         return Button {
-            onRate(rating)
-        } label: {
-            VStack(spacing: 2) {
-                Text(rating.title)
-                    .font(.headline)
-                if let interval = intervals[rating] {
-                    Text(interval)
-                        .font(.erMonoSmall)
-                        .opacity(0.8)
+            if isRevealed {
+                withAnimation(Self.morph) {
+                    anchor = rating
+                    onRate(rating)
                 }
+            } else {
+                onReveal()
             }
-            .foregroundStyle(rating.color)
-            .opacity(isRevealed ? (isDimmed ? 0.4 : 1) : 0)
-            .scaleEffect(isRevealed ? 1 : 0.8)
+        } label: {
+            ZStack {
+                VStack(spacing: 2) {
+                    Text(rating.title)
+                        .font(.headline)
+                    if let interval = intervals[rating] {
+                        Text(interval)
+                            .font(.erMonoSmall)
+                            .opacity(0.8)
+                    }
+                }
+                .foregroundStyle(rating.color)
+                .opacity(isRevealed ? (isDimmed ? 0.4 : 1) : 0)
+                .blur(radius: isRevealed ? 0 : 3)
+
+                Text("顯示答案")
+                    .font(.headline)
+                    .foregroundStyle(Color.er.text)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .opacity(isRevealed ? 0 : 1)
+                    .blur(radius: isRevealed ? 3 : 0)
+            }
             .frame(maxWidth: .infinity, minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!isRevealed || (isDimmed && isLocked))
+        .disabled(isRevealed && isDimmed && isLocked)
         .glassEffect(glass, in: .rect(cornerRadius: Theme.Radius.rating))
-        .glassEffectUnion(id: isRevealed ? nil : "merged", namespace: namespace)
-        .accessibilityHidden(!isRevealed)
+        .glassEffectID(rating.rawValue, in: namespace)
+        .accessibilityLabel(isRevealed ? rating.title : "顯示答案")
+        .accessibilityValue(isRevealed ? (intervals[rating] ?? "") : "")
         .accessibilityAddTraits(selected == rating ? .isSelected : [])
     }
 }
@@ -87,8 +103,8 @@ struct RatingBar: View {
         RatingBar(
             isRevealed: revealed,
             intervals: [.again: "1 分", .hard: "6 分", .good: "1 天", .easy: "4 天"],
-            onReveal: { withAnimation(.spring(duration: 0.35)) { revealed = true } },
-            onRate: { _ in withAnimation(.spring(duration: 0.35)) { revealed = false } }
+            onReveal: { withAnimation(RatingBar.morph) { revealed = true } },
+            onRate: { _ in revealed = false }
         )
     }
     .padding(Theme.Spacing.page)

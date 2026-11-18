@@ -3,13 +3,15 @@ import SwiftData
 
 /// 牌組裡的單字列表
 struct DeckDetailView: View {
+    @Environment(\.modelContext) private var context
     @Bindable var deck: Deck
     @State private var query = ""
     @State private var session: ReviewSession?
     @State private var selected: Card?
+    @State private var isMakingPDF = false
 
     private var cards: [Card] {
-        let all = deck.activeCards.sorted { $0.sortIndex < $1.sortIndex }
+        let all = deck.orderedActiveCards
         let q = Normalizer.normalize(query)
         guard !q.isEmpty else { return all }
         return all.filter { $0.wordNorm.contains(q) || $0.zh.contains(query) }
@@ -31,6 +33,14 @@ struct DeckDetailView: View {
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.er.surface)
+                        .swipeActions(edge: .trailing) {
+                            // 連過來的字才能移出；卡片和進度還在原本的牌組
+                            if deck.isLinked(card) {
+                                Button("移出牌組", systemImage: "minus.circle", role: .destructive) {
+                                    remove(card)
+                                }
+                            }
+                        }
                     }
                 } header: {
                     Text("\(cards.count.formatted()) 個")
@@ -57,16 +67,32 @@ struct DeckDetailView: View {
                 .accessibilityLabel("新卡順序")
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button("做成 PDF", systemImage: "doc.richtext") {
+                    isMakingPDF = true
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("複習", systemImage: "play.fill") {
                     session = ReviewSession(category: nil, deckID: deck.id)
                 }
             }
+        }
+        .sheet(isPresented: $isMakingPDF) {
+            HandoutView(presetDeckID: deck.id)
         }
         .sheet(item: $selected) { card in
             WordDetailSheet(card: card)
         }
         .fullScreenCover(item: $session) { session in
             ReviewView(session: session)
+        }
+    }
+
+    private func remove(_ card: Card) {
+        withAnimation(.spring(duration: 0.3)) {
+            if DeckMembership.remove(card, from: deck, in: context) {
+                try? context.save()
+            }
         }
     }
 }

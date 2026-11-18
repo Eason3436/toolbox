@@ -3,6 +3,8 @@ import SwiftUI
 /// @AppStorage 的 key 集中在這裡
 enum SettingsKey {
     static let appearance = "appearance"
+    /// 配色主題（AppPalette）
+    static let palette = "palette"
     static let dailyNewLimit = "dailyNewLimit"
     static let reminderEnabled = "reminderEnabled"
     /// 一天中的秒數（預設 21:00）
@@ -15,6 +17,13 @@ enum SettingsKey {
     static let quizKind = "quizKind"
     static let quizScope = "quizScope"
     static let quizCount = "quizCount"
+    /// 單字 PDF 上次選的用途、範圍、牌組、字數、份量、方向
+    static let handoutKind = "handoutKind"
+    static let handoutRange = "handoutRange"
+    static let handoutDeck = "handoutDeck"
+    static let handoutCount = "handoutCount"
+    static let handoutAmount = "handoutAmount"
+    static let handoutDirection = "handoutDirection"
 }
 
 /// 複習時接下來出什麼

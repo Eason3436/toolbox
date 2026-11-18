@@ -173,11 +173,9 @@ enum PackParser {
 
 enum PackDownloader {
     /// 邊下載邊回報已收到的 bytes
-    static func fetch(_ url: URL, onProgress: @escaping @Sendable (Int) async -> Void) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
+    static func fetch(_ request: URLRequest, onProgress: @escaping @Sendable (Int) async -> Void) async throws -> Data {
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        if StoreAccess.isDenied(response) { throw StoreDeniedError() }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         var data = Data()
         if response.expectedContentLength > 0 { data.reserveCapacity(Int(response.expectedContentLength)) }
@@ -267,6 +265,11 @@ enum PackInstaller {
                 if card.deck?.id == deck.id {
                     card.sortIndex = index
                     card.isRetired = false
+                } else if let link = deck.links.first(where: { $0.card?.id == card.id }) {
+                    link.sortIndex = index
+                } else {
+                    // 字已經在別的牌組（例如先從 Claude 匯入）：卡片留在原地，連到這個等級牌組，進度只有一份
+                    DeckLink.insert(deck: deck, card: card, sortIndex: index, addedAt: now, into: context)
                 }
                 result.updated += 1
             } else {
@@ -291,6 +294,10 @@ enum PackInstaller {
         for card in deck.cards where !seen.contains(card.id) && !card.isRetired && card.source == .library {
             card.isRetired = true
             result.retired += 1
+        }
+        // 單字包拿掉的字：連過來的只解除連結
+        for link in deck.links where !seen.contains(link.card?.id ?? "") {
+            context.delete(link)
         }
         deck.packVersion = pack.version
         deck.contentFormat = contentFormat

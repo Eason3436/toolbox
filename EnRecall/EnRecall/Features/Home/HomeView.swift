@@ -7,10 +7,16 @@ struct HomeView: View {
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
     @Environment(StoreModel.self) private var store
     @State private var session: ReviewSession?
+    @State private var studyCache = StudySummaryCache()
     @State private var isQuizzing = false
+    @State private var isPickingHandout = false
+    @State private var isMakingHandout = false
+    @State private var handoutURL: URL?
+    @Environment(\.modelContext) private var context
+    @Environment(ToastCenter.self) private var toasts
 
     private var summary: StudySummary {
-        StudyPlanner.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
+        studyCache.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
     }
 
     /// 句型卡要有句型牌組才出現在練習模式
@@ -18,7 +24,8 @@ struct HomeView: View {
         DeckCategory.allCases.filter { $0 != .pattern || decks.contains { $0.category == .pattern } }
     }
 
-    private var latestClaudeDeck: Deck? {
+    /// 最近加入的自訂牌組（跟其他牌組一樣顯示，不特別標來源）
+    private var latestCustomDeck: Deck? {
         decks.filter { $0.kind == .custom }.max { ($0.lastImportedAt ?? $0.createdAt) < ($1.lastImportedAt ?? $1.createdAt) }
     }
 
@@ -52,13 +59,15 @@ struct HomeView: View {
                     QuizRow {
                         isQuizzing = true
                     }
+                    Divider().overlay(Color.er.outline).padding(.leading, 64)
+                    HandoutRow(isMaking: isMakingHandout, open: { isPickingHandout = true }, make: makeHandout)
                 }
                 .erCard(padding: 0, elevated: true)
 
-                if let deck = latestClaudeDeck {
-                    SectionHeader(title: "從 Claude 匯入")
+                if let deck = latestCustomDeck {
+                    SectionHeader(title: "最近加入")
                     NavigationLink(value: Route.deck(deck)) {
-                        ClaudeDeckRow(deck: deck)
+                        RecentDeckRow(deck: deck)
                     }
                     .buttonStyle(.plain)
                 }
@@ -87,6 +96,24 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $isQuizzing) {
             QuizView()
+        }
+        .sheet(isPresented: $isPickingHandout) {
+            HandoutView()
+        }
+        .quickLookPreview($handoutURL)
+    }
+
+    /// 一鍵：照上次的設定做 PDF，做好直接預覽（可以分享、列印）
+    private func makeHandout() {
+        guard !isMakingHandout else { return }
+        isMakingHandout = true
+        Task {
+            do {
+                handoutURL = try await HandoutMaker.make(.saved, context: context)
+            } catch {
+                toasts.show(error.localizedDescription, systemImage: "doc")
+            }
+            isMakingHandout = false
         }
     }
 }
@@ -233,18 +260,61 @@ private struct QuizRow: View {
     }
 }
 
-private struct ClaudeDeckRow: View {
+/// 單字 PDF：按「產生」照上次的設定一鍵做好；點這一列改設定
+private struct HandoutRow: View {
+    let isMaking: Bool
+    let open: () -> Void
+    let make: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.row) {
+            Button(action: open) {
+                HStack(spacing: Theme.Spacing.row) {
+                    IconTile(label: "PDF")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("單字 PDF")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.er.text)
+                        Text(HandoutOptions.saved.summary)
+                            .font(.caption)
+                            .foregroundStyle(Color.er.textSecondary)
+                    }
+                    Spacer(minLength: 8)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("改 PDF 的用途、範圍、字數")
+
+            Button(action: make) {
+                if isMaking {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("產生")
+                }
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .disabled(isMaking)
+        }
+        .padding(Theme.Spacing.card)
+    }
+}
+
+private struct RecentDeckRow: View {
     let deck: Deck
 
     var body: some View {
-        let newCount = deck.activeCards.filter(\.isNew).count
+        let cards = deck.activeCards
+        let newCount = cards.filter(\.isNew).count
         HStack(spacing: Theme.Spacing.row) {
-            IconTile(label: deck.tileLabel, style: .info)
+            IconTile(label: deck.tileLabel)
             VStack(alignment: .leading, spacing: 2) {
                 Text(deck.name)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Color.er.text)
-                Text("從 Claude 匯入 · \(newCount) 張新卡")
+                Text("\(deck.category.countText(cards.count)) · 新卡 \(newCount)")
                     .font(.caption)
                     .monospacedDigit()
                     .foregroundStyle(Color.er.textSecondary)

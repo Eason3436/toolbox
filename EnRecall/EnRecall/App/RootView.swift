@@ -55,13 +55,16 @@ struct RootView: View {
                 TabIcon(title: "設定", systemImage: "gearshape")
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        // 分頁列一直保持完整大小，捲動時不縮小
+        .tabBarMinimizeBehavior(.never)
+        .tint(Color.er.primary)
         // 全部捲動區用柔和的邊緣（系統依列的高度決定範圍，內容本身有留邊距，不會蓋到字）
         .scrollEdgeEffectStyle(.soft, for: .all)
         .overlay(alignment: .top) {
             ToastHost()
         }
         .task {
+            enableNewCardsAllOnce()
             // 商店清單先在背景抓，首頁才知道有沒有新版
             await store.load()
             if await store.upgradeOutdated(context: context) > 0 {
@@ -75,21 +78,46 @@ struct RootView: View {
                 Task {
                     await importFromClaude()
                     await inbox.uploadSnapshot(context: context)
+                    await refreshReminders()
                 }
             case .background:
-                Task { await inbox.uploadSnapshot(context: context, force: true) }
+                Task {
+                    await refreshReminders()
+                    await inbox.uploadSnapshot(context: context, force: true)
+                }
             default:
                 break
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .studyProgressSaved)) { _ in
             // 複習完關掉：讓 Claude 馬上看得到這次的成績
-            Task { await inbox.uploadSnapshot(context: context, force: true) }
+            Task {
+                await refreshReminders()
+                await inbox.uploadSnapshot(context: context, force: true)
+            }
         }
     }
 }
 
 extension RootView {
+    /// 通知和桌面小工具：照現在還有多少要背重排（App 在背景跑不了，每次用完都更新）
+    private func refreshReminders() async {
+        HomeWidgetPublisher.publish(context: context)
+        await ReminderScheduler.reschedule(context: context)
+    }
+
+    /// 0.16.2：自己加的牌組（雜誌、課本）改成新卡一次出完。只在第一次打開新版時做一次，之後照使用者自己的設定
+    private func enableNewCardsAllOnce() {
+        let key = "didEnableNewCardsAll"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let decks = (try? context.fetch(FetchDescriptor<Deck>())) ?? []
+        for deck in decks where deck.kind == .custom {
+            deck.newCardsAll = true
+        }
+        try? context.save()
+    }
+
     private func importFromClaude() async {
         guard let result = await inbox.sync(context: context), let message = result.toastMessage else { return }
         toasts.show(message, systemImage: "square.and.arrow.down")

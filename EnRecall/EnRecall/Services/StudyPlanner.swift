@@ -25,11 +25,18 @@ enum StudyPlanner {
     struct Plan {
         var due: [Card] = []
         var new: [Card] = []
+        /// 每張卡是從哪個牌組領的（同一張卡可以在好幾個牌組，複習紀錄記在領它的牌組）
+        var deckOf: [String: String] = [:]
     }
 
     static func todaysLogs(_ logs: [ReviewLog], now: Date, calendar: Calendar = .current) -> [ReviewLog] {
         let start = calendar.startOfDay(for: now)
         return logs.filter { $0.reviewedAt >= start }
+    }
+
+    /// 今天學的新卡裡，算進全部上限的那些（「新卡一次出完」的牌組不算）
+    static func limitedNewLogs(_ todayLogs: [ReviewLog], unlimitedDecks: Set<String>) -> [ReviewLog] {
+        todayLogs.filter { $0.wasNew && !unlimitedDecks.contains($0.deckId ?? "") }
     }
 
     static func plan(
@@ -45,29 +52,43 @@ enum StudyPlanner {
         for log in newToday {
             newDoneByDeck[log.deckId ?? "", default: 0] += 1
         }
-        var remaining = max(0, globalNewLimit - newToday.count)
+        let unlimited = Set(decks.filter(\.newCardsAll).map(\.id))
+        var remaining = max(0, globalNewLimit - limitedNewLogs(today, unlimitedDecks: unlimited).count)
         let dayKey = Int(calendar.startOfDay(for: now).timeIntervalSince1970 / 86_400)
 
         var plan = Plan()
+        // 同一張卡在好幾個牌組時只出一次
+        var planned: Set<String> = []
         for deck in decks.sorted(by: { $0.sortIndex < $1.sortIndex }) where deck.mode != .paused {
-            let cards = deck.activeCards
-            plan.due.append(contentsOf: cards.filter { $0.isDue(at: now) })
+            let cards = deck.orderedActiveCards.filter { !planned.contains($0.id) }
+            for card in cards where card.isDue(at: now) {
+                plan.due.append(card)
+                plan.deckOf[card.id] = deck.id
+                planned.insert(card.id)
+            }
 
-            guard deck.mode == .active, remaining > 0 else { continue }
-            let allowance = min(remaining, max(0, deck.dailyNewLimit - newDoneByDeck[deck.id, default: 0]))
+            guard deck.mode == .active else { continue }
+            let allowance = deck.newCardsAll
+                ? Int.max
+                : min(remaining, max(0, deck.dailyNewLimit - newDoneByDeck[deck.id, default: 0]))
             guard allowance > 0 else { continue }
 
             var candidates = cards.filter(\.isNew)
-            switch deck.order {
-            case .sequential:
-                candidates.sort { $0.sortIndex < $1.sortIndex }
-            case .random:
-                // 同一天內順序固定，隔天換一批
-                candidates.sort { stableHash("\(dayKey)|\($0.id)") < stableHash("\(dayKey)|\($1.id)") }
+            if deck.order == .random {
+                // 同一天內順序固定，隔天換一批（依序：orderedActiveCards 已經照這個牌組的順序）。
+                // 雜湊先算好再排，不要在比較裡一直重算
+                candidates = candidates
+                    .map { (key: stableHash("\(dayKey)|\($0.id)"), card: $0) }
+                    .sorted { $0.key < $1.key }
+                    .map(\.card)
             }
             let picked = candidates.prefix(allowance)
-            plan.new.append(contentsOf: picked)
-            remaining -= picked.count
+            for card in picked {
+                plan.new.append(card)
+                plan.deckOf[card.id] = deck.id
+                planned.insert(card.id)
+            }
+            if !deck.newCardsAll { remaining -= picked.count }
         }
         plan.due.sort { $0.due < $1.due }
         return plan
@@ -89,7 +110,8 @@ enum StudyPlanner {
         for card in plan.new {
             summary.byCategory[card.deck?.category ?? .word, default: StudyCounts()].new += 1
         }
-        summary.newDoneToday = todaysLogs(logs, now: now, calendar: calendar).filter(\.wasNew).count
+        let unlimited = Set(decks.filter(\.newCardsAll).map(\.id))
+        summary.newDoneToday = limitedNewLogs(todaysLogs(logs, now: now, calendar: calendar), unlimitedDecks: unlimited).count
         summary.newLimit = globalNewLimit
         return summary
     }

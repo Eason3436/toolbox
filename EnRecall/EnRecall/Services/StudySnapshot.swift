@@ -21,7 +21,10 @@ struct StudySnapshot: Encodable {
 
     struct CardRow: Encodable {
         let id: String
+        /// 原本的牌組
         let deck: String?
+        /// 所在的所有牌組（原本的在最前面）；一張卡可以在好幾個牌組，進度只有一份
+        let decks: [String]
         let word: String
         let pos: String?
         let zh: String
@@ -54,6 +57,8 @@ struct StudySnapshot: Encodable {
     let dailyNewLimit: Int
     let decks: [DeckRow]
     let cards: [CardRow]
+    /// App 裡所有的卡（含還沒背的單字庫卡）的 id：判斷送來的字 App 裡是不是已經有卡
+    let cardIds: [String]
     let logs: [LogRow]
 
     static let logDays = 90
@@ -65,6 +70,8 @@ struct StudySnapshot: Encodable {
         let decks = try context.fetch(FetchDescriptor<Deck>(sortBy: [SortDescriptor(\.sortIndex)]))
         var deckRows: [DeckRow] = []
         var cardRows: [CardRow] = []
+        var listed: Set<String> = []
+        var allIDs: [String] = []
         for deck in decks {
             let cards = deck.activeCards
             var new = 0, learning = 0, review = 0, mastered = 0
@@ -75,9 +82,14 @@ struct StudySnapshot: Encodable {
                 case .review: review += 1
                 }
                 if card.isMastered { mastered += 1 }
-                guard !card.isNew || deck.kind == .custom else { continue }
+                // 同一張卡在好幾個牌組：只傳一次，decks 列出全部
+                guard listed.insert(card.id).inserted else { continue }
+                allIDs.append(card.id)
+                let inCustomDeck = card.allDecks.contains { $0.kind == .custom }
+                guard !card.isNew || inCustomDeck else { continue }
                 cardRows.append(CardRow(
-                    id: card.id, deck: deck.id, word: card.word, pos: card.pos, zh: card.zh,
+                    id: card.id, deck: card.deck?.id ?? deck.id, decks: card.allDecks.map(\.id),
+                    word: card.word, pos: card.pos, zh: card.zh,
                     source: card.source.rawValue, state: card.state.name, due: card.due,
                     stability: card.stability, difficulty: card.difficulty,
                     reps: card.reps, lapses: card.lapses, lastReview: card.lastReview
@@ -106,6 +118,7 @@ struct StudySnapshot: Encodable {
             dailyNewLimit: UserDefaults.standard.object(forKey: SettingsKey.dailyNewLimit) as? Int ?? AppDefaults.dailyNewLimit,
             decks: deckRows,
             cards: cardRows,
+            cardIds: allIDs,
             logs: logRows
         )
     }
