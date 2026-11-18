@@ -9,9 +9,13 @@ final class Deck {
     var kindRaw: String = DeckKind.custom.rawValue
     var categoryRaw: String = DeckCategory.word.rawValue
     var modeRaw: String = DeckMode.active.rawValue
+    /// 暫停前是「出新卡」還是「只出複習」：按繼續就回到那個
+    var resumeModeRaw: String = DeckMode.active.rawValue
     var orderRaw: String = NewCardOrder.sequential.rawValue
     /// 這個牌組每天最多出幾張新卡
     var dailyNewLimit: Int = 10
+    /// 新卡一次出完：不看每天新卡，也不佔全部的每日上限（雜誌、課本單字這種一次背完的牌組）
+    var newCardsAll: Bool = false
     /// 牌組頁的排序，也是領新卡的順序（小的先）
     var sortIndex: Int = 0
     /// 單字包版本（catalog.json 的 version）
@@ -26,6 +30,10 @@ final class Deck {
 
     @Relationship(deleteRule: .cascade, inverse: \Card.deck)
     var cards: [Card] = []
+
+    /// 從別的牌組連過來的卡（DeckLink.swift）
+    @Relationship(deleteRule: .cascade, inverse: \DeckLink.deck)
+    var links: [DeckLink] = []
 
     init(
         id: String,
@@ -68,13 +76,41 @@ final class Deck {
         set { modeRaw = newValue.rawValue }
     }
 
+    /// 牌組卡旁邊的暫停鍵
+    var isPaused: Bool {
+        get { mode == .paused }
+        set {
+            guard newValue != isPaused else { return }
+            if newValue {
+                resumeModeRaw = modeRaw
+                mode = .paused
+            } else {
+                let resume = DeckMode(rawValue: resumeModeRaw) ?? .active
+                mode = resume == .paused ? .active : resume
+            }
+        }
+    }
+
+    /// 出新卡／只出複習（暫停時是按繼續之後會回到的那個）
+    var runMode: DeckMode {
+        get {
+            guard isPaused else { return mode }
+            let resume = DeckMode(rawValue: resumeModeRaw) ?? .active
+            return resume == .paused ? .active : resume
+        }
+        set {
+            guard newValue != .paused else { isPaused = true; return }
+            if isPaused { resumeModeRaw = newValue.rawValue } else { mode = newValue }
+        }
+    }
+
     var order: NewCardOrder {
         get { NewCardOrder(rawValue: orderRaw) ?? .sequential }
         set { orderRaw = newValue.rawValue }
     }
 
-    /// 停用（單字庫已刪除）的卡不算
-    var activeCards: [Card] { cards.filter { !$0.isRetired } }
+    /// 停用（單字庫已刪除）的卡不算；連過來的卡也算
+    var activeCards: [Card] { allCards.filter { !$0.isRetired } }
 
     /// 牌組頁、商店的小方塊文字：L1–L6、Ph、或自訂牌組的第一個字
     var tileLabel: String {

@@ -29,14 +29,6 @@ enum AppConfig {
         supabaseURL?.appending(path: "functions/v1/enrecall-mcp/\(code)")
     }
 
-    /// 單字商店（EnRecall 專案的公開 Storage，只讀）
-    static let storeHost = info("ERStoreHost")
-
-    static var storeBaseURL: URL {
-        let host = storeHost.isEmpty ? "<EnRecall 專案 ref>.supabase.co" : storeHost
-        return URL(string: "https://\(host)/storage/v1/object/public/packs")!
-    }
-
     /// 「0.10.0」：更新日誌比對目前版本用
     static var shortVersion: String { info("CFBundleShortVersionString") }
 

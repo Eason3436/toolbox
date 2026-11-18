@@ -16,6 +16,7 @@ import WidgetKit
 struct LCLiveActivityWidgetBundle: WidgetBundle {
     var body: some Widget {
         LCLiveActivityWidget()
+        LCAppWidget()
     }
 }
 

@@ -98,7 +98,9 @@ enum QuizBuilder {
     static func questions(kind: QuizKind, scope: QuizScope, count: Int, context: ModelContext, now: Date = Date()) throws -> [QuizQuestion] {
         let category = kind.category
         let decks = try context.fetch(FetchDescriptor<Deck>()).filter { $0.category == category }
-        var cards = decks.flatMap(\.activeCards)
+        // 同一張卡可能在好幾個牌組
+        var seen: Set<String> = []
+        var cards = decks.flatMap(\.activeCards).filter { seen.insert($0.id).inserted }
 
         switch scope {
         case .learned:

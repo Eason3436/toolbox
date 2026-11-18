@@ -4,45 +4,123 @@ import SwiftUI
 //
 // 全部取自 Assets 的 Color Set（每組都有淺色／深色），畫面程式碼一律用 Color.er.*，
 // 不准出現 hex、Color.white、Color.black。色票來源：設計稿「EnRecall iOS」。
+// 配色主題（設定 → 外觀 → 配色）：色票取自設計師公開的配色系統（Nord、Rosé Pine、Everforest、
+// Flexoki、Radix Colors、Gruvbox Material、Solarized、Iceberg、Melange），對應到下面的角色，放在 Assets 的 Themes/<名稱>/，用 scripts/palettes.py 產生。
+// 評分、危險色、螢光筆、陰影每個主題都一樣。
 
 extension Color {
     static let er = ERPalette()
 }
 
-struct ERPalette {
+/// App 的配色主題（低彩度，淺色／深色都是原設計師的那一套）
+enum AppPalette: String, CaseIterable, Identifiable {
+    /// 原本的黑白灰
+    case ink
+    /// Nord：北極藍灰
+    case nord
+    /// Rosé Pine：玫瑰、松綠
+    case rosePine
+    /// Everforest：森林綠、米色
+    case everforest
+    /// Flexoki：紙張與墨水，青綠
+    case flexoki
+    /// Radix Sand ＋ Bronze：沙色、銅
+    case sand
+    /// Gruvbox Material：暖木色、灰藍
+    case gruvbox
+    /// Solarized：米黃底、紫藍
+    case solarized
+    /// Iceberg：冷灰藍
+    case iceberg
+    /// Melange：焦糖、暖灰
+    case melange
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ink: "黑白"
+        case .nord: "北境"
+        case .rosePine: "玫瑰松"
+        case .everforest: "常青"
+        case .flexoki: "紙本"
+        case .sand: "砂金"
+        case .gruvbox: "暖木"
+        case .solarized: "日曬"
+        case .iceberg: "冰山"
+        case .melange: "焦糖"
+        }
+    }
+
+    /// Assets 裡的資料夾（黑白用最外層原本的 colorset）
+    private var folder: String? {
+        switch self {
+        case .ink: nil
+        case .nord: "Nord"
+        case .rosePine: "RosePine"
+        case .everforest: "Everforest"
+        case .flexoki: "Flexoki"
+        case .sand: "Sand"
+        case .gruvbox: "GruvboxMaterial"
+        case .solarized: "Solarized"
+        case .iceberg: "Iceberg"
+        case .melange: "Melange"
+        }
+    }
+
+    func color(_ name: String) -> Color {
+        guard let folder else { return Color(name) }
+        return Color("\(folder)/\(name)")
+    }
+
+    static var saved: AppPalette {
+        UserDefaults.standard.string(forKey: SettingsKey.palette).flatMap(AppPalette.init(rawValue:)) ?? .ink
+    }
+}
+
+/// 畫面讀 Color.er.primary 時會被 Observation 記下來，換主題後整個 App 自動重畫
+@Observable
+final class ERPalette {
+    private(set) var palette: AppPalette = AppPalette.saved
+
+    func use(_ palette: AppPalette) {
+        self.palette = palette
+        UserDefaults.standard.set(palette.rawValue, forKey: SettingsKey.palette)
+    }
+
     // 頁面與文字
-    let background = Color("ERBackground")
-    let text = Color("ERText")
-    let textSecondary = Color("ERTextSecondary")
-    let textTertiary = Color("ERTextTertiary")
+    var text: Color { palette.color("ERText") }
+    var textSecondary: Color { palette.color("ERTextSecondary") }
+    var textTertiary: Color { palette.color("ERTextTertiary") }
+    var background: Color { palette.color("ERBackground") }
 
     // 內容卡片（實心，不套玻璃）
-    let surface = Color("ERSurface")
-    let surfaceMuted = Color("ERSurfaceMuted")
+    var surface: Color { palette.color("ERSurface") }
+    var surfaceMuted: Color { palette.color("ERSurfaceMuted") }
     /// 降低透明度時，toast 改用的實心底
-    let surfaceHigh = Color("ERSurfaceHigh")
-    let fill = Color("ERFill")
-    let outline = Color("EROutline")
-    let outlineStrong = Color("EROutlineStrong")
-    let mid = Color("ERMid")
+    var surfaceHigh: Color { palette.color("ERSurfaceHigh") }
+    var fill: Color { palette.color("ERFill") }
+    var outline: Color { palette.color("EROutline") }
+    var outlineStrong: Color { palette.color("EROutlineStrong") }
+    var mid: Color { palette.color("ERMid") }
 
     // 主要強調（App tint）
-    let primary = Color("ERPrimary")
-    let onPrimary = Color("EROnPrimary")
+    var primary: Color { palette.color("ERPrimary") }
+    var onPrimary: Color { palette.color("EROnPrimary") }
 
     // 首頁「今日複習」、商店「官方精選」那種深色主卡
-    let hero = Color("ERHero")
-    let heroOutline = Color("ERHeroOutline")
-    let heroText = Color("ERHeroText")
-    let heroTextSecondary = Color("ERHeroTextSecondary")
-    let heroTile = Color("ERHeroTile")
-    let heroMuted = Color("ERHeroMuted")
+    var hero: Color { palette.color("ERHero") }
+    var heroOutline: Color { palette.color("ERHeroOutline") }
+    var heroText: Color { palette.color("ERHeroText") }
+    var heroTextSecondary: Color { palette.color("ERHeroTextSecondary") }
+    var heroTile: Color { palette.color("ERHeroTile") }
+    var heroMuted: Color { palette.color("ERHeroMuted") }
 
     // 狀態色
-    let accent = Color("ERAccent")
-    let info = Color("ERInfo")
-    let infoContainer = Color("ERInfoContainer")
-    let infoTrack = Color("ERInfoTrack")
+    var accent: Color { palette.color("ERAccent") }
+    var info: Color { palette.color("ERInfo") }
+    var infoContainer: Color { palette.color("ERInfoContainer") }
+    var infoTrack: Color { palette.color("ERInfoTrack") }
     let danger = Color("ERDanger")
     /// 例句裡標出單字的螢光筆色（半透明）
     let highlight = Color("ERHighlight")

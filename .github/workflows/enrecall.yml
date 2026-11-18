@@ -31,6 +31,21 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphoneos
 
+      # 後端網址和 key 放在 repo 的 Actions Secrets，不進公開的原始碼
+      - name: Backend config
+        id: config
+        env:
+          HOST: ${{ secrets.ENRECALL_SUPABASE_HOST }}
+          KEY: ${{ secrets.ENRECALL_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "::warning::沒有設定 ENRECALL_SUPABASE_HOST／ENRECALL_SUPABASE_ANON_KEY：照樣編譯和測試，但不發佈 release"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf 'SUPABASE_HOST = %s\nSUPABASE_ANON_KEY = %s\n' "$HOST" "$KEY" > EnRecall/Config/Secrets.xcconfig
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Generate Xcode project
         run: |
           brew install xcodegen
@@ -73,6 +88,7 @@ jobs:
           path: EnRecall/EnRecall.ipa
 
       - name: Publish to "enrecall-latest" release
+        if: steps.config.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

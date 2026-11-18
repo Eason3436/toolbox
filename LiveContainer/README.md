@@ -72,6 +72,22 @@ if LCLiveActivityAttributes.isInsideLiveContainer {
 
 限制：動態島上不能放執行 App 程式碼的按鈕（按鈕的 App Intent 會跑在 LiveContainer，不是 App 裡）。
 
+## 主畫面／鎖定畫面小工具
+
+裝在 LiveContainer 裡的 App 不能帶自己的小工具，所以跟即時動態同一個 widget extension 裡多了一個通用小工具「App」（小、中、鎖定畫面），不會多用 App ID：
+
+- 小工具：`LiveActivityWidget/LCAppWidget.swift`，長按小工具 → 編輯，選要顯示哪個 App
+- 格式：`LiveActivityWidget/LCWidgetSnapshot.swift`，App 把它原封不動複製進去，寫成 JSON 放在 `<LiveContainer 的 App Group>/LCWidgets/<App 的 Bundle ID>.json`
+- App Group 路徑用 LiveContainer 自己的 `+[NSUserDefaults lcAppGroupPath]` 拿（用 `NSSelectorFromString` 呼叫），寫完呼叫 `WidgetCenter.shared.reloadAllTimelines()`
+- `entries` 可以放好幾筆有時間的狀態（例如接下來每小時還有幾張要背），小工具時間到了自己換，App 不用在背景跑
+- extension 要讀 App Group，CI 用 `LCLiveActivityWidget.entitlements` 簽 ad-hoc；SideStore 安裝時會換成 `group.com.SideStore.SideStore.<Team ID>`，小工具從 `embedded.mobileprovision` 讀真正的群組名稱
+
+範例：EnRecall 的 `Services/LiveContainer/HomeWidgetPublisher.swift`。
+
+## 通知
+
+裝在裡面的 App 自己排的本地通知（`UNUserNotificationCenter`），要在 LiveContainer 的 App 設定打開「修復本地通知」才會出現，顯示成 LiveContainer 的通知。
+
 ## 安裝注意
 
 - 用 SideStore 安裝時要保留 App 延伸功能（Keep App Extensions），捷徑動作和即時動態都在延伸功能裡。即時動態的 widget 是多一個延伸功能，免費帳號會多用一個 App ID。

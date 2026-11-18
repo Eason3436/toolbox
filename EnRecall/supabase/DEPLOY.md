@@ -15,7 +15,7 @@
 
 ### 絕對不能做
 
-1. **不能對 EnRecall 專案做任何寫入**：不登入、不呼叫它的 REST／RPC、不上傳 Storage。只讀 `<STORE_BASE>/...` 這種公開網址
+1. **不能對 EnRecall 專案做任何寫入**：不登入、不呼叫它的 REST／RPC、不上傳 Storage。只讀 `（已改私有，見 DEPLOY-6.md）/...` 這種公開網址
 2. 不能把 service role key 寫進程式碼、repo 或回覆裡。Edge Function 執行時會自動拿到 `SUPABASE_SERVICE_ROLE_KEY` 環境變數，直接讀那個就好
 3. 如果 iOS 後端用的是**已經有其他東西的專案**，不能改既有的表和函式。只能新增，名稱一律以 `ios_` 或 `enrecall-` 開頭（最好直接開一個新專案，名稱 `enrecall-ios`，區域選 ap-northeast-1 Tokyo）
 
@@ -28,7 +28,7 @@
 | iOS 後端專案 | 你建立的專案，下面用 `<IOS_REF>` 代表 |
 | iOS 後端 API URL | `https://<IOS_REF>.supabase.co` |
 | iOS 後端 publishable key | 部署完回報給我，App 要用（這是公開金鑰，可以放進 App） |
-| 商店檔案根網址（公開、唯讀） | `<STORE_BASE>` |
+| 商店檔案根網址（公開、唯讀） | `（已改私有，見 DEPLOY-6.md）` |
 
 ---
 
@@ -78,7 +78,7 @@ Supabase Security Advisor 會對這三個 RPC 跳「anon 可執行 security defi
 
 單字商店是 EnRecall 專案 `packs` bucket 裡的 JSON，沒有資料表。MCP 伺服器和 iOS App 都直接用 HTTPS 讀這些公開檔案，不需要金鑰。
 
-下面寫的 `<path>`，完整網址都是 `STORE_BASE/<path>`，其中 `STORE_BASE = <STORE_BASE>`。
+下面寫的 `<path>`，完整網址都是 `STORE_BASE/<path>`，其中 `STORE_BASE = （已改私有，見 DEPLOY-6.md）`。
 
 ### 3.1 商店清單 `store/catalog.json`（沒有 gzip）
 
@@ -203,7 +203,7 @@ function phraseCore(p: string): string {
 - 原始碼放在 `EnRecall/supabase/functions/enrecall-mcp/index.ts`
 - 部署：`supabase functions deploy enrecall-mcp --no-verify-jwt --project-ref <IOS_REF>`。用 MCP 工具部署的話，`verify_jwt` 要設 `false`
 - 資料庫存取（iOS 後端自己的資料庫）：`createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))`
-- 單字庫：讀環境變數 `STORE_BASE`，沒設就用預設值 `<STORE_BASE>`。只能用 `fetch` GET
+- 單字庫：讀環境變數 `STORE_BASE`，沒設就用預設值 `（已改私有，見 DEPLOY-6.md）`。只能用 `fetch` GET
 - 伺服器名稱 `enrecall-ios`，版本 `1.0.0`
 
 ### 5.2 網址與配對碼

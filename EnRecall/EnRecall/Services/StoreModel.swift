@@ -70,7 +70,7 @@ enum PackStatus: Equatable {
     case updateAvailable
 }
 
-/// 單字商店：讀公開的 catalog.json，下載單字包放進牌組
+/// 單字商店：經過 iOS 後端（StoreAccess，要下載密碼）讀 catalog.json，下載單字包放進牌組
 @MainActor
 @Observable
 final class StoreModel {
@@ -79,6 +79,8 @@ final class StoreModel {
         case loading
         case loaded
         case failed
+        /// 還沒輸入下載密碼，或密碼不對
+        case needsPassword
     }
 
     private(set) var packs: [StorePack]
@@ -97,16 +99,21 @@ final class StoreModel {
     func load(force: Bool = false) async {
         guard phase != .loading else { return }
         if phase == .loaded && !force { return }
+        guard let request = StoreAccess.request(path: "store/catalog.json") else {
+            phase = .needsPassword
+            return
+        }
         phase = .loading
         do {
-            let url = AppConfig.storeBaseURL.appending(path: "store/catalog.json")
-            var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
             let (data, response) = try await URLSession.shared.data(for: request)
+            if StoreAccess.isDenied(response) { throw StoreDeniedError() }
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
             let catalog = try JSONDecoder().decode(StoreCatalog.self, from: data)
             packs = catalog.packs.filter(\.isSupported)
             phase = .loaded
+        } catch is StoreDeniedError {
+            packs = []
+            phase = .needsPassword
         } catch {
             // 斷網不擋 App：有舊資料就繼續用
             phase = packs.isEmpty ? .failed : .loaded
@@ -138,11 +145,11 @@ final class StoreModel {
         var received = 0
         var files: [(name: String, data: Data)] = []
         for file in pack.neededFiles {
-            let url = AppConfig.storeBaseURL.appending(path: file.path)
+            guard let request = StoreAccess.request(path: file.path) else { throw StoreDeniedError() }
             let base = received
             let packID = pack.id
             let compressed = try await Task.detached(priority: .userInitiated) {
-                try await PackDownloader.fetch(url) { bytes in
+                try await PackDownloader.fetch(request) { bytes in
                     await MainActor.run {
                         guard self.progress[packID] != nil else { return }
                         self.progress[packID] = min(0.9, 0.9 * Double(base + bytes) / total)
@@ -185,6 +192,9 @@ final class StoreModel {
         for pack in packs where progress[pack.id] == nil {
             do {
                 done.append((pack, try await install(pack, context: context)))
+            } catch is StoreDeniedError {
+                phase = .needsPassword
+                return "下載密碼不對，請重新輸入"
             } catch {
                 failed += 1
             }
