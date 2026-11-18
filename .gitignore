@@ -4,6 +4,8 @@ Payload/
 *.ipa
 .DS_Store
 xcuserdata/
+# EnRecall 後端設定：CI 從 Actions Secrets 產生，不能進公開的 repo
+EnRecall/EnRecall/Config/Secrets.xcconfig
 Screenshots/Screenshots.xcodeproj/
 Ledger/Ledger.xcodeproj/
 Ledger/Ledger/Info.plist

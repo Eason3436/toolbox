@@ -5,6 +5,7 @@ import UIKit
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(ToastCenter.self) private var toasts
+    @Environment(StoreModel.self) private var store
 
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceMode.system
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
@@ -29,14 +30,15 @@ struct SettingsView: View {
                 .listRowBackground(Color.er.surface)
 
             Section("外觀") {
-                Picker("主題", selection: $appearance) {
+                Picker("深淺色", selection: $appearance) {
                     ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.menu)
+                PaletteGrid()
             }
             .listRowBackground(Color.er.surface)
 
-            Section("學習") {
+            Section {
                 Stepper(value: $dailyNewLimit, in: 0...200, step: 5) {
                     LabeledContent("每日新卡上限") {
                         Text(dailyNewLimit, format: .number).monospacedDigit()
@@ -46,6 +48,23 @@ struct SettingsView: View {
                 if reminderEnabled {
                     DatePicker("提醒時間", selection: reminderTime, displayedComponents: .hourAndMinute)
                 }
+            } header: {
+                Text("學習")
+            } footer: {
+                if reminderEnabled && LiveContainerBridge.isInside {
+                    Text("在 LiveContainer 裡要打開這個 App 設定的「修復本地通知」，提醒才會出現")
+                }
+            }
+            .listRowBackground(Color.er.surface)
+
+            SpeechSettingsSection()
+
+            Section {
+                StorePasswordField()
+            } header: {
+                Text("單字商店")
+            } footer: {
+                Text(store.phase == .needsPassword ? "下載、更新單字包要用，只要輸入一次" : "已經輸入過了。換密碼時再輸入一次")
             }
             .listRowBackground(Color.er.surface)
 
@@ -80,6 +99,27 @@ struct SettingsView: View {
         .erPageBackground()
         .navigationTitle("設定")
         .animation(.spring(duration: 0.3), value: reminderEnabled)
+        .onChange(of: reminderEnabled) { _, enabled in
+            guard enabled else {
+                Task { await ReminderScheduler.reschedule(context: context) }
+                return
+            }
+            Task {
+                if await ReminderScheduler.requestPermission() {
+                    await ReminderScheduler.reschedule(context: context)
+                } else {
+                    reminderEnabled = false
+                    toasts.show("通知被關掉了，到系統設定打開", systemImage: "bell.slash")
+                }
+            }
+        }
+        .onChange(of: reminderSeconds) {
+            Task { await ReminderScheduler.reschedule(context: context) }
+        }
+        .onChange(of: dailyNewLimit) {
+            Task { await ReminderScheduler.reschedule(context: context) }
+            HomeWidgetPublisher.publish(context: context)
+        }
         .confirmationDialog("重置所有進度？", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("重置", role: .destructive, action: resetProgress)
         } message: {
@@ -102,9 +142,77 @@ struct SettingsView: View {
             try context.delete(model: ReviewLog.self)
             try context.save()
             toasts.show("已重置所有進度", systemImage: "arrow.counterclockwise")
+            Task { await ReminderScheduler.reschedule(context: context) }
+            HomeWidgetPublisher.publish(context: context)
         } catch {
             toasts.show("重置失敗", systemImage: "exclamationmark.triangle")
         }
+    }
+}
+
+// MARK: - 配色
+
+/// 配色主題：一格一個色票，點了整個 App 馬上換
+private struct PaletteGrid: View {
+    private let columns = [GridItem(.adaptive(minimum: 64), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("配色")
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(AppPalette.allCases) { palette in
+                    Swatch(palette: palette, isSelected: palette == Color.er.palette) {
+                        withAnimation(.easeOut(duration: 0.2)) { Color.er.use(palette) }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .sensoryFeedback(.selection, trigger: Color.er.palette)
+    }
+}
+
+private struct Swatch: View {
+    let palette: AppPalette
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            VStack(spacing: 6) {
+                ZStack {
+                    // 外圈是頁面底色，中間是深色主卡，右下是主色
+                    Circle()
+                        .fill(palette.color("ERBackground"))
+                    Circle()
+                        .fill(palette.color("ERHero"))
+                        .padding(5)
+                    Circle()
+                        .fill(palette.color("ERPrimary"))
+                        .frame(width: 16, height: 16)
+                        .overlay(Circle().strokeBorder(palette.color("ERSurface"), lineWidth: 2))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Color.er.heroText)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .overlay(Circle().strokeBorder(isSelected ? Color.er.text : Color.er.outline, lineWidth: isSelected ? 2 : 1))
+
+                Text(palette.title)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? Color.er.text : Color.er.textSecondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(palette.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

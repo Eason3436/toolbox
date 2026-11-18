@@ -67,6 +67,9 @@ enum DeckMode: String, Codable, CaseIterable, Identifiable {
         case .reviewOnly: "只出複習"
         }
     }
+
+    /// 牌組卡上的分段選擇（暫停是旁邊另一顆鍵）
+    static let running: [DeckMode] = [.active, .reviewOnly]
 }
 
 /// 新卡出現順序

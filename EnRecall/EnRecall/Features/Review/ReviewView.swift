@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// 一輪複習：評分用 FSRS 排下次時間；學習中的卡（幾分鐘後再看）排回這一輪的最後面。
-/// - 上方時間軸：前面評過的字（顏色＝當時選的記憶程度），可以左右滑、點回去看或改評分；後面標出新字／複習
+/// - 上方時間軸：前面評過的字（顏色＝當時選的記憶程度），目前這張在正中間，點回去看或改評分
 /// - 右上可以復原上一張
 /// - 複習用自己的 ModelContext，關掉、切到背景時才存：首頁、牌組那些統計不會每評一張就重算一次（之前會頓）
 struct ReviewView: View {
@@ -27,6 +27,7 @@ struct ReviewView: View {
     @State private var viewing: Int?
     @State private var viewingIntervals: [Rating: String] = [:]
     @State private var details = DetailCache()
+    @State private var lookalikeIndex: LookalikeIndex?
 
     private let scheduler = FSRSScheduler()
 
@@ -47,7 +48,7 @@ struct ReviewView: View {
                 if isLoaded {
                     ReviewTimeline(
                         history: history,
-                        upcoming: Array(queue.dropFirst(index)),
+                        current: current,
                         viewing: viewing,
                         onSelect: select
                     )
@@ -66,6 +67,7 @@ struct ReviewView: View {
         .task {
             guard !isLoaded else { return }
             load()
+            lookalikeIndex = await LookalikeIndex.build(container: mainContext.container)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { save() }
@@ -83,7 +85,8 @@ struct ReviewView: View {
     private var content: some View {
         if let viewing, history.indices.contains(viewing) {
             let step = history[viewing]
-            FlashCardView(card: step.card, detail: details.detail(for: step.card, in: context), isFlipped: true)
+            FlashCardView(card: step.card, detail: details.detail(for: step.card, in: context), isFlipped: true,
+                          lookalikes: lookalikes(for: step.card))
                 .id("past-\(viewing)")
                 .transition(.opacity)
             Spacer(minLength: 0)
@@ -107,7 +110,8 @@ struct ReviewView: View {
             EmptyLine(emptyText)
             Spacer()
         } else if let card = current {
-            FlashCardView(card: card, detail: details.detail(for: card, in: context), isFlipped: isRevealed)
+            FlashCardView(card: card, detail: details.detail(for: card, in: context), isFlipped: isRevealed,
+                          lookalikes: lookalikes(for: card))
                 .id("\(index)-\(card.id)")
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -121,6 +125,10 @@ struct ReviewView: View {
         } else {
             finished
         }
+    }
+
+    private func lookalikes(for card: Card) -> [Lookalike] {
+        lookalikeIndex?.lookalikes(for: card, detail: details.detail(for: card, in: context)) ?? []
     }
 
     private var emptyText: String {
@@ -233,7 +241,7 @@ struct ReviewView: View {
         guard !isRevealed, let card = current else { return }
         let now = Date()
         intervals = scheduler.preview(card.memory, now: now).mapValues { $0.intervalLabel(from: now) }
-        withAnimation(.spring(duration: 0.35)) { isRevealed = true }
+        withAnimation(RatingBar.morph) { isRevealed = true }
     }
 
     private func rate(_ rating: Rating) {
@@ -245,7 +253,7 @@ struct ReviewView: View {
 
         let log = ReviewLog(
             cardId: card.id,
-            deckId: card.deck?.id,
+            deckId: plan.deckOf[card.id] ?? session.deckID ?? card.deck?.id,
             rating: rating,
             stateBefore: before.state,
             reviewedAt: now,
@@ -258,7 +266,7 @@ struct ReviewView: View {
         let requeue = outcome.memory.state.isLearning
         history.append(Step(index: index, card: card, before: before, log: log, requeued: requeue))
         ratedCount += 1
-        withAnimation(.spring(duration: 0.35)) {
+        withAnimation(RatingBar.morph) {
             if requeue { queue.append(card) }
             isRevealed = false
             index += 1
@@ -309,7 +317,7 @@ struct ReviewView: View {
         step.log.scheduledDays = outcome.scheduledDays
         let requeue = outcome.memory.state.isLearning
         ratedCount += 1
-        withAnimation(.spring(duration: 0.35)) {
+        withAnimation(RatingBar.morph) {
             if step.requeued, !requeue,
                let copy = queue.lastIndex(where: { $0.id == step.card.id }), copy >= index {
                 queue.remove(at: copy)
@@ -345,53 +353,56 @@ final class DetailCache {
 
 // MARK: - 上方時間軸
 
-/// 前面評過的字（記憶程度的顏色）→ 目前這張 → 後面的新字／複習。可以左右滑，點前面的字回頭看
+/// 評過的字（記憶程度的顏色）→ 目前這張。正在看的那顆固定在正中間，越往旁邊越淡、越模糊，
+/// 只留左右幾顆；還沒出現的卡不畫。點前面的字回頭看
 struct ReviewTimeline: View {
     let history: [ReviewView.Step]
-    let upcoming: [Card]
+    let current: Card?
     let viewing: Int?
     let onSelect: (Int?) -> Void
 
-    private static let upcomingLimit = 40
+    /// 中間往旁邊留幾顆（再外面一顆是全透明的，往前移時淡入）
+    private static let reach = 3
+    private static let slot: CGFloat = 32
+
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    /// 正中間是第幾顆：history 的位置，history.count 代表目前這張
+    private var focus: Int { viewing ?? history.count }
+    private var lastPosition: Int { current == nil ? max(history.count - 1, 0) : history.count }
+    private var direction: CGFloat { layoutDirection == .rightToLeft ? -1 : 1 }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 2) {
-                    ForEach(Array(history.enumerated()), id: \.offset) { position, step in
-                        pastChip(position: position, step: step)
-                            .id("past-\(position)")
-                    }
-                    ForEach(Array(upcoming.prefix(Self.upcomingLimit).enumerated()), id: \.offset) { offset, card in
-                        upcomingChip(card: card, isCurrent: offset == 0)
-                            .id(offset == 0 ? "current" : "next-\(offset)")
-                    }
-                    if upcoming.count > Self.upcomingLimit {
-                        Text("+\((upcoming.count - Self.upcomingLimit).formatted())")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(Color.er.textTertiary)
-                            .padding(.horizontal, 6)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled()
-            // 這一排在導覽列正下方，不要系統的 soft 邊緣（會把卡片頂端糊掉）
-            .scrollEdgeEffectHidden(true, for: .all)
-            .frame(height: 36)
-            .onAppear { proxy.scrollTo("current", anchor: .center) }
-            .onChange(of: history.count) {
-                withAnimation(.spring(duration: 0.35)) { proxy.scrollTo("current", anchor: .center) }
-            }
-            .onChange(of: viewing) { _, value in
-                withAnimation(.spring(duration: 0.35)) {
-                    proxy.scrollTo(value.map { "past-\($0)" } ?? "current", anchor: .center)
+        let lower = max(0, focus - Self.reach - 1)
+        let upper = min(lastPosition, focus + Self.reach + 1)
+        ZStack {
+            if lower <= upper {
+                ForEach(Array(lower...upper), id: \.self) { position in
+                    chip(at: position)
+                        .modifier(TimelineFade(distance: distance(of: position), slot: Self.slot, reach: Self.reach, direction: direction))
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 36)
+        .animation(.spring(duration: 0.35, bounce: 0.15), value: focus)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("這一輪的卡")
+    }
+
+    /// 離正中間幾格
+    private func distance(of position: Int) -> CGFloat {
+        CGFloat(position - focus)
+    }
+
+    @ViewBuilder
+    private func chip(at position: Int) -> some View {
+        if history.indices.contains(position) {
+            pastChip(position: position, step: history[position])
+        } else if let current {
+            currentChip(card: current)
+        }
     }
 
     private func pastChip(position: Int, step: ReviewView.Step) -> some View {
@@ -404,7 +415,7 @@ struct ReviewTimeline: View {
                 .fill(rating.color)
                 .frame(width: isViewing ? 30 : 20, height: isViewing ? 14 : 10)
                 .overlay(Capsule().strokeBorder(Color.er.surface, lineWidth: isViewing ? 2 : 0))
-                .frame(width: 30, height: 36)
+                .frame(width: Self.slot, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -412,22 +423,46 @@ struct ReviewTimeline: View {
         .accessibilityAddTraits(isViewing ? .isSelected : [])
     }
 
-    private func upcomingChip(card: Card, isCurrent: Bool) -> some View {
+    private func currentChip(card: Card) -> some View {
         let label = card.isNew ? "新字" : (card.state == .review ? "複習" : "再一次")
-        let isActive = isCurrent && viewing == nil
+        let isActive = viewing == nil
         return Button {
             onSelect(nil)
         } label: {
             Capsule()
                 .fill(card.isNew ? Color.er.infoTrack : Color.er.outlineStrong)
-                .frame(width: isCurrent ? 26 : 14, height: isCurrent ? 12 : 8)
+                .frame(width: 26, height: 12)
                 .overlay(Capsule().strokeBorder(Color.er.text, lineWidth: isActive ? 1.5 : 0).padding(-3))
-                .frame(width: isCurrent ? 36 : 18, height: 36)
+                .frame(width: Self.slot, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!isCurrent)
-        .accessibilityLabel(isCurrent ? "目前：\(label)" : label)
+        .accessibilityLabel("目前：\(label)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// 時間軸上離中間越遠：越小、越模糊、越淡（旁邊第一顆不變）
+private struct TimelineFade: ViewModifier {
+    let distance: CGFloat
+    let slot: CGFloat
+    let reach: Int
+    let direction: CGFloat
+
+    func body(content: Content) -> some View {
+        let far: CGFloat = abs(distance)
+        // 旁邊第一顆完全清楚，第二顆起才變小、變模糊、變淡
+        let beyond: CGFloat = max(0, far - 1)
+        let scale: CGFloat = max(0.6, 1 - beyond * 0.1)
+        let blur: CGFloat = beyond * 1.5
+        let opacity: Double = Double(max(0, 1 - beyond / CGFloat(reach)))
+        let x: CGFloat = distance * slot * direction
+        return content
+            .scaleEffect(scale)
+            .blur(radius: blur)
+            .opacity(opacity)
+            .offset(x: x)
+            .zIndex(Double(-far))
     }
 }
 

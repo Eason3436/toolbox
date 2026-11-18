@@ -59,6 +59,8 @@ key 是 snake_case，時間是 ISO 8601（UTC，例如 `2026-11-16T08:30:00Z`）
 | `decks[].mastered` | `state = review` 且 `stability ≥ 21` 天 |
 | `cards` | **只有學過的卡**（`reps > 0`），加上自訂牌組的全部卡。沒學過的單字庫字不在裡面，只算在 `decks[].new` |
 | `cards[].id` | 單字庫的卡 = `library_word_id`（`w:absolute`、`p:such as`）；Claude 寫的 = `claude:<uuid>` |
+| `cards[].decks` | 0.12.0 起：卡片所在的所有牌組 id，原本的牌組在最前面（`deck` = `decks[0]`）。一張卡可以同時在等級牌組和雜誌牌組，進度只有一份。舊版 App 沒有這個欄位，當成 `[deck]` |
+| `card_ids` | 0.12.0 起：App 裡所有卡的 id（含還沒背的單字庫字），判斷「這個字 App 裡已經有卡」用。見 DEPLOY-5.md |
 | `cards[].state` | `new`／`learning`／`review`／`relearning` |
 | `cards[].source` | `library`／`claude` |
 | `logs` | 最近 90 天的每一次評分，舊的在前。`c` 卡 id、`r` 評分（1 不會、2 模糊、3 認識、4 很熟）、`s` 評分前的狀態（`new` = 那天第一次學）、`t` 時間、`d` 排到幾天後 |

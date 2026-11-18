@@ -20,7 +20,7 @@ struct NormalizerTests {
 struct StudyPlannerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -46,6 +46,40 @@ struct StudyPlannerTests {
         #expect(plan.new.filter { $0.deck?.id == "a" }.count == 3)
         // 依序：A 的前三張
         #expect(plan.new.prefix(3).map(\.id) == ["a0", "a1", "a2"])
+    }
+
+    @Test func cardInTwoDecksIsPlannedOnce() throws {
+        let context = try makeContext()
+        let now = Date()
+        let level = Deck(id: "gsat-3", name: "學測 Level 3", kind: .storePack, sortIndex: 0)
+        let magazine = Deck(id: "custom:m", name: "Enjoy English 11/16", kind: .custom, sortIndex: 1)
+        context.insert(level)
+        context.insert(magazine)
+        addCards(2, to: level, in: context, prefix: "w")
+        let crispy = try #require(level.cards.first { $0.id == "w0" })
+        crispy.state = .review
+        crispy.due = now.addingTimeInterval(-60)
+        DeckMembership.add(crispy, to: magazine, in: context)
+        try context.save()
+
+        #expect(magazine.activeCards.map(\.id) == ["w0"])
+        let plan = StudyPlanner.plan(decks: [level, magazine], logs: [], globalNewLimit: 10, now: now)
+        #expect(plan.due.map(\.id) == ["w0"])
+        #expect(plan.deckOf["w0"] == "gsat-3")
+
+        // 只複習雜誌牌組：一樣是同一張卡
+        let only = StudyPlanner.plan(decks: [magazine], logs: [], globalNewLimit: 10, now: now)
+        #expect(only.due.first === crispy)
+        #expect(only.deckOf["w0"] == "custom:m")
+
+        // 移出雜誌牌組：卡片和進度還在學測牌組
+        #expect(DeckMembership.remove(crispy, from: magazine, in: context))
+        try context.save()
+        #expect(magazine.activeCards.isEmpty)
+        #expect(crispy.deck?.id == "gsat-3")
+        #expect(crispy.state == .review)
+        // 原本的牌組不能移出
+        #expect(!DeckMembership.remove(crispy, from: level, in: context))
     }
 
     @Test func pausedAndReviewOnlyDecks() throws {
@@ -82,6 +116,33 @@ struct StudyPlannerTests {
         #expect(plan.new.count == 1)
     }
 
+    @Test func newCardsAllIgnoresLimitsAndKeepsGlobalQuota() throws {
+        let context = try makeContext()
+        let now = Date()
+        let magazine = Deck(id: "m", name: "Enjoy English", kind: .custom, dailyNewLimit: 3, sortIndex: 0)
+        magazine.newCardsAll = true
+        let level = Deck(id: "l", name: "L1", kind: .storePack, dailyNewLimit: 10, sortIndex: 1)
+        context.insert(magazine)
+        context.insert(level)
+        addCards(30, to: magazine, in: context, prefix: "m")
+        addCards(10, to: level, in: context, prefix: "l")
+        // 雜誌今天已經學了 8 個：不算進全部上限
+        let logs = (0..<8).map { i in
+            ReviewLog(cardId: "m\(i)x", deckId: "m", rating: .good, stateBefore: .new, reviewedAt: now.addingTimeInterval(-60))
+        }
+        let plan = StudyPlanner.plan(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(plan.new.filter { $0.deck?.id == "m" }.count == 30)
+        #expect(plan.new.filter { $0.deck?.id == "l" }.count == 5)
+
+        let summary = StudyPlanner.summary(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(summary.newDoneToday == 0)
+        #expect(summary.all.new == 35)
+
+        // 首頁、牌組頁用的快取數字跟 StudyPlanner 一樣
+        let cached = StudySummaryCache().summary(decks: [magazine, level], logs: logs, globalNewLimit: 5, now: now)
+        #expect(cached == summary)
+    }
+
     @Test func randomOrderIsStableWithinADay() throws {
         let context = try makeContext()
         let deck = Deck(id: "r", name: "R", kind: .storePack, order: .random, dailyNewLimit: 5, sortIndex: 0)
@@ -92,6 +153,24 @@ struct StudyPlannerTests {
         let second = StudyPlanner.plan(decks: [deck], logs: [], globalNewLimit: 20, now: now.addingTimeInterval(1)).new.map(\.id)
         #expect(first == second)
         #expect(first.count == 5)
+    }
+}
+
+struct DeckPauseTests {
+    @Test func pauseRemembersRunMode() {
+        let deck = Deck(id: "a", name: "A", kind: .storePack, mode: .reviewOnly)
+        deck.isPaused = true
+        #expect(deck.mode == .paused)
+        #expect(deck.runMode == .reviewOnly)
+        // 暫停中換成出新卡：繼續之後就是出新卡
+        deck.runMode = .active
+        #expect(deck.mode == .paused)
+        deck.isPaused = false
+        #expect(deck.mode == .active)
+        deck.isPaused = true
+        deck.isPaused = true
+        deck.isPaused = false
+        #expect(deck.mode == .active)
     }
 }
 
@@ -113,7 +192,7 @@ struct ReviewMixTests {
 struct StudySnapshotTests {
     @Test func includesLearnedCardsAndRecentLogsOnly() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         let context = ModelContext(container)
         let deck = Deck(id: "gsat-4", name: "學測 Level 4", kind: .storePack, dailyNewLimit: 10, sortIndex: 0)
         context.insert(deck)
@@ -128,6 +207,9 @@ struct StudySnapshotTests {
         fresh.deck = deck
         context.insert(learned)
         context.insert(fresh)
+        let magazine = Deck(id: "custom:m", name: "雜誌", kind: .custom, sortIndex: 1)
+        context.insert(magazine)
+        DeckLink.insert(deck: magazine, card: learned, sortIndex: 0, into: context)
         context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .good, stateBefore: .review, scheduledDays: 6))
         context.insert(ReviewLog(cardId: "w:absolute", deckId: "gsat-4", rating: .again, stateBefore: .new,
                                  reviewedAt: Date().addingTimeInterval(-200 * 86_400)))
@@ -139,6 +221,10 @@ struct StudySnapshotTests {
         #expect(snapshot.decks.first?.total == 2)
         #expect(snapshot.decks.first?.new == 1)
         #expect(snapshot.decks.first?.mastered == 1)
+        // 同一張卡在兩個牌組：只傳一次，decks 列出兩個
+        #expect(snapshot.decks.last?.total == 1)
+        #expect(snapshot.cards.first?.decks == ["gsat-4", "custom:m"])
+        #expect(Set(snapshot.cardIds) == ["w:absolute", "w:abandon"])
 
         let body = try StudySnapshot.requestBody(code: "TestCodeTestCodeTest1234", snapshot: snapshot)
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -149,6 +235,8 @@ struct StudySnapshotTests {
         let card = try #require((payload["cards"] as? [[String: Any]])?.first)
         #expect(card["last_review"] is String)
         #expect(card["state"] as? String == "review")
+        #expect(card["decks"] as? [String] == ["gsat-4", "custom:m"])
+        #expect((payload["card_ids"] as? [String])?.count == 2)
     }
 }
 
@@ -165,7 +253,7 @@ struct StatsCalculatorTests {
 struct InboxImporterTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -216,11 +304,24 @@ struct InboxImporterTests {
         card.deck = pack
         context.insert(card)
 
-        let result = try InboxImporter.importItems([item("ability", libraryID: "w:ability")], into: context)
-        #expect(result.added == 0)
-        #expect(result.skipped == 1)
+        let result = try InboxImporter.importItems([item("ability", libraryID: "w:ability"), item("photosynthesis")], into: context)
+        #expect(result.added == 2)
+        #expect(result.linked == 1)
+        #expect(result.skipped == 0)
+        #expect(result.toastMessage == "從 Claude 匯入 2 個單字到〈第 3 課〉，其中 1 個本來就在背，進度照舊")
+        // 同一張卡：原本的牌組不變、進度不變，也出現在第 3 課
         #expect(card.reps == 5)
         #expect(card.deck?.id == "gsat-1")
+        #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+        let lesson = try #require(try context.fetch(FetchDescriptor<Deck>()).first { $0.name == "第 3 課" })
+        #expect(Set(lesson.activeCards.map(\.id)) == ["w:ability", lesson.cards.first?.id ?? ""])
+        #expect(card.allDecks.map(\.id) == ["gsat-1", lesson.id])
+
+        // 再送一次：已經在這個牌組，不會多一筆
+        let again = try InboxImporter.importItems([item("ability", libraryID: "w:ability")], into: context)
+        #expect(again.added == 0)
+        #expect(again.skipped == 1)
+        #expect(try context.fetch(FetchDescriptor<DeckLink>()).count == 1)
     }
 
     @Test func samePhraseDifferentPosIsKept() throws {
@@ -353,7 +454,7 @@ private extension Data {
 struct PackInstallerTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         return ModelContext(container)
     }
 
@@ -427,6 +528,17 @@ struct PackInstallerTests {
         #expect(card.deck?.id == "custom:x")
         #expect(card.reps == 3)
         #expect(try context.fetch(FetchDescriptor<Card>()).count == 2)
+        // 等級牌組也看得到這個字（同一張卡）
+        let level = try #require(try context.fetch(FetchDescriptor<Deck>()).first { $0.id == "gsat-1" })
+        #expect(level.activeCards.count == 2)
+        #expect(level.orderedActiveCards.map(\.id) == ["w:ability", "w:class"])
+
+        // 單字包拿掉這個字：只解除連結，卡片還在第 3 課
+        try PackInstaller.install(pack(version: 2), entries: [entry("class")], into: context)
+        try context.save()
+        #expect(level.activeCards.map(\.id) == ["w:class"])
+        #expect(card.deck?.id == "custom:x")
+        #expect(!card.isRetired)
     }
 }
 
@@ -552,7 +664,7 @@ struct PatternTests {
     @MainActor
     @Test func importsPatternsIntoTheirOwnDeck() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, configurations: config)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
         let context = ModelContext(container)
         let json = #"""
         [{"id":"1","deck_name":"第 3 課","word":"It is not until + 時間 + that + S + V","pos":null,"zh":"直到…才…",
@@ -584,5 +696,254 @@ struct PatternTests {
         let again = try InboxImporter.importItems([items[0]], into: context)
         #expect(again.added == 0)
         #expect(again.skipped == 1)
+    }
+}
+
+@MainActor
+struct HandoutTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    @Test func letterHintKeepsSbAndCapsLength() {
+        #expect(HandoutHTML.letterHint("give up") == "g _ _ _   u _")
+        #expect(HandoutHTML.letterHint("take care of sb") == "t _ _ _   c _ _ _   o _   sb")
+        #expect(HandoutHTML.letterHint("internationalization").filter { $0 == "_" }.count == 9)
+    }
+
+    @Test func underlinesDifferentLetters() {
+        let (a, b) = HandoutHTML.underlinedDifference("affect", "effect")
+        #expect(a == "<u>a</u>ffect")
+        #expect(b == "<u>e</u>ffect")
+    }
+
+    @Test func weakestRangeSkipsNewCardsAndPutsWeakFirst() throws {
+        let context = try makeContext()
+        let now = Date()
+        let deck = Deck(id: "gsat-3", name: "學測 Level 3", kind: .storePack, level: 3)
+        context.insert(deck)
+        for (id, stability) in [("w:strong", 60.0), ("w:weak", 1.0), ("w:new", 0.0)] {
+            let card = Card(id: id, word: String(id.dropFirst(2)), zh: "字")
+            card.deck = deck
+            if stability > 0 {
+                card.state = .review
+                card.stability = stability
+                card.lastReview = now.addingTimeInterval(-5 * 86_400)
+            }
+            context.insert(card)
+        }
+        try context.save()
+
+        let entries = try HandoutBuilder.entries(HandoutOptions(range: .weakest), context: context, now: now)
+        #expect(entries.map(\.card.id) == ["w:weak", "w:strong"])
+        #expect(entries.first?.levelText == "L3")
+        #expect(entries.first?.memoryText.count == 5)
+    }
+
+    @Test func testSheetNeverPrintsTheAnswerInTheQuestion() throws {
+        let context = try makeContext()
+        let deck = Deck(id: "custom:x", name: "第 3 課", kind: .custom)
+        context.insert(deck)
+        let card = Card(id: "claude:1", word: "abandon", pos: "v.", zh: "放棄",
+                        example: "They abandoned the plan after a week.", exampleZh: "他們一週後放棄了計畫。", source: .claude)
+        card.deck = deck
+        context.insert(card)
+        try context.save()
+
+        var options = HandoutOptions(kind: .test, range: .deck, deckID: "custom:x")
+        let entries = try HandoutBuilder.entries(options, context: context)
+        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        // 答案只在右邊折起來的那一欄
+        let key = try #require(html.firstRange(of: #/<div class="key[^"]*">[^<]*</div>/#))
+        #expect(html[key].contains("abandon"))
+        var question = html
+        question.removeSubrange(key)
+        #expect(!question.lowercased().contains("abandon"))
+        #expect(question.contains("They \(HandoutHTML.blank) the plan"))
+        #expect(question.contains("a _ _ _ _ _ _"))
+
+        options.kind = .notes
+        let notes = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        #expect(notes.contains("They <b>abandoned</b> the plan"))
+        #expect(notes.contains("第 3 課 · 1 字"))
+        // 印成 PDF 時透明會變黑，樣式不能有透明
+        #expect(!notes.contains("transparent") && !notes.contains("rgba") && !notes.contains("gradient"))
+
+        // 速查表照熟悉度分組：還沒背過的是新字
+        options.kind = .sheet
+        let sheet = HandoutHTML.document(entries: entries, options: options, rangeTitle: "第 3 課")
+        #expect(sheet.contains("新字<span>1 字</span>"))
+        #expect(!sheet.contains("還不熟"))
+    }
+}
+
+@MainActor
+struct ReminderAndWidgetTests {
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Deck.self, Card.self, ReviewLog.self, CardContent.self, DeckLink.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    /// A 牌組：3 張新卡、2 張複習卡（一張已到期、一張 5 小時後到期）；B 牌組暫停
+    private func seed(_ context: ModelContext, now: Date) throws -> [Deck] {
+        let a = Deck(id: "a", name: "A", kind: .storePack, dailyNewLimit: 2, sortIndex: 0)
+        let b = Deck(id: "b", name: "B", kind: .storePack, sortIndex: 1)
+        b.mode = .paused
+        context.insert(a)
+        context.insert(b)
+        for i in 0..<5 {
+            let card = Card(id: "a\(i)", word: "a\(i)", zh: "字", sortIndex: i)
+            card.deck = a
+            if i >= 3 {
+                card.state = .review
+                card.due = now.addingTimeInterval(i == 3 ? -60 : 5 * 3600)
+            }
+            context.insert(card)
+        }
+        let paused = Card(id: "b0", word: "b0", zh: "字")
+        paused.deck = b
+        paused.state = .review
+        paused.due = now.addingTimeInterval(-60)
+        context.insert(paused)
+        try context.save()
+        return [a, b]
+    }
+
+    @Test func forecastMatchesPlannerAtEveryTime() throws {
+        let context = try makeContext()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 9))!
+        let decks = try seed(context, now: now)
+        let forecast = StudyForecast.load(context: context, now: now, calendar: calendar)
+        for hours in [0, 4, 6, 20] {
+            let date = now.addingTimeInterval(Double(hours) * 3600)
+            let expected = StudyPlanner.summary(decks: decks, logs: [], globalNewLimit: forecast.newLimit, now: date, calendar: calendar).all
+            #expect(forecast.counts(at: date, calendar: calendar) == expected)
+        }
+        #expect(forecast.counts(at: now, calendar: calendar) == StudyCounts(due: 1, new: 2))
+        #expect(forecast.counts(at: now.addingTimeInterval(6 * 3600), calendar: calendar) == StudyCounts(due: 2, new: 2))
+    }
+
+    @Test func remindersSkipPastTimesAndFreeDays() throws {
+        let context = try makeContext()
+        let calendar = Calendar(identifier: .gregorian)
+        // 晚上 10 點：今天 9 點的提醒已經過了
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 22))!
+        _ = try seed(context, now: now)
+        let forecast = StudyForecast.load(context: context, now: now, calendar: calendar)
+        let plan = ReminderScheduler.plan(forecast: forecast, reminderSeconds: 21 * 3600, now: now, calendar: calendar)
+        #expect(plan.count == ReminderScheduler.days - 1)
+        #expect(calendar.component(.day, from: plan[0].0) == 18)
+        #expect(calendar.component(.hour, from: plan[0].0) == 21)
+
+        // 沒有要背的字就不排
+        let empty = StudyForecast(decks: [], todayLogs: [], newLimit: 20, now: now)
+        #expect(ReminderScheduler.plan(forecast: empty, reminderSeconds: 21 * 3600, now: now, calendar: calendar).isEmpty)
+    }
+
+    @Test func reminderMessages() {
+        #expect(ReminderScheduler.message(StudyCounts(due: 12, new: 0)) == "還有 12 張要複習")
+        #expect(ReminderScheduler.message(StudyCounts(due: 0, new: 5)) == "今天的 5 個新字還沒背")
+        #expect(ReminderScheduler.message(StudyCounts(due: 3, new: 5)) == "還有 3 張要複習、5 個新字")
+    }
+
+    @Test func widgetTimelineAndEntries() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 9, minute: 30))!
+        let times = HomeWidgetPublisher.times(after: now, calendar: calendar)
+        #expect(times.first == now)
+        #expect(times.count == 14)
+        #expect(times.contains(calendar.date(from: DateComponents(year: 2026, month: 11, day: 18))!))
+
+        let entry = HomeWidgetPublisher.entry(counts: StudyCounts(due: 30, new: 10), date: now, done: 10, streak: 4)
+        #expect(entry.value == 40.formatted())
+        #expect(entry.subtitle == "複習 30 · 新字 10")
+        #expect(entry.details == ["連續 4 天", "今天背了 10 張"])
+        #expect(entry.progress == 0.2)
+        #expect(HomeWidgetPublisher.entry(counts: StudyCounts(), date: now, done: 0, streak: 0).caption == "今天背完了")
+    }
+
+    @Test func widgetSnapshotRoundTripsAndOpensTheApp() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = LCWidgetSnapshot(
+            appName: "EnRecall", bundleName: "EnRecall.app", containerName: "ABC", lcScheme: "livecontainer2",
+            updatedAt: now,
+            entries: [.init(date: now.addingTimeInterval(3600), value: "5"), .init(date: now, value: "9")])
+        let data = try LCWidgetSnapshot.encoder.encode(snapshot)
+        let decoded = try LCWidgetSnapshot.decoder.decode(LCWidgetSnapshot.self, from: data)
+        #expect(decoded == snapshot)
+        #expect(decoded.entry(at: now.addingTimeInterval(60))?.value == "9")
+        #expect(decoded.entry(at: now.addingTimeInterval(7200))?.value == "5")
+        let url = try #require(decoded.launchURL)
+        #expect(url.scheme == "livecontainer2")
+        #expect(url.host == "livecontainer-launch")
+        #expect(url.query?.contains("bundle-name=EnRecall.app") == true)
+    }
+}
+
+@MainActor
+struct LookalikeTests {
+    private func entry(_ word: String, _ zh: String) -> LookalikeIndex.Entry {
+        LookalikeIndex.Entry(word: word, key: word.lowercased(), zh: zh)
+    }
+
+    @Test func editDistanceCountsSwapsAsOneStep() {
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("adapt"), cutoff: 2) == 1)
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("adult"), cutoff: 2) == 2)
+        #expect(LookalikeIndex.distance(Array("form"), Array("from"), cutoff: 2) == 1)
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("banana"), cutoff: 2) == nil)
+    }
+
+    @Test func findsSpellingLookalikes() {
+        let index = LookalikeIndex(entries: [
+            entry("adapt", "v. 適應；改編"),
+            entry("adult", "n. 成人"),
+            entry("apple", "n. 蘋果"),
+            entry("adopt", "v. 採用；領養"),
+            entry("table", "n. 桌子"),
+        ])
+        let card = Card(id: "w:adopt", word: "adopt", zh: "採用")
+        let result = index.lookalikes(for: card, detail: nil)
+        #expect(result.map(\.word) == ["adapt", "adult"])
+        #expect(result.first?.zh == "適應")
+        #expect(result.first?.differing == [2])
+    }
+
+    @Test func shortGlossKeepsFirstSense() {
+        #expect(LookalikeIndex.shortGloss("v. 適應；改編") == "適應")
+        #expect(LookalikeIndex.shortGloss("成人, 大人") == "成人")
+        #expect(LookalikeIndex.shortGloss("  ") == nil)
+    }
+}
+
+struct PhraseSpotterTests {
+    private func matches(_ pattern: String?, _ sentence: String) -> Bool {
+        guard let pattern, let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return false }
+        return regex.firstMatch(in: sentence, range: NSRange(location: 0, length: (sentence as NSString).length)) != nil
+    }
+
+    @Test func phrasesMatchInflectionsAndPlaceholders() {
+        #expect(matches(PhraseSpotter.phraseRegex("look forward to sth"), "I am looking forward to the trip."))
+        #expect(matches(PhraseSpotter.phraseRegex("be fond of sth"), "I'm fond of old movies."))
+        #expect(matches(PhraseSpotter.phraseRegex("keep sb from doing sth"), "The rain kept us from going out."))
+        #expect(matches(PhraseSpotter.phraseRegex("take sth into account"), "They took the weather into account."))
+        #expect(!matches(PhraseSpotter.phraseRegex("look forward to sth"), "Look at the forward area."))
+    }
+
+    @Test func singleWordPhrasesAreSkipped() {
+        #expect(PhraseSpotter.phraseRegex("sth else") == nil)
+    }
+
+    @Test func patternsNeedAnchorsInOrder() {
+        let pattern = PhraseSpotter.patternRegex(anchors: ["it is not until", "that"])
+        #expect(matches(pattern, "It was not until midnight that he finished his report."))
+        #expect(!matches(pattern, "That was not until midnight."))
+    }
+
+    @Test func joinsHyphenatedLines() {
+        #expect(PhraseSpotter.joinLines(["He looked for infor-", "mation about it."]) == "He looked for information about it.")
     }
 }

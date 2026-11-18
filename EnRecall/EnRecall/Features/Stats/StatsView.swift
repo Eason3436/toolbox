@@ -140,7 +140,7 @@ private struct DailyBarChart: View {
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: annotate ? 1 : 7)) { _ in
-                AxisValueLabel(format: labelFormat)
+                AxisValueLabel(format: labelFormat, centered: true)
             }
         }
         .chartYAxis(.hidden)
@@ -151,46 +151,42 @@ private struct DailyBarChart: View {
 // MARK: - 熟練度
 
 private struct MasteryRow: Identifiable {
-    let deck: String
-    let status: String
-    let count: Int
-    var id: String { deck + status }
+    let id: String
+    let name: String
+    let mastered: Int
+    let learning: Int
+    let fresh: Int
+
+    var total: Int { mastered + learning + fresh }
 }
 
+/// 每個牌組一列：名稱、已熟悉／總數，下面一條依比例分段的長條（每列各自滿版，看的是比例）
 private struct MasteryChart: View {
     let decks: [Deck]
 
     private var rows: [MasteryRow] {
-        decks.flatMap { deck -> [MasteryRow] in
-            let cards = deck.activeCards
-            let mastered = cards.filter(\.isMastered).count
-            let fresh = cards.filter(\.isNew).count
-            let learning = cards.count - mastered - fresh
-            return [
-                MasteryRow(deck: deck.name, status: "已熟悉", count: mastered),
-                MasteryRow(deck: deck.name, status: "學習中", count: learning),
-                MasteryRow(deck: deck.name, status: "新卡", count: fresh),
-            ]
+        decks.map { deck in
+            var mastered = 0
+            var fresh = 0
+            var learning = 0
+            for card in deck.activeCards {
+                if card.isMastered {
+                    mastered += 1
+                } else if card.isNew {
+                    fresh += 1
+                } else {
+                    learning += 1
+                }
+            }
+            return MasteryRow(id: deck.id, name: deck.name, mastered: mastered, learning: learning, fresh: fresh)
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Chart(rows) { row in
-                BarMark(
-                    x: .value("張數", row.count),
-                    y: .value("牌組", row.deck)
-                )
-                .foregroundStyle(by: .value("狀態", row.status))
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(rows) { row in
+                MasteryRowView(row: row)
             }
-            .chartForegroundStyleScale([
-                "已熟悉": Color.er.mastered,
-                "學習中": Color.er.learning,
-                "新卡": Color.er.fresh,
-            ])
-            .chartLegend(.hidden)
-            .chartXAxis(.hidden)
-            .frame(height: CGFloat(decks.count) * 36 + 8)
 
             HStack(spacing: 14) {
                 legend(Color.er.mastered, "已熟悉")
@@ -199,6 +195,7 @@ private struct MasteryChart: View {
             }
             .font(.caption)
             .foregroundStyle(Color.er.textSecondary)
+            .padding(.top, 2)
         }
     }
 
@@ -209,6 +206,52 @@ private struct MasteryChart: View {
                 .frame(width: 10, height: 10)
             Text(title)
         }
+    }
+}
+
+private struct MasteryRowView: View {
+    let row: MasteryRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(row.name)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.er.text)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(row.mastered.formatted()) / \(row.total.formatted())")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.er.textSecondary)
+            }
+            bar
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.name)
+        .accessibilityValue("已熟悉 \(row.mastered.formatted()) 張，學習中 \(row.learning.formatted()) 張，新卡 \(row.fresh.formatted()) 張")
+    }
+
+    private var bar: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let total = CGFloat(max(row.total, 1))
+            HStack(spacing: 0) {
+                segment(Color.er.mastered, CGFloat(row.mastered) / total * width)
+                segment(Color.er.learning, CGFloat(row.learning) / total * width)
+                segment(Color.er.fresh, CGFloat(row.fresh) / total * width)
+            }
+            .frame(width: width, alignment: .leading)
+            .background(Color.er.fill)
+            .clipShape(Capsule())
+        }
+        .frame(height: 8)
+    }
+
+    private func segment(_ color: Color, _ width: CGFloat) -> some View {
+        Rectangle()
+            .fill(color)
+            .frame(width: width)
     }
 }
 

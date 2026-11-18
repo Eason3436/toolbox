@@ -12,7 +12,7 @@ struct SweepApp: App {
                 .environment(queue)
                 .environment(island)
         }
-        // 資料庫在 App 自己的 Application Support：SideStore 續簽、覆蓋安裝都不會清掉
-        .modelContainer(for: [ViewedAsset.self, CleanStats.self])
+        // 資料庫固定在 App 自己的 Application Support（AppDatabase.swift），不用 SwiftData 預設的 default.store
+        .modelContainer(AppDatabase.container)
     }
 }

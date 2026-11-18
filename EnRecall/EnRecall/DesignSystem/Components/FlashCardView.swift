@@ -7,6 +7,8 @@ struct FlashCardView: View {
     let card: Card
     let detail: CardDetail?
     let isFlipped: Bool
+    /// 容易搞混的字（≠ adapt、adult），背面單字下面
+    var lookalikes: [Lookalike] = []
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: DetailTab = .examples
@@ -115,6 +117,10 @@ struct FlashCardView: View {
                 .foregroundStyle(Color.er.text)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if !lookalikes.isEmpty {
+                LookalikeRow(items: lookalikes)
+            }
+
             Divider().overlay(Color.er.outline)
 
             if tabs.isEmpty {
@@ -148,9 +154,6 @@ struct FlashCardView: View {
         if let example = card.example, !example.isEmpty {
             HStack(spacing: 6) {
                 DetailLabel("例句")
-                if card.source == .claude {
-                    Chip(text: "AI 例句", style: .info)
-                }
             }
             ScrollView {
                 ExampleLines(en: example, zh: card.exampleZh)
@@ -159,6 +162,49 @@ struct FlashCardView: View {
             .softScrollEdges()
             .scrollEdgeEffectHidden(true, for: .all)
         }
+    }
+}
+
+/// 「≠ adapt 適應　≠ adult 成人」：跟原本的字不一樣的字母上色
+struct LookalikeRow: View {
+    let items: [Lookalike]
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(items) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("≠")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.er.textTertiary)
+                    Text(spelled(item))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.er.text)
+                    if let zh = item.zh {
+                        Text(zh)
+                            .font(.caption)
+                            .foregroundStyle(Color.er.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.er.fill, in: Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("不是 \(item.word)，\(item.zh ?? "")")
+            }
+        }
+    }
+
+    private func spelled(_ item: Lookalike) -> AttributedString {
+        var result = AttributedString()
+        for (offset, character) in item.word.enumerated() {
+            var letter = AttributedString(String(character))
+            if item.differing.contains(offset) {
+                letter.foregroundColor = Color.er.accent
+            }
+            result += letter
+        }
+        return result
     }
 }
 
@@ -190,7 +236,11 @@ struct SpeakButton: View {
     let container = PreviewData.container
     let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "abstract" }
     if let card {
-        FlashCardView(card: card, detail: CardDetail.load(for: card.id, in: container.mainContext), isFlipped: flipped)
+        FlashCardView(card: card, detail: CardDetail.load(for: card.id, in: container.mainContext), isFlipped: flipped,
+                      lookalikes: [
+                          Lookalike(word: "extract", zh: "取出", differing: []),
+                          Lookalike(word: "abstain", zh: "戒除", differing: []),
+                      ])
             .padding(Theme.Spacing.page)
             .onTapGesture { withAnimation(.spring(duration: 0.35)) { flipped.toggle() } }
             .erPageBackground()
@@ -202,7 +252,8 @@ struct SpeakButton: View {
     let container = PreviewData.container
     let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.source == .claude }
     if let card {
-        FlashCardView(card: card, detail: nil, isFlipped: true)
+        FlashCardView(card: card, detail: nil, isFlipped: true,
+                      lookalikes: [Lookalike(word: "adapt", zh: "適應", differing: [2])])
             .padding(Theme.Spacing.page)
             .erPageBackground()
             .modelContainer(container)
