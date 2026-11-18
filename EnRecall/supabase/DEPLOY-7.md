@@ -127,13 +127,6 @@ const upstream = await fetch(`${base}/storage/v1/object/packs/${path}`, {
 ## 6. 全部通過之後
 
 1. 刪掉 iOS 後端的 Edge Function secrets `ENRECALL_STORAGE_URL`、`ENRECALL_STORAGE_KEY`
-2. 告訴使用者：如果當初在 EnRecall 專案建了給 iOS 用的 secret key（`ios-packs`），可以到 EnRecall 專案 Settings → API Keys 撤銷它。**由使用者自己做，Muse 不要碰 EnRecall 專案**
-3. EnRecall 專案的 `packs` bucket 要不要改私有，由使用者決定（網頁版／Android 版可能還在用公開網址）
-
-## 7. 之後單字庫有更新
-
-iOS 後端的單字庫是**複本**，EnRecall 專案那邊更新不會自動同步過來。要更新時：
-
-1. 使用者（或 Claude）從 EnRecall 專案下載新的 `store/catalog.json` 和它列出、這邊還沒有的檔案
-2. 照第 2 節上傳（`x-upsert: true` 會覆蓋 `catalog.json`）
-3. 舊版本的檔案（例如 `v2/`）先留著，App 下載到一半時不會壞
+2. 從此 iOS 後端的 `packs` 就是 iOS 單字庫**唯一的來源**。使用者說不會再更新原本的單字庫，也不會再動 Android／網頁版 EnRecall，
+   所以不用跟 EnRecall 專案同步，之後也不要再從那邊讀任何東西
+3. 如果當初在 EnRecall 專案建了給 iOS 用的 secret key（`ios-packs`），使用者可以自己去撤銷。**Muse 不要碰 EnRecall 專案**
