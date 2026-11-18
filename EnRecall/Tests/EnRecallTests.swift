@@ -883,3 +883,38 @@ struct ReminderAndWidgetTests {
         #expect(url.query?.contains("bundle-name=EnRecall.app") == true)
     }
 }
+
+@MainActor
+struct LookalikeTests {
+    private func entry(_ word: String, _ zh: String) -> LookalikeIndex.Entry {
+        LookalikeIndex.Entry(word: word, key: word.lowercased(), zh: zh)
+    }
+
+    @Test func editDistanceCountsSwapsAsOneStep() {
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("adapt"), cutoff: 2) == 1)
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("adult"), cutoff: 2) == 2)
+        #expect(LookalikeIndex.distance(Array("form"), Array("from"), cutoff: 2) == 1)
+        #expect(LookalikeIndex.distance(Array("adopt"), Array("banana"), cutoff: 2) == nil)
+    }
+
+    @Test func findsSpellingLookalikes() {
+        let index = LookalikeIndex(entries: [
+            entry("adapt", "v. 適應；改編"),
+            entry("adult", "n. 成人"),
+            entry("apple", "n. 蘋果"),
+            entry("adopt", "v. 採用；領養"),
+            entry("table", "n. 桌子"),
+        ])
+        let card = Card(id: "w:adopt", word: "adopt", zh: "採用")
+        let result = index.lookalikes(for: card, detail: nil)
+        #expect(result.map(\.word) == ["adapt", "adult"])
+        #expect(result.first?.zh == "適應")
+        #expect(result.first?.differing == [2])
+    }
+
+    @Test func shortGlossKeepsFirstSense() {
+        #expect(LookalikeIndex.shortGloss("v. 適應；改編") == "適應")
+        #expect(LookalikeIndex.shortGloss("成人, 大人") == "成人")
+        #expect(LookalikeIndex.shortGloss("  ") == nil)
+    }
+}

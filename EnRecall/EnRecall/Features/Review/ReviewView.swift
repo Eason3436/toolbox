@@ -27,6 +27,7 @@ struct ReviewView: View {
     @State private var viewing: Int?
     @State private var viewingIntervals: [Rating: String] = [:]
     @State private var details = DetailCache()
+    @State private var lookalikeIndex: LookalikeIndex?
 
     private let scheduler = FSRSScheduler()
 
@@ -66,6 +67,7 @@ struct ReviewView: View {
         .task {
             guard !isLoaded else { return }
             load()
+            lookalikeIndex = await LookalikeIndex.build(container: mainContext.container)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { save() }
@@ -83,7 +85,8 @@ struct ReviewView: View {
     private var content: some View {
         if let viewing, history.indices.contains(viewing) {
             let step = history[viewing]
-            FlashCardView(card: step.card, detail: details.detail(for: step.card, in: context), isFlipped: true)
+            FlashCardView(card: step.card, detail: details.detail(for: step.card, in: context), isFlipped: true,
+                          lookalikes: lookalikes(for: step.card))
                 .id("past-\(viewing)")
                 .transition(.opacity)
             Spacer(minLength: 0)
@@ -107,7 +110,8 @@ struct ReviewView: View {
             EmptyLine(emptyText)
             Spacer()
         } else if let card = current {
-            FlashCardView(card: card, detail: details.detail(for: card, in: context), isFlipped: isRevealed)
+            FlashCardView(card: card, detail: details.detail(for: card, in: context), isFlipped: isRevealed,
+                          lookalikes: lookalikes(for: card))
                 .id("\(index)-\(card.id)")
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -121,6 +125,10 @@ struct ReviewView: View {
         } else {
             finished
         }
+    }
+
+    private func lookalikes(for card: Card) -> [Lookalike] {
+        lookalikeIndex?.lookalikes(for: card, detail: details.detail(for: card, in: context)) ?? []
     }
 
     private var emptyText: String {

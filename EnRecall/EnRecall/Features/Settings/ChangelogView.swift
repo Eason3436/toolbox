@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.19.0", date: day(18), notes: [
+            "卡片背面單字下面標出容易搞混的字，例如 adopt ≠ adapt、adult，不一樣的字母會上色",
+            "先用單字包整理好的易混淆字，不夠再從你的牌組裡找拼字只差一兩個字母的",
+        ]),
         Entry(version: "0.18.0", date: day(18), notes: [
             "卡片背面的例句下面多了幾個主要搭配，常用的排前面",
             "複習畫面上方的進度只畫評過的字，目前這張在正中間，越往旁邊越淡；後面還沒出現的不再列出來",
