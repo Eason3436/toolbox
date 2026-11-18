@@ -24,6 +24,10 @@ enum SettingsKey {
     static let handoutCount = "handoutCount"
     static let handoutAmount = "handoutAmount"
     static let handoutDirection = "handoutDirection"
+    /// 發音聲音（AVSpeechSynthesisVoice.identifier，空字串＝自動）
+    static let speechVoice = "speechVoice"
+    /// 語速（預設語速的倍數）
+    static let speechRate = "speechRate"
 }
 
 /// 複習時接下來出什麼

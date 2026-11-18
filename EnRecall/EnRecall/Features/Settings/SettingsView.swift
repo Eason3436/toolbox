@@ -57,6 +57,8 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.er.surface)
 
+            SpeechSettingsSection()
+
             Section {
                 StorePasswordField()
             } header: {

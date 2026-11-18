@@ -11,6 +11,11 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.20.0", date: day(18), notes: [
+            "設定 › 發音可以選朗讀的聲音：列出手機上的英文聲音（高音質、增強音質、標準），點一下就試聽",
+            "可以調語速，放開滑桿會唸一句聽聽看",
+            "單字和例句都用你選的聲音和語速",
+        ]),
         Entry(version: "0.19.0", date: day(18), notes: [
             "卡片背面單字下面標出容易搞混的字，例如 adopt ≠ adapt、adult，不一樣的字母會上色",
             "先用單字包整理好的易混淆字，不夠再從你的牌組裡找拼字只差一兩個字母的",
