@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.11.1", date: day(18), notes: [
+            "紀錄頁的牌組熟練度不再跟牌組名稱疊在一起，每個牌組一列，顯示已熟悉幾張",
+            "每日複習的長條對齊下面的星期",
+        ]),
         Entry(version: "0.11.0", date: day(16), notes: [
             "首頁新增測驗：中翻英、英文填空、片語填空、句型填空，答錯的字可以排進今天的複習",
             "句型卡：Claude 整理好的雜誌句型（結構、可以放什麼詞、例句、變化、相近句型、常見錯誤）可以送進 App 背",
