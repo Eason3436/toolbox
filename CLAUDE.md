@@ -17,7 +17,7 @@
 | Ledger 磁力特別版 | `main` | `LedgerMagnet/` | `ledger-magnet.yml` | [`ledger-magnet-latest`/LedgerMagnet.ipa](https://github.com/Eason3436/toolbox/releases/download/ledger-magnet-latest/LedgerMagnet.ipa) |
 | LiveContainer 捷徑版 | `livecontainer` | `LiveContainer/`（overlay + patches） | `livecontainer.yml` | [`livecontainer-latest`/LiveContainer.ipa](https://github.com/Eason3436/toolbox/releases/download/livecontainer-latest/LiveContainer.ipa)（另有 `LiveContainer+SideStore.ipa`） |
 | EnRecall 背單字 | `claude/new-session-fyxd74`（開發中） | `EnRecall/` | `enrecall.yml` | [`enrecall-latest`/EnRecall.ipa](https://github.com/Eason3436/toolbox/releases/download/enrecall-latest/EnRecall.ipa) |
-| Sweep 相簿清理 | `claude/photo-cleanup-app-plan-wr9r1b`（開發中） | `Sweep/` | `sweep.yml` | [`sweep-latest`/Sweep.ipa](https://github.com/Eason3436/toolbox/releases/download/sweep-latest/Sweep.ipa) |
+| Sweep 相簿清理 | `main` | `Sweep/` | `sweep.yml` | [`sweep-latest`/Sweep.ipa](https://github.com/Eason3436/toolbox/releases/download/sweep-latest/Sweep.ipa) |
 | HealthMi（第三方） | `healthmi` | 無，CI 直接 clone 上游 | `healthmi.yml` | [`healthmi-latest`/HealthMi.ipa](https://github.com/Eason3436/toolbox/releases/download/healthmi-latest/HealthMi.ipa) |
 
 `ui-check` 是 Toolbox 早期的舊分支，可以忽略。`claude/project-thread-*` 是改名前的舊分支，內容都已在 `main`，不要再用。
