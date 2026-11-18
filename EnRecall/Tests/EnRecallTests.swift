@@ -918,3 +918,32 @@ struct LookalikeTests {
         #expect(LookalikeIndex.shortGloss("  ") == nil)
     }
 }
+
+struct PhraseSpotterTests {
+    private func matches(_ pattern: String?, _ sentence: String) -> Bool {
+        guard let pattern, let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return false }
+        return regex.firstMatch(in: sentence, range: NSRange(location: 0, length: (sentence as NSString).length)) != nil
+    }
+
+    @Test func phrasesMatchInflectionsAndPlaceholders() {
+        #expect(matches(PhraseSpotter.phraseRegex("look forward to sth"), "I am looking forward to the trip."))
+        #expect(matches(PhraseSpotter.phraseRegex("be fond of sth"), "I'm fond of old movies."))
+        #expect(matches(PhraseSpotter.phraseRegex("keep sb from doing sth"), "The rain kept us from going out."))
+        #expect(matches(PhraseSpotter.phraseRegex("take sth into account"), "They took the weather into account."))
+        #expect(!matches(PhraseSpotter.phraseRegex("look forward to sth"), "Look at the forward area."))
+    }
+
+    @Test func singleWordPhrasesAreSkipped() {
+        #expect(PhraseSpotter.phraseRegex("sth else") == nil)
+    }
+
+    @Test func patternsNeedAnchorsInOrder() {
+        let pattern = PhraseSpotter.patternRegex(anchors: ["it is not until", "that"])
+        #expect(matches(pattern, "It was not until midnight that he finished his report."))
+        #expect(!matches(pattern, "That was not until midnight."))
+    }
+
+    @Test func joinsHyphenatedLines() {
+        #expect(PhraseSpotter.joinLines(["He looked for infor-", "mation about it."]) == "He looked for information about it.")
+    }
+}

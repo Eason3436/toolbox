@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// 一輪複習：評分用 FSRS 排下次時間；學習中的卡（幾分鐘後再看）排回這一輪的最後面。
-/// - 上方時間軸：前面評過的字（顏色＝當時選的記憶程度），可以左右滑、點回去看或改評分；後面標出新字／複習
+/// - 上方時間軸：前面評過的字（顏色＝當時選的記憶程度），目前這張在正中間，點回去看或改評分
 /// - 右上可以復原上一張
 /// - 複習用自己的 ModelContext，關掉、切到背景時才存：首頁、牌組那些統計不會每評一張就重算一次（之前會頓）
 struct ReviewView: View {
@@ -354,19 +354,18 @@ final class DetailCache {
 // MARK: - 上方時間軸
 
 /// 評過的字（記憶程度的顏色）→ 目前這張。正在看的那顆固定在正中間，越往旁邊越淡、越模糊，
-/// 只留左右幾顆；還沒出現的卡不畫。點前面的字回頭看，左右拖可以一次往回走好幾張
+/// 只留左右幾顆；還沒出現的卡不畫。點前面的字回頭看
 struct ReviewTimeline: View {
     let history: [ReviewView.Step]
     let current: Card?
     let viewing: Int?
     let onSelect: (Int?) -> Void
 
-    /// 中間往旁邊留幾顆（再外面一顆是全透明的，拖動時才淡入）
+    /// 中間往旁邊留幾顆（再外面一顆是全透明的，往前移時淡入）
     private static let reach = 3
     private static let slot: CGFloat = 32
 
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var drag: CGFloat = 0
 
     /// 正中間是第幾顆：history 的位置，history.count 代表目前這張
     private var focus: Int { viewing ?? history.count }
@@ -387,37 +386,14 @@ struct ReviewTimeline: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 36)
-        .contentShape(Rectangle())
-        .gesture(dragGesture)
         .animation(.spring(duration: 0.35, bounce: 0.15), value: focus)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("這一輪的卡")
     }
 
-    /// 離正中間幾格（拖動中會有小數）
+    /// 離正中間幾格
     private func distance(of position: Int) -> CGFloat {
-        CGFloat(position - focus) + drag / Self.slot
-    }
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                // 往 leading 拖到底就不再跟手（後面沒有卡）
-                let raw = value.translation.width * direction
-                let maxBack = CGFloat(focus) * Self.slot
-                let maxForward = CGFloat(lastPosition - focus) * Self.slot
-                drag = min(max(raw, -maxForward - 12), maxBack + 12)
-            }
-            .onEnded { value in
-                let raw = value.predictedEndTranslation.width * direction
-                let steps = Int((raw / Self.slot).rounded())
-                let target = min(max(focus - steps, 0), lastPosition)
-                withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
-                    drag = 0
-                }
-                guard target != focus else { return }
-                onSelect(target == history.count ? nil : target)
-            }
+        CGFloat(position - focus)
     }
 
     @ViewBuilder
@@ -466,7 +442,7 @@ struct ReviewTimeline: View {
     }
 }
 
-/// 時間軸上離中間越遠：越小、越模糊、越淡
+/// 時間軸上離中間越遠：越小、越模糊、越淡（旁邊第一顆不變）
 private struct TimelineFade: ViewModifier {
     let distance: CGFloat
     let slot: CGFloat
@@ -475,9 +451,11 @@ private struct TimelineFade: ViewModifier {
 
     func body(content: Content) -> some View {
         let far: CGFloat = abs(distance)
-        let scale: CGFloat = max(0.6, 1 - far * 0.08)
-        let blur: CGFloat = max(0, far - 0.5) * 1.2
-        let opacity: Double = Double(max(0, 1 - far / CGFloat(reach + 1)))
+        // 旁邊第一顆完全清楚，第二顆起才變小、變模糊、變淡
+        let beyond: CGFloat = max(0, far - 1)
+        let scale: CGFloat = max(0.6, 1 - beyond * 0.1)
+        let blur: CGFloat = beyond * 1.5
+        let opacity: Double = Double(max(0, 1 - beyond / CGFloat(reach)))
         let x: CGFloat = distance * slot * direction
         return content
             .scaleEffect(scale)
