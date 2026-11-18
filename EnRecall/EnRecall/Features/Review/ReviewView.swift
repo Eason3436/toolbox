@@ -47,7 +47,7 @@ struct ReviewView: View {
                 if isLoaded {
                     ReviewTimeline(
                         history: history,
-                        upcoming: Array(queue.dropFirst(index)),
+                        current: current,
                         viewing: viewing,
                         onSelect: select
                     )
@@ -345,57 +345,80 @@ final class DetailCache {
 
 // MARK: - 上方時間軸
 
-/// 前面評過的字（記憶程度的顏色）→ 目前這張 → 後面的新字／複習。可以左右滑，點前面的字回頭看
+/// 評過的字（記憶程度的顏色）→ 目前這張。正在看的那顆固定在正中間，越往旁邊越淡、越模糊，
+/// 只留左右幾顆；還沒出現的卡不畫。點前面的字回頭看，左右拖可以一次往回走好幾張
 struct ReviewTimeline: View {
     let history: [ReviewView.Step]
-    let upcoming: [Card]
+    let current: Card?
     let viewing: Int?
     let onSelect: (Int?) -> Void
 
-    private static let upcomingLimit = 40
-    /// 這一排的可見寬度：點不多時整排置中，多到放不下才靠捲動
-    @State private var width: CGFloat = 0
+    /// 中間往旁邊留幾顆（再外面一顆是全透明的，拖動時才淡入）
+    private static let reach = 3
+    private static let slot: CGFloat = 32
+
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var drag: CGFloat = 0
+
+    /// 正中間是第幾顆：history 的位置，history.count 代表目前這張
+    private var focus: Int { viewing ?? history.count }
+    private var lastPosition: Int { current == nil ? max(history.count - 1, 0) : history.count }
+    private var direction: CGFloat { layoutDirection == .rightToLeft ? -1 : 1 }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 2) {
-                    ForEach(Array(history.enumerated()), id: \.offset) { position, step in
-                        pastChip(position: position, step: step)
-                            .id("past-\(position)")
-                    }
-                    ForEach(Array(upcoming.prefix(Self.upcomingLimit).enumerated()), id: \.offset) { offset, card in
-                        upcomingChip(card: card, isCurrent: offset == 0)
-                            .id(offset == 0 ? "current" : "next-\(offset)")
-                    }
-                    if upcoming.count > Self.upcomingLimit {
-                        Text("+\((upcoming.count - Self.upcomingLimit).formatted())")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(Color.er.textTertiary)
-                            .padding(.horizontal, 6)
-                    }
-                }
-                .padding(.vertical, 2)
-                .frame(minWidth: width)
-            }
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled()
-            // 這一排在導覽列正下方，不要系統的 soft 邊緣（會把卡片頂端糊掉）
-            .scrollEdgeEffectHidden(true, for: .all)
-            .frame(height: 36)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .onAppear { proxy.scrollTo("current", anchor: .center) }
-            .onChange(of: history.count) {
-                withAnimation(RatingBar.morph) { proxy.scrollTo("current", anchor: .center) }
-            }
-            .onChange(of: viewing) { _, value in
-                withAnimation(.spring(duration: 0.35)) {
-                    proxy.scrollTo(value.map { "past-\($0)" } ?? "current", anchor: .center)
+        let lower = max(0, focus - Self.reach - 1)
+        let upper = min(lastPosition, focus + Self.reach + 1)
+        ZStack {
+            if lower <= upper {
+                ForEach(Array(lower...upper), id: \.self) { position in
+                    chip(at: position)
+                        .modifier(TimelineFade(distance: distance(of: position), slot: Self.slot, reach: Self.reach, direction: direction))
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 36)
+        .contentShape(Rectangle())
+        .gesture(dragGesture)
+        .animation(.spring(duration: 0.35, bounce: 0.15), value: focus)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("這一輪的卡")
+    }
+
+    /// 離正中間幾格（拖動中會有小數）
+    private func distance(of position: Int) -> CGFloat {
+        CGFloat(position - focus) + drag / Self.slot
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                // 往 leading 拖到底就不再跟手（後面沒有卡）
+                let raw = value.translation.width * direction
+                let maxBack = CGFloat(focus) * Self.slot
+                let maxForward = CGFloat(lastPosition - focus) * Self.slot
+                drag = min(max(raw, -maxForward - 12), maxBack + 12)
+            }
+            .onEnded { value in
+                let raw = value.predictedEndTranslation.width * direction
+                let steps = Int((raw / Self.slot).rounded())
+                let target = min(max(focus - steps, 0), lastPosition)
+                withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                    drag = 0
+                }
+                guard target != focus else { return }
+                onSelect(target == history.count ? nil : target)
+            }
+    }
+
+    @ViewBuilder
+    private func chip(at position: Int) -> some View {
+        if history.indices.contains(position) {
+            pastChip(position: position, step: history[position])
+        } else if let current {
+            currentChip(card: current)
+        }
     }
 
     private func pastChip(position: Int, step: ReviewView.Step) -> some View {
@@ -408,7 +431,7 @@ struct ReviewTimeline: View {
                 .fill(rating.color)
                 .frame(width: isViewing ? 30 : 20, height: isViewing ? 14 : 10)
                 .overlay(Capsule().strokeBorder(Color.er.surface, lineWidth: isViewing ? 2 : 0))
-                .frame(width: 30, height: 36)
+                .frame(width: Self.slot, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -416,22 +439,44 @@ struct ReviewTimeline: View {
         .accessibilityAddTraits(isViewing ? .isSelected : [])
     }
 
-    private func upcomingChip(card: Card, isCurrent: Bool) -> some View {
+    private func currentChip(card: Card) -> some View {
         let label = card.isNew ? "新字" : (card.state == .review ? "複習" : "再一次")
-        let isActive = isCurrent && viewing == nil
+        let isActive = viewing == nil
         return Button {
             onSelect(nil)
         } label: {
             Capsule()
                 .fill(card.isNew ? Color.er.infoTrack : Color.er.outlineStrong)
-                .frame(width: isCurrent ? 26 : 14, height: isCurrent ? 12 : 8)
+                .frame(width: 26, height: 12)
                 .overlay(Capsule().strokeBorder(Color.er.text, lineWidth: isActive ? 1.5 : 0).padding(-3))
-                .frame(width: isCurrent ? 36 : 18, height: 36)
+                .frame(width: Self.slot, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!isCurrent)
-        .accessibilityLabel(isCurrent ? "目前：\(label)" : label)
+        .accessibilityLabel("目前：\(label)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// 時間軸上離中間越遠：越小、越模糊、越淡
+private struct TimelineFade: ViewModifier {
+    let distance: CGFloat
+    let slot: CGFloat
+    let reach: Int
+    let direction: CGFloat
+
+    func body(content: Content) -> some View {
+        let far: CGFloat = abs(distance)
+        let scale: CGFloat = max(0.6, 1 - far * 0.08)
+        let blur: CGFloat = max(0, far - 0.5) * 1.2
+        let opacity: Double = Double(max(0, 1 - far / CGFloat(reach + 1)))
+        let x: CGFloat = distance * slot * direction
+        return content
+            .scaleEffect(scale)
+            .blur(radius: blur)
+            .opacity(opacity)
+            .offset(x: x)
+            .zIndex(Double(-far))
     }
 }
 

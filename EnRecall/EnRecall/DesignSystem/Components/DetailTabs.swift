@@ -137,6 +137,8 @@ struct DetailTabContent: View {
     let detail: CardDetail?
     let card: Card
 
+    private static let examplesCollocationLimit = 4
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let pattern = detail?.pattern {
@@ -160,6 +162,15 @@ struct DetailTabContent: View {
                 MeaningLabel(meaning: meaning)
                 ForEach(Array(meaning.examples.enumerated()), id: \.offset) { _, example in
                     ExampleLines(en: example.en, zh: example.zh)
+                }
+            }
+            // 例句下面順便放幾個主要搭配（常用的排前面），完整的在「搭配」分頁
+            let collocations = word.allCollocations.prefix(Self.examplesCollocationLimit)
+            if !collocations.isEmpty {
+                divider
+                DetailLabel("搭配")
+                ForEach(Array(collocations.enumerated()), id: \.offset) { _, item in
+                    CollocationLine(item: item)
                 }
             }
         case .collocations:
