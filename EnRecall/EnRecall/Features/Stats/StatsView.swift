@@ -70,28 +70,102 @@ struct StatsView: View {
 
 // MARK: - 熱力圖
 
+/// 近 90 天：一欄一週（週一在上、週日在下），左邊標一三五日、上面在每月第一週標月份。
+/// 今天加一圈框，本週還沒到的日子不畫。點一格在下面顯示那天幾張，預設今天
 private struct HeatmapCard: View {
-    /// 91 天，最舊的在前
+    /// 91 天，最舊的在前，最後一天是今天
     let days: [DayCount]
 
-    var body: some View {
-        let maxCount = days.map(\.count).max() ?? 0
-        let columns = stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<min($0 + 7, days.count)]) }
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 3) {
-                ForEach(columns.indices, id: \.self) { column in
-                    VStack(spacing: 3) {
-                        ForEach(columns[column]) { day in
-                            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .fill(Color.er.heat[StatsCalculator.heatLevel(day.count, max: maxCount)])
-                                .aspectRatio(1, contentMode: .fit)
-                        }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .top)
+    @State private var selected: Date?
+    @State private var width: CGFloat = 0
+
+    private let spacing: CGFloat = 4
+    private let maxCell: CGFloat = 18
+    private let labelWidth: CGFloat = 16
+    private let monthHeight: CGFloat = 16
+
+    /// 週一開始（不跟著地區的每週第一天）
+    private var calendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    private struct Week: Identifiable {
+        let id: Date
+        /// 週一到週日，nil＝不在範圍裡（還沒到、或比 90 天更早）
+        let days: [DayCount?]
+        /// 這週有某個月的 1 號：那欄標月份
+        let monthStart: Date?
+    }
+
+    private var weeks: [Week] {
+        guard let first = days.first?.date, let last = days.last?.date,
+              let start = calendar.dateInterval(of: .weekOfYear, for: first)?.start else { return [] }
+        let byDate = Dictionary(days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+        var result: [Week] = []
+        var weekStart = start
+        while weekStart <= last {
+            var items: [DayCount?] = []
+            var monthStart: Date?
+            for offset in 0..<7 {
+                guard let date = calendar.date(byAdding: .day, value: offset, to: weekStart) else {
+                    items.append(nil)
+                    continue
+                }
+                items.append(byDate[date])
+                if calendar.component(.day, from: date) == 1, date >= first, date <= last {
+                    monthStart = date
                 }
             }
+            result.append(Week(id: weekStart, days: items, monthStart: monthStart))
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart) else { break }
+            weekStart = next
+        }
+        return result
+    }
+
+    var body: some View {
+        let weeks = weeks
+        let maxCount = days.map(\.count).max() ?? 0
+        let today = days.last
+        let shown = days.first { $0.date == selected } ?? today
+        // 格子最大 18pt；卡片比較窄的手機就一起縮小，整張圖不超出卡片
+        let available = width - labelWidth - spacing
+        let fitted = weeks.isEmpty ? maxCell : (available - spacing * CGFloat(weeks.count - 1)) / CGFloat(weeks.count)
+        let cell = max(8, min(maxCell, floor(fitted)))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: spacing) {
+                weekdayLabels(cell: cell)
+                ForEach(weeks) { week in
+                    VStack(spacing: spacing) {
+                        Text(week.monthStart.map { $0.formatted(.dateTime.month(.abbreviated)) } ?? "")
+                            .font(.caption2)
+                            .foregroundStyle(Color.er.textTertiary)
+                            .fixedSize()
+                            .frame(width: cell, height: monthHeight, alignment: .leading)
+                        ForEach(0..<7, id: \.self) { row in
+                            if let day = week.days[row] {
+                                cellView(day, size: cell, maxCount: maxCount, isToday: day.date == today?.date, isSelected: day.date == shown?.date)
+                            } else {
+                                Color.clear.frame(width: cell, height: cell)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+
             HStack(spacing: 4) {
-                Spacer()
+                if let shown {
+                    Text("\(shown.date.formatted(.dateTime.month(.defaultDigits).day()))（\(shown.date.formatted(.dateTime.weekday(.narrow)))）・\(shown.count.formatted()) 張")
+                        .font(.footnote.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.er.text)
+                        .contentTransition(.numericText())
+                }
+                Spacer(minLength: 8)
                 Text("少")
                 ForEach(0..<5, id: \.self) { level in
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -104,47 +178,142 @@ private struct HeatmapCard: View {
             .foregroundStyle(Color.er.textTertiary)
         }
         .erCard(elevated: true)
-        .accessibilityElement()
+        .sensoryFeedback(.selection, trigger: selected)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("近 90 天複習熱力圖")
-        .accessibilityValue("共 \(days.map(\.count).reduce(0, +)) 張，最多一天 \(maxCount) 張")
+    }
+
+    /// 左邊只標一、三、五、日
+    private func weekdayLabels(cell: CGFloat) -> some View {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        return VStack(alignment: .leading, spacing: spacing) {
+            Color.clear.frame(width: labelWidth, height: monthHeight)
+            ForEach(0..<7, id: \.self) { row in
+                // row 0 是週一；symbols 從週日開始
+                Text(row.isMultiple(of: 2) ? symbols[(row + 1) % 7] : "")
+                    .font(.caption2)
+                    .foregroundStyle(Color.er.textTertiary)
+                    .frame(width: labelWidth, height: cell, alignment: .leading)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func cellView(_ day: DayCount, size: CGFloat, maxCount: Int, isToday: Bool, isSelected: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        return shape
+            .fill(Color.er.heat[StatsCalculator.heatLevel(day.count, max: maxCount)])
+            .frame(width: size, height: size)
+            .overlay {
+                if isToday {
+                    shape.strokeBorder(Color.er.primary.opacity(0.45), lineWidth: 2)
+                } else if isSelected {
+                    shape.strokeBorder(Color.er.textSecondary, lineWidth: 1.5)
+                }
+            }
+            .contentShape(shape)
+            .onTapGesture {
+                withAnimation(.snappy(duration: 0.2)) { selected = day.date }
+            }
+            .accessibilityElement()
+            .accessibilityLabel(day.date.formatted(.dateTime.month().day().weekday()))
+            .accessibilityValue("\(day.count.formatted()) 張")
+            .accessibilityAddTraits(.isButton)
     }
 }
 
 // MARK: - 每日長條
 
+/// 堆疊長條：深色＝複習、淺色＝新學。0 張的日子畫一條 3pt 的淡線；週檢視每條上面寫總數，今天粗體
 private struct DailyBarChart: View {
     let days: [DayCount]
     let annotate: Bool
 
-    private var labelFormat: Date.FormatStyle {
-        annotate ? Date.FormatStyle().weekday(.narrow) : Date.FormatStyle().month(.defaultDigits).day()
-    }
+    private let plotHeight: CGFloat = 140
 
     var body: some View {
         let today = Calendar.current.startOfDay(for: Date())
-        Chart(days) { day in
-            BarMark(
-                x: .value("日期", day.date, unit: .day),
-                y: .value("張數", day.count)
-            )
-            .foregroundStyle(day.date == today ? Color.er.text : Color.er.outlineStrong)
-            .cornerRadius(3)
-            .annotation(position: .top, spacing: 2) {
-                if annotate && day.count > 0 {
-                    Text(day.count, format: .number)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(Color.er.textSecondary)
+        let maxCount = days.map(\.count).max() ?? 0
+        // 上面留一點空間放數字
+        let yMax = Double(max(maxCount, 4)) * 1.18
+        let zeroHeight = yMax * 3 / Double(plotHeight)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Spacer()
+                legend(Color.er.text, "複習")
+                legend(Color.er.outlineStrong, "新學")
+            }
+            .font(.caption)
+            .foregroundStyle(Color.er.textSecondary)
+
+            Chart(days) { day in
+                if day.count == 0 {
+                    BarMark(
+                        x: .value("日期", day.date, unit: .day),
+                        yStart: .value("張數", 0.0),
+                        yEnd: .value("張數", zeroHeight)
+                    )
+                    .foregroundStyle(Color.er.outline)
+                    .cornerRadius(1.5)
+                } else {
+                    BarMark(
+                        x: .value("日期", day.date, unit: .day),
+                        yStart: .value("張數", 0.0),
+                        yEnd: .value("張數", Double(day.reviewCount))
+                    )
+                    .foregroundStyle(Color.er.text)
+                    .cornerRadius(day.newCount == 0 ? 3 : 0)
+                    BarMark(
+                        x: .value("日期", day.date, unit: .day),
+                        yStart: .value("張數", Double(day.reviewCount)),
+                        yEnd: .value("張數", Double(day.count))
+                    )
+                    .foregroundStyle(Color.er.outlineStrong)
+                    .cornerRadius(3)
+                    .annotation(position: .top, spacing: 2) {
+                        if annotate {
+                            Text(day.count, format: .number)
+                                .font(.caption2.weight(day.date == today ? .bold : .regular))
+                                .monospacedDigit()
+                                .foregroundStyle(day.date == today ? Color.er.text : Color.er.textSecondary)
+                        }
+                    }
                 }
             }
-        }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: annotate ? 1 : 7)) { _ in
-                AxisValueLabel(format: labelFormat, centered: true)
+            .chartYScale(domain: 0...yMax)
+            .chartYAxis(.hidden)
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .day, count: annotate ? 1 : 7)) { value in
+                    AxisValueLabel(centered: true) {
+                        if let date = value.as(Date.self) {
+                            axisLabel(date, isToday: Calendar.current.isDate(date, inSameDayAs: today))
+                        }
+                    }
+                }
             }
+            .frame(height: plotHeight + 20)
         }
-        .chartYAxis(.hidden)
-        .frame(height: 160)
+    }
+
+    /// 週：週一、週二…，最後一天寫「今天」；月：日期
+    @ViewBuilder
+    private func axisLabel(_ date: Date, isToday: Bool) -> some View {
+        if isToday {
+            Text("今天").fontWeight(.bold).foregroundStyle(Color.er.text)
+        } else if annotate {
+            Text(date, format: .dateTime.weekday(.abbreviated))
+        } else {
+            Text(date, format: .dateTime.month(.defaultDigits).day())
+        }
+    }
+
+    private func legend(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(title)
+        }
     }
 }
 

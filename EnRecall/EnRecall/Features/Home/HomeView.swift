@@ -44,7 +44,7 @@ struct HomeView: View {
                     }
                 }
 
-                TodayHeroCard(summary: summary) {
+                TodayHeroCard(summary: summary, showsPatterns: decks.contains { $0.category == .pattern }) {
                     session = ReviewSession(category: nil)
                 }
 
@@ -120,8 +120,10 @@ struct HomeView: View {
 
 // MARK: - 今日複習主卡
 
+/// 大字是到期數；下面的比例條和圖例也只算到期（依種類），新卡數只在右上角
 private struct TodayHeroCard: View {
     let summary: StudySummary
+    let showsPatterns: Bool
     let start: () -> Void
 
     var body: some View {
@@ -146,7 +148,7 @@ private struct TodayHeroCard: View {
             }
             .accessibilityElement(children: .combine)
 
-            DistributionBar(summary: summary)
+            DistributionBar(summary: summary, showsPatterns: showsPatterns)
 
             Button(action: start) {
                 Text("開始複習")
@@ -165,28 +167,53 @@ private struct TodayHeroCard: View {
     }
 }
 
-/// 記憶卡／片語記憶卡的比例條
+/// 到期卡依種類的比例條：記憶卡、片語、句型（有句型牌組才列）
 private struct DistributionBar: View {
     let summary: StudySummary
+    let showsPatterns: Bool
+
+    private struct Segment: Identifiable {
+        let id: String
+        let title: String
+        let value: Int
+        let color: Color
+    }
+
+    private var segments: [Segment] {
+        var list = [
+            Segment(id: "word", title: "記憶卡", value: summary.counts(for: .word).due, color: Color.er.heroText),
+            Segment(id: "phrase", title: "片語", value: summary.counts(for: .phrase).due, color: Color.er.heroTextSecondary),
+        ]
+        if showsPatterns {
+            list.append(Segment(id: "pattern", title: "句型", value: summary.counts(for: .pattern).due, color: Color.er.heroMuted))
+        }
+        return list
+    }
 
     var body: some View {
-        let word = summary.counts(for: .word).total
-        let phrase = summary.counts(for: .phrase).total
-        let total = max(word + phrase, 1)
+        let segments = segments
+        let total = segments.reduce(0) { $0 + $1.value }
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
-                HStack(spacing: 3) {
-                    Capsule()
-                        .fill(Color.er.heroText)
-                        .frame(width: max(0, proxy.size.width - 3) * CGFloat(word) / CGFloat(total))
-                    Capsule()
-                        .fill(Color.er.heroMuted)
+                let shown = segments.filter { $0.value > 0 }
+                let gaps = CGFloat(max(shown.count - 1, 0)) * 3
+                let width = max(0, proxy.size.width - gaps)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.er.heroTile)
+                    HStack(spacing: 3) {
+                        ForEach(shown) { segment in
+                            Capsule()
+                                .fill(segment.color)
+                                .frame(width: total > 0 ? width * CGFloat(segment.value) / CGFloat(total) : 0)
+                        }
+                    }
                 }
             }
             .frame(height: 6)
             HStack(spacing: 14) {
-                legend(color: Color.er.heroText, title: "記憶卡", value: word)
-                legend(color: Color.er.heroMuted, title: "片語記憶卡", value: phrase)
+                ForEach(segments) { segment in
+                    legend(color: segment.color, title: segment.title, value: segment.value)
+                }
             }
         }
         .accessibilityElement(children: .combine)

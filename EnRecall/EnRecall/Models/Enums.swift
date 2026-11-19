@@ -63,13 +63,13 @@ enum DeckMode: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .paused: "暫停"
-        case .active: "出新卡"
-        case .reviewOnly: "只出複習"
+        case .active: "學新卡"
+        case .reviewOnly: "只複習"
         }
     }
 
-    /// 牌組卡上的分段選擇（暫停是旁邊另一顆鍵）
-    static let running: [DeckMode] = [.active, .reviewOnly]
+    /// 牌組設定面板的分段選擇：學新卡／只複習／暫停三選一
+    static let statusOrder: [DeckMode] = [.active, .reviewOnly, .paused]
 }
 
 /// 新卡出現順序

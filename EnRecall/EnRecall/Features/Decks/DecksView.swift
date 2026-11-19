@@ -1,23 +1,23 @@
 import SwiftUI
 import SwiftData
 
+/// 牌組頁只負責管理：哪些牌組在學、每天幾張、順序。開始複習統一在首頁
 struct DecksView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
-    @Query private var logs: [ReviewLog]
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
 
     @State private var category: DeckCategory = .word
-    @State private var session: ReviewSession?
-    @State private var showLimitSheet = false
-    @State private var pendingDelete: Deck?
-    @State private var studyCache = StudySummaryCache()
+    /// 點牌組打開的設定面板
+    @State private var editing: Deck?
+    /// 面板關掉之後要做的事（查看單字、刪除）
+    @State private var pendingAction: (DeckSettingsSheet.Action, Deck)?
+    @State private var openedDeck: Deck?
+    @State private var showOrder = false
 
     private var filtered: [Deck] { decks.filter { $0.category == category } }
 
     var body: some View {
-        let summary = studyCache.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)
-        let counts = summary.counts(for: category)
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
                 Picker("類型", selection: $category) {
@@ -26,27 +26,42 @@ struct DecksView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
 
-                NewCardQuotaCard(summary: summary) {
-                    showLimitSheet = true
-                }
+                NewCardAllocationCard(decks: decks, limit: dailyNewLimit)
 
-                SectionHeader(title: "每天出新卡 · \(filtered.filter { $0.mode == .active }.count)", trailing: "依這個順序領新卡")
+                HStack(alignment: .firstTextBaseline) {
+                    Text("依順序出新卡")
+                        .font(.erLabel)
+                        .tracking(1.1)
+                        .foregroundStyle(Color.er.textTertiary)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 8)
+                    if filtered.count > 1 {
+                        Button("編輯順序") { showOrder = true }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.er.primary)
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, Theme.Spacing.sectionTop)
+                .padding(.horizontal, 2)
 
                 if filtered.isEmpty {
                     EmptyLine("還沒有牌組")
                 } else {
-                    ForEach(Array(filtered.enumerated()), id: \.element.id) { offset, deck in
-                        DeckCardView(deck: deck, position: offset + 1) {
-                            Button("往上移", systemImage: "arrow.up") { move(deck, by: -1) }
-                                .disabled(offset == 0)
-                            Button("往下移", systemImage: "arrow.down") { move(deck, by: 1) }
-                                .disabled(offset == filtered.count - 1)
-                            Divider()
-                            Button("刪除牌組", systemImage: "trash", role: .destructive) {
-                                pendingDelete = deck
+                    VStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element.id) { offset, deck in
+                            if offset > 0 {
+                                Divider().overlay(Color.er.outline)
                             }
+                            Button {
+                                editing = deck
+                            } label: {
+                                DeckRow(deck: deck)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .erCard(padding: 0, elevated: true)
                 }
             }
             .padding(.horizontal, Theme.Spacing.page)
@@ -55,16 +70,6 @@ struct DecksView: View {
         }
         .erPageBackground()
         .navigationTitle("牌組")
-        .safeAreaInset(edge: .bottom) {
-            if counts.total > 0 {
-                ReviewBar(count: counts.total) {
-                    session = ReviewSession(category: category)
-                }
-                .padding(.horizontal, Theme.Spacing.page)
-                .padding(.bottom, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: Route.store) {
@@ -74,8 +79,8 @@ struct DecksView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("全部出新卡", systemImage: "play") { setMode(.active) }
-                    Button("全部只出複習", systemImage: "arrow.trianglehead.2.clockwise") { setMode(.reviewOnly) }
+                    Button("全部學新卡", systemImage: "play") { setMode(.active) }
+                    Button("全部只複習", systemImage: "arrow.trianglehead.2.clockwise") { setMode(.reviewOnly) }
                     Button("全部暫停", systemImage: "pause") { setMode(.paused) }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -83,130 +88,325 @@ struct DecksView: View {
                 .accessibilityLabel("更多")
             }
         }
-        .sheet(isPresented: $showLimitSheet) {
-            NewCardLimitSheet()
-        }
-        .fullScreenCover(item: $session) { session in
-            ReviewView(session: session)
-        }
-        .confirmationDialog(
-            "刪除「\(pendingDelete?.name ?? "")」？",
-            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("刪除牌組與進度", role: .destructive) {
-                if let deck = pendingDelete {
-                    withAnimation(.spring(duration: 0.3)) { context.delete(deck) }
-                }
-                pendingDelete = nil
+        .sheet(item: $editing, onDismiss: runPendingAction) { deck in
+            DeckSettingsSheet(deck: deck) { action in
+                pendingAction = (action, deck)
             }
-        } message: {
-            Text("這個牌組的卡片和複習進度都會刪掉")
+        }
+        .sheet(isPresented: $showOrder) {
+            DeckOrderSheet(decks: filtered)
+        }
+        .navigationDestination(item: $openedDeck) { deck in
+            DeckDetailView(deck: deck)
         }
     }
 
-    /// 在同一類（記憶卡／片語卡）裡上下移動，順序就是領新卡的順序
-    private func move(_ deck: Deck, by step: Int) {
-        var list = filtered
-        guard let from = list.firstIndex(of: deck) else { return }
-        let to = from + step
-        guard list.indices.contains(to) else { return }
-        list.swapAt(from, to)
-        let slots = list.map(\.sortIndex).sorted()
-        withAnimation(.spring(duration: 0.3)) {
-            for (deck, slot) in zip(list, slots) {
-                deck.sortIndex = slot
-            }
+    /// 面板關掉後才動作：刪除時面板不會再讀到已經刪掉的牌組
+    private func runPendingAction() {
+        guard let pending = pendingAction else { return }
+        pendingAction = nil
+        let deck = pending.1
+        switch pending.0 {
+        case .open:
+            openedDeck = deck
+        case .delete:
+            withAnimation(.spring(duration: 0.3)) { context.delete(deck) }
         }
     }
 
     private func setMode(_ mode: DeckMode) {
         withAnimation(.spring(duration: 0.3)) {
             for deck in filtered {
-                if mode == .paused { deck.isPaused = true } else { deck.mode = mode }
+                deck.setStatus(mode)
             }
         }
     }
 }
 
-// MARK: - 今日新卡
+extension Deck {
+    /// 學新卡／只複習／暫停三選一。暫停時記住原本的狀態
+    func setStatus(_ status: DeckMode) {
+        if status == .paused {
+            isPaused = true
+        } else {
+            mode = status
+        }
+    }
+}
 
-private struct NewCardQuotaCard: View {
-    let summary: StudySummary
-    let adjust: () -> Void
+// MARK: - 新卡分配
+
+/// 每日新卡上限、各牌組分到幾張。超過上限只提示，不自動改數字
+private struct NewCardAllocationCard: View {
+    let decks: [Deck]
+    let limit: Int
+
+    var body: some View {
+        // 「新卡一次出完」的牌組不佔上限
+        let allocated = decks.filter { $0.mode == .active && !$0.newCardsAll }
+        let total = allocated.reduce(0) { $0 + $1.dailyNewLimit }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("新卡分配")
+                .font(.subheadline)
+                .foregroundStyle(Color.er.textSecondary)
+            Text("每日新卡上限 \(limit.formatted()) · 已分配 \(total.formatted())")
+                .font(.headline)
+                .monospacedDigit()
+                .foregroundStyle(Color.er.text)
+                .contentTransition(.numericText(value: Double(total)))
+            if !allocated.isEmpty {
+                FlowLayout(spacing: 14) {
+                    ForEach(allocated) { deck in
+                        Text("\(deck.name)：\(deck.dailyNewLimit.formatted())")
+                            .font(.footnote)
+                            .monospacedDigit()
+                            .foregroundStyle(Color.er.textSecondary)
+                    }
+                }
+            }
+            if total > limit {
+                Text("已超過每日上限")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.er.danger)
+                    .transition(.opacity)
+            }
+        }
+        .erCard(elevated: true)
+        .animation(.spring(duration: 0.25), value: total)
+    }
+}
+
+// MARK: - 牌組列
+
+/// 一列：名稱、已背／總數・每天 N 張、狀態標籤、箭頭，下面一條細進度
+private struct DeckRow: View {
+    let deck: Deck
+
+    private var isPaused: Bool { deck.mode == .paused }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("今日新卡")
-                    .font(.subheadline)
-                    .foregroundStyle(Color.er.textSecondary)
-                Text("\(summary.newDoneToday) / \(summary.newLimit)")
-                    .font(.headline)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(deck.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.text)
+                        .lineLimit(1)
+                    HStack(spacing: 0) {
+                        LearnedCount(deck: deck)
+                        if deck.mode == .active {
+                            Text(deck.newCardsAll ? " · 新卡一次出完" : " · 每天 \(deck.dailyNewLimit.formatted()) 張")
+                        }
+                    }
+                    .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(Color.er.text)
-                Spacer()
-                Chip(text: "到期 \(summary.all.due)")
+                    .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.textSecondary)
+                }
+                Spacer(minLength: 8)
+                DeckStatusTag(mode: deck.mode)
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.er.textTertiary)
             }
-            LinearMeter(value: summary.newLimit > 0 ? Double(summary.newDoneToday) / Double(summary.newLimit) : 0)
-            Button("調整上限與順序", action: adjust)
-                .font(.footnote.weight(.semibold))
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
+            LearnedMeter(deck: deck)
+                .opacity(isPaused ? 0.5 : 1)
         }
-        .erCard(elevated: true)
+        .padding(.horizontal, Theme.Spacing.cardLarge)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("調整狀態和每天新卡")
     }
 }
 
-/// 分頁列上方的浮動玻璃列
-private struct ReviewBar: View {
-    let count: Int
-    let start: () -> Void
+// 下面兩個要讀牌組裡的每一張卡，拆成自己的 View：
+// 調狀態、每天新卡時只重畫列本身，不用把上千張卡再數一遍
+
+private struct LearnedCount: View {
+    let deck: Deck
 
     var body: some View {
-        HStack {
-            Text("\(count) 張待複習")
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(Color.er.text)
-            Spacer()
-            Button(action: start) {
-                Text("開始")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.er.onPrimary)
-                    .padding(.horizontal, 6)
-            }
-            .buttonStyle(.glassProminent)
-        }
-        .padding(.leading, 18)
-        .padding(.trailing, 8)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
+        let cards = deck.activeCards
+        let learned = cards.filter { !$0.isNew }.count
+        Text("\(learned.formatted()) / \(cards.count.formatted())")
     }
 }
 
-// MARK: - 每日新卡上限
+private struct LearnedMeter: View {
+    let deck: Deck
 
-struct NewCardLimitSheet: View {
+    var body: some View {
+        let cards = deck.activeCards
+        let learned = cards.filter { !$0.isNew }.count
+        LinearMeter(value: cards.isEmpty ? 0 : Double(learned) / Double(cards.count), height: 3)
+    }
+}
+
+/// 學新卡：強調色淡底；只複習：灰底；暫停：只有外框
+struct DeckStatusTag: View {
+    let mode: DeckMode
+
+    var body: some View {
+        Text(mode.title)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .foregroundStyle(foreground)
+            .background {
+                switch mode {
+                case .active:
+                    Capsule().fill(Color.er.primary.opacity(0.12))
+                case .reviewOnly:
+                    Capsule().fill(Color.er.fill)
+                case .paused:
+                    Capsule().strokeBorder(Color.er.outlineStrong, lineWidth: 1)
+                }
+            }
+            .fixedSize()
+    }
+
+    private var foreground: Color {
+        switch mode {
+        case .active: Color.er.primary
+        case .reviewOnly: Color.er.textSecondary
+        case .paused: Color.er.textTertiary
+        }
+    }
+}
+
+// MARK: - 牌組設定面板
+
+/// 點牌組從底部滑出：狀態三選一、每天新卡（只有學新卡時）、查看單字、刪除
+struct DeckSettingsSheet: View {
+    enum Action {
+        case open
+        case delete
+    }
+
+    @Bindable var deck: Deck
+    let onAction: (Action) -> Void
+
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
+    @State private var confirmDelete = false
+
+    private var status: Binding<DeckMode> {
+        Binding {
+            deck.mode
+        } set: { value in
+            withAnimation(.spring(duration: 0.25)) { deck.setStatus(value) }
+        }
+    }
+
+    private var statusNote: String {
+        switch deck.mode {
+        case .active: "每天出新卡，也出到期的複習"
+        case .reviewOnly: "不出新卡，只出到期的複習"
+        case .paused: "這個牌組先不出任何卡"
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("每日新卡上限") {
-                        RollingCounter(value: $dailyNewLimit, in: 0...200)
-                            .accessibilityLabel("每日新卡上限")
+                    Picker("狀態", selection: status) {
+                        ForEach(DeckMode.statusOrder) { Text($0.title).tag($0) }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 } footer: {
-                    Text("全部牌組合計，「新卡一次出完」的牌組不算在內。各牌組自己的上限在牌組卡片上調，順序長按牌組名稱調整")
+                    Text(statusNote)
                 }
+                .listRowBackground(Color.er.surface)
+
+                if deck.mode == .active {
+                    Section {
+                        if deck.kind == .custom {
+                            Toggle("新卡一次出完", isOn: $deck.newCardsAll)
+                        }
+                        if !deck.newCardsAll {
+                            LabeledContent("每天新卡") {
+                                RollingCounter(value: $deck.dailyNewLimit, in: 0...100)
+                                    .accessibilityLabel("每天新卡")
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.er.surface)
+                    .transition(.opacity)
+                }
+
+                Section {
+                    Button {
+                        onAction(.open)
+                        dismiss()
+                    } label: {
+                        Label("查看單字", systemImage: "list.bullet")
+                    }
+                    Button(role: .destructive) {
+                        confirmDelete = true
+                    } label: {
+                        Label("刪除牌組", systemImage: "trash")
+                    }
+                }
+                .listRowBackground(Color.er.surface)
             }
             .scrollContentBackground(.hidden)
             .erPageBackground()
-            .navigationTitle("新卡")
+            .navigationTitle(deck.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .confirmationDialog("刪除「\(deck.name)」？", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("刪除牌組與進度", role: .destructive) {
+                    onAction(.delete)
+                    dismiss()
+                }
+            } message: {
+                Text("這個牌組的卡片和複習進度都會刪掉")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .sensoryFeedback(.selection, trigger: deck.mode)
+        .sensoryFeedback(.selection, trigger: deck.newCardsAll)
+    }
+}
+
+// MARK: - 編輯順序
+
+/// 拖曳排序；順序就是領新卡的順序
+private struct DeckOrderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var order: [Deck]
+
+    init(decks: [Deck]) {
+        _order = State(initialValue: decks)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(order) { deck in
+                        HStack {
+                            Text(deck.name)
+                                .foregroundStyle(Color.er.text)
+                            Spacer(minLength: 8)
+                            DeckStatusTag(mode: deck.mode)
+                        }
+                    }
+                    .onMove(perform: move)
+                } footer: {
+                    Text("新卡依這個順序出：前面的牌組先領")
+                }
+                .listRowBackground(Color.er.surface)
+            }
+            .environment(\.editMode, .constant(.active))
+            .scrollContentBackground(.hidden)
+            .erPageBackground()
+            .navigationTitle("編輯順序")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -214,7 +414,14 @@ struct NewCardLimitSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+    }
+
+    private func move(from source: IndexSet, to destination: Int) {
+        let slots = order.map(\.sortIndex).sorted()
+        order.move(fromOffsets: source, toOffset: destination)
+        for (deck, slot) in zip(order, slots) {
+            deck.sortIndex = slot
+        }
     }
 }
 
@@ -231,4 +438,29 @@ struct NewCardLimitSheet: View {
     }
     .previewEnvironment()
     .preferredColorScheme(.dark)
+}
+
+#Preview("設定面板") {
+    let container = PreviewData.container
+    let deck = (try? container.mainContext.fetch(FetchDescriptor<Deck>()))?.first
+    Color.clear
+        .sheet(isPresented: .constant(true)) {
+            if let deck {
+                DeckSettingsSheet(deck: deck) { _ in }
+            }
+        }
+        .previewEnvironment()
+}
+
+#Preview("設定面板 · 深色") {
+    let container = PreviewData.container
+    let deck = (try? container.mainContext.fetch(FetchDescriptor<Deck>()))?.first
+    Color.clear
+        .sheet(isPresented: .constant(true)) {
+            if let deck {
+                DeckSettingsSheet(deck: deck) { _ in }
+            }
+        }
+        .previewEnvironment()
+        .preferredColorScheme(.dark)
 }

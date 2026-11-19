@@ -2,8 +2,14 @@ import Foundation
 
 struct DayCount: Identifiable, Equatable {
     let date: Date
+    /// 這天評過幾張（含新學）
     let count: Int
+    /// 其中第一次學的新卡
+    var newCount: Int = 0
     var id: Date { date }
+
+    /// 複習（不含新學）
+    var reviewCount: Int { count - newCount }
 }
 
 /// 紀錄頁、首頁的數字：從 ReviewLog 算
@@ -13,12 +19,15 @@ enum StatsCalculator {
         let today = calendar.startOfDay(for: now)
         guard let first = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return [] }
         var counts: [Date: Int] = [:]
+        var newCounts: [Date: Int] = [:]
         for log in logs where log.reviewedAt >= first {
-            counts[calendar.startOfDay(for: log.reviewedAt), default: 0] += 1
+            let day = calendar.startOfDay(for: log.reviewedAt)
+            counts[day, default: 0] += 1
+            if log.wasNew { newCounts[day, default: 0] += 1 }
         }
         return (0..<days).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: first) else { return nil }
-            return DayCount(date: date, count: counts[date] ?? 0)
+            return DayCount(date: date, count: counts[date] ?? 0, newCount: newCounts[date] ?? 0)
         }
     }
 

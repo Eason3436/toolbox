@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// 複習的記憶卡。點卡片翻面（由外層處理），喇叭按鈕唸單字。
-/// 背面在例句的位置放分頁（例句、搭配、近義字…），點了直接在卡片裡切換
+/// 背面在例句的位置放分頁（總覽、例句、搭配、近義字…），點了直接在卡片裡切換。
+/// 單字卡預設「總覽」：例句＋重點，卡片不捲動，高度一路延伸到評分鍵上方
 struct FlashCardView: View {
     let card: Card
     let detail: CardDetail?
@@ -11,7 +12,7 @@ struct FlashCardView: View {
     var lookalikes: [Lookalike] = []
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var tab: DetailTab = .examples
+    @State private var tab: DetailTab = .overview
 
     private var deckLabel: String { card.deck?.name ?? "" }
     private var tabs: [DetailTab] { DetailTab.available(for: detail) }
@@ -39,7 +40,7 @@ struct FlashCardView: View {
                 .accessibilityHidden(!isFlipped)
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: 600)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.er.surface, in: shape)
         .overlay(shape.strokeBorder(Color.er.outline, lineWidth: 1))
         .shadow(color: Color.er.shadow, radius: 2, y: 1)
@@ -49,6 +50,12 @@ struct FlashCardView: View {
             perspective: 0.4
         )
         .contentShape(shape)
+    }
+
+    /// KK 音標
+    private var phonetic: String? {
+        let value = card.phonetic ?? detail?.word?.phonetic
+        return (value?.isEmpty ?? true) ? nil : value
     }
 
     private var metaLine: String {
@@ -102,7 +109,14 @@ struct FlashCardView: View {
                     .foregroundStyle(Color.er.text)
                     .minimumScaleFactor(0.6)
                     .fixedSize(horizontal: false, vertical: isPattern)
-                if let pos = card.pos, !pos.isEmpty {
+                // 單字旁放 KK 音標；詞性已經寫在下面的釋義裡
+                if let phonetic {
+                    Text(phonetic)
+                        .font(.erMono)
+                        .foregroundStyle(Color.er.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                } else if let pos = card.pos, !pos.isEmpty {
                     Text(pos)
                         .font(.erMono)
                         .foregroundStyle(Color.er.textSecondary)
@@ -127,15 +141,20 @@ struct FlashCardView: View {
                 basicExample
             } else {
                 DetailTabBar(tabs: tabs, selection: shownTab)
-                ScrollView {
-                    DetailTabContent(tab: shownTab.wrappedValue, detail: detail, card: card)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if shownTab.wrappedValue == .overview, let word = detail?.word {
+                    DetailOverview(word: word)
+                        .transition(.opacity)
+                } else {
+                    ScrollView {
+                        DetailTabContent(tab: shownTab.wrappedValue, detail: detail, card: card)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .id(shownTab.wrappedValue)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollIndicators(.hidden)
+                    .softScrollEdges()
+                    .scrollEdgeEffectHidden(true, for: .all)
                 }
-                .id(shownTab.wrappedValue)
-                .scrollBounceBehavior(.basedOnSize)
-                .scrollIndicators(.hidden)
-                .softScrollEdges()
-                .scrollEdgeEffectHidden(true, for: .all)
             }
 
             Spacer(minLength: 0)

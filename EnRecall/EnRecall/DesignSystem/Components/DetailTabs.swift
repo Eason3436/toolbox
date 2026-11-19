@@ -3,6 +3,8 @@ import SwiftData
 
 /// 複習卡背面的分頁：只列出這個字有內容的
 enum DetailTab: String, Identifiable, Hashable {
+    /// 單字卡預設：例句＋重點，不用點分頁就看得到最值得記的
+    case overview
     case examples
     case collocations
     case patterns
@@ -25,6 +27,7 @@ enum DetailTab: String, Identifiable, Hashable {
 
     var title: String {
         switch self {
+        case .overview: "總覽"
         case .examples: "例句"
         case .collocations: "搭配"
         case .patterns: "句型"
@@ -58,7 +61,7 @@ enum DetailTab: String, Identifiable, Hashable {
             return tabs
         }
         if let word = detail?.word {
-            var tabs: [DetailTab] = [.examples]
+            var tabs: [DetailTab] = [.overview, .examples]
             if !word.allCollocations.isEmpty { tabs.append(.collocations) }
             if word.meanings.contains(where: { !$0.patterns.isEmpty }) { tabs.append(.patterns) }
             if !word.phrases.isEmpty { tabs.append(.phrases) }
@@ -137,8 +140,6 @@ struct DetailTabContent: View {
     let detail: CardDetail?
     let card: Card
 
-    private static let examplesCollocationLimit = 4
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let pattern = detail?.pattern {
@@ -156,23 +157,7 @@ struct DetailTabContent: View {
     private func wordContent(_ word: WordDetail) -> some View {
         switch tab {
         case .examples:
-            let meanings = word.meanings.filter { $0.zh != nil && !$0.examples.isEmpty }
-            ForEach(Array(meanings.enumerated()), id: \.offset) { index, meaning in
-                if index > 0 { divider }
-                MeaningLabel(meaning: meaning)
-                ForEach(Array(meaning.examples.enumerated()), id: \.offset) { _, example in
-                    ExampleLines(en: example.en, zh: example.zh)
-                }
-            }
-            // 例句下面順便放幾個主要搭配（常用的排前面），完整的在「搭配」分頁
-            let collocations = word.allCollocations.prefix(Self.examplesCollocationLimit)
-            if !collocations.isEmpty {
-                divider
-                DetailLabel("搭配")
-                ForEach(Array(collocations.enumerated()), id: \.offset) { _, item in
-                    CollocationLine(item: item)
-                }
-            }
+            ExampleGroups(word: word)
         case .collocations:
             ForEach(Array(word.allCollocations.enumerated()), id: \.offset) { _, item in
                 CollocationLine(item: item)
@@ -209,6 +194,9 @@ struct DetailTabContent: View {
                     WordChip(word: item.word, zh: item.note)
                 }
             }
+        case .overview:
+            // 總覽在卡片上另外排（DetailOverview），不經過這裡
+            ExampleGroups(word: word, perMeaning: 1, meaningLimit: 2)
         case .usage, .mix, .years, .structure, .variations:
             EmptyView()
         }
@@ -279,6 +267,114 @@ struct DetailTabContent: View {
     }
 }
 
+// MARK: - 總覽
+
+/// 單字卡背面的「總覽」：例句＋重點（最多 2 條）。
+/// 卡片裡不捲動：放不下就少放幾句例句，重點一定完整顯示，不截斷
+struct DetailOverview: View {
+    let word: WordDetail
+
+    var body: some View {
+        let highlights = HighlightItem.pick(from: word)
+        ViewThatFits(in: .vertical) {
+            content(perMeaning: 2, meaningLimit: 3, highlights: highlights)
+            content(perMeaning: 1, meaningLimit: 2, highlights: highlights)
+            content(perMeaning: 1, meaningLimit: 1, highlights: highlights)
+            // 字特別大（Dynamic Type）的時候才會用到
+            ScrollView {
+                content(perMeaning: 1, meaningLimit: 1, highlights: highlights)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func content(perMeaning: Int, meaningLimit: Int, highlights: [HighlightItem]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ExampleGroups(word: word, perMeaning: perMeaning, meaningLimit: meaningLimit)
+            if !highlights.isEmpty {
+                HighlightBox(items: highlights)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// 例句，依字義分組。小標只寫詞性：中文釋義已經在單字下面寫過一次
+struct ExampleGroups: View {
+    let word: WordDetail
+    var perMeaning: Int = .max
+    var meaningLimit: Int = .max
+
+    var body: some View {
+        let meanings = Array(word.meanings.filter { !$0.examples.isEmpty }.prefix(meaningLimit))
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(meanings.enumerated()), id: \.offset) { _, meaning in
+                // 只有一個字義又沒詞性就不用小標
+                if let pos = meaning.pos, !pos.isEmpty {
+                    Text(pos)
+                        .font(.erMono.weight(.semibold))
+                        .foregroundStyle(Color.er.info)
+                }
+                ForEach(Array(meaning.examples.prefix(perMeaning).enumerated()), id: \.offset) { _, example in
+                    ExampleLines(en: example.en, zh: example.zh)
+                }
+            }
+        }
+    }
+}
+
+/// 重點的一條：英文、中文
+struct HighlightItem: Hashable {
+    let en: String
+    let zh: String?
+
+    /// 依序從搭配 → 句型 → 近義字 → 易混淆字取，前面的類別沒有就往下補，最多 limit 條
+    static func pick(from word: WordDetail, limit: Int = 2) -> [HighlightItem] {
+        let groups: [[HighlightItem]] = [
+            word.allCollocations.map { HighlightItem(en: $0.en, zh: $0.zh) },
+            word.meanings.flatMap(\.patterns).map { HighlightItem(en: $0.pattern, zh: $0.zh) },
+            word.otherSynonyms.map { HighlightItem(en: $0.word, zh: $0.zh) },
+            word.confusables.compactMap { item in item.words.map { HighlightItem(en: $0, zh: item.note) } },
+        ]
+        var picked: [HighlightItem] = []
+        for item in groups.joined() where picked.count < limit && !picked.contains(item) {
+            picked.append(item)
+        }
+        return picked
+    }
+}
+
+/// 「重點」區塊：比卡片深一點的底、圓角，跟例句分開。星號固定代表精選內容
+struct HighlightBox: View {
+    let items: [HighlightItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DetailLabel("重點")
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.er.accent)
+                        .accessibilityLabel("精選")
+                    // 英文和中文擺一起，太長就換行，不截斷
+                    let en = Text(item.en).font(.body.weight(.semibold)).foregroundStyle(Color.er.text)
+                    let zh = Text(item.zh.map { "　\($0)" } ?? "").font(.subheadline).foregroundStyle(Color.er.textSecondary)
+                    Text("\(en)\(zh)")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    SpeakButton(text: item.en, size: 26)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.er.surfaceMuted, in: RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous))
+    }
+}
+
 /// 「adj. 抽象的；理論的」小標
 private struct MeaningLabel: View {
     let meaning: WordDetail.Meaning
@@ -298,7 +394,7 @@ private struct MeaningLabel: View {
 }
 
 #Preview("淺色") {
-    @Previewable @State var tab = DetailTab.examples
+    @Previewable @State var tab = DetailTab.overview
     let container = PreviewData.container
     let card = (try? container.mainContext.fetch(FetchDescriptor<Card>()))?.first { $0.word == "abstract" }
     if let card {

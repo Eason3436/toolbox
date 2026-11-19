@@ -151,9 +151,9 @@ struct SettingsView: View {
 
 // MARK: - 配色
 
-/// 配色主題：一格一個色票，點了整個 App 馬上換
+/// 配色主題：一格一個色票，點了整個 App 馬上換。一排 5 個、兩排共 10 個
 private struct PaletteGrid: View {
-    private let columns = [GridItem(.adaptive(minimum: 64), spacing: 8)]
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 5)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -171,42 +171,60 @@ private struct PaletteGrid: View {
     }
 }
 
+/// 一個配色：上半是背景色、下半是強調色，中間的「Aa」是文字色，看得出這組配色實際的樣子。
+/// 顏色從 Assets 讀，跟著目前的深淺色：淺色模式看到淺色版、深色模式看到深色版
 private struct Swatch: View {
     let palette: AppPalette
     let isSelected: Bool
     let select: () -> Void
 
+    private let size: CGFloat = 46
+
     var body: some View {
         Button(action: select) {
             VStack(spacing: 6) {
                 ZStack {
-                    // 外圈是頁面底色，中間是深色主卡，右下是主色
-                    Circle()
-                        .fill(palette.color("ERBackground"))
-                    Circle()
-                        .fill(palette.color("ERHero"))
-                        .padding(5)
-                    Circle()
-                        .fill(palette.color("ERPrimary"))
-                        .frame(width: 16, height: 16)
-                        .overlay(Circle().strokeBorder(palette.color("ERSurface"), lineWidth: 2))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    VStack(spacing: 0) {
+                        palette.color("ERBackground")
+                        palette.color("ERPrimary")
+                    }
+                    .clipShape(Circle())
+                    // 淺色背景在白底上也看得到邊界
+                    .overlay(Circle().strokeBorder(Color.er.outline, lineWidth: 1))
+
+                    Text(verbatim: "Aa")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(palette.color("ERText"))
+                }
+                .frame(width: size, height: size)
+                // 選取：外面一圈粗框，右下角一個勾
+                .padding(4)
+                .overlay {
+                    if isSelected {
+                        Circle()
+                            .strokeBorder(Color.er.text, lineWidth: 2.5)
+                            .transition(.opacity)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .font(.footnote.weight(.bold))
-                            .foregroundStyle(Color.er.heroText)
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(palette.color("ERText"))
+                            .frame(width: 18, height: 18)
+                            .background(palette.color("ERSurface"), in: Circle())
+                            .overlay(Circle().strokeBorder(Color.er.text, lineWidth: 1.5))
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .frame(width: 44, height: 44)
-                .overlay(Circle().strokeBorder(isSelected ? Color.er.text : Color.er.outline, lineWidth: isSelected ? 2 : 1))
 
                 Text(palette.title)
                     .font(.caption)
                     .foregroundStyle(isSelected ? Color.er.text : Color.er.textSecondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
