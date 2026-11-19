@@ -114,17 +114,13 @@ private struct DailyNewRow: View {
                 .sensoryFeedback(.selection, trigger: deck.newCardsAll)
             }
             if !deck.newCardsAll {
-                Stepper(value: $deck.dailyNewLimit, in: 0...100, step: 5) {
-                    HStack {
-                        Text("每天新卡")
-                            .foregroundStyle(Color.er.textSecondary)
-                        Spacer()
-                        Text(deck.dailyNewLimit, format: .number)
-                            .monospacedDigit()
-                            .contentTransition(.numericText(value: Double(deck.dailyNewLimit)))
-                            .foregroundStyle(Color.er.text)
-                    }
-                    .font(.subheadline)
+                HStack {
+                    Text("每天新卡")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.er.textSecondary)
+                    Spacer(minLength: 8)
+                    RollingCounter(value: $deck.dailyNewLimit, in: 0...100)
+                        .accessibilityLabel("每天新卡")
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

@@ -164,6 +164,7 @@ struct HandoutView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
                     .disabled(isMaking || (range == .deck && deckID.isEmpty))
                     .padding(.top, 8)
                 }

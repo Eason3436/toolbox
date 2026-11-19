@@ -123,6 +123,7 @@ struct QuizView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
                 .padding(.top, 8)
                 .disabled(availableKinds.isEmpty)
             }
@@ -339,6 +340,7 @@ struct QuizView: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
                     .disabled(scheduledWrong)
                     .sensoryFeedback(.success, trigger: scheduledWrong)
                 }
@@ -350,12 +352,14 @@ struct QuizView: View {
                         Text("再測一次").frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
                     Button {
                         dismiss()
                     } label: {
                         Text("完成").frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
                 }
                 .padding(.top, 8)
             }

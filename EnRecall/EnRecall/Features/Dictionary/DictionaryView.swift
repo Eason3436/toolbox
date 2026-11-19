@@ -17,6 +17,7 @@ struct DictionaryView: View {
 
     // 拍照找片語
     @State private var showCamera = false
+    @State private var showPhotos = false
     @State private var photoItem: PhotosPickerItem?
     @State private var scanImage: ScanImage?
 
@@ -56,6 +57,7 @@ struct DictionaryView: View {
             }
             .ignoresSafeArea()
         }
+        .photosPicker(isPresented: $showPhotos, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -100,24 +102,22 @@ struct DictionaryView: View {
             .background(Color.er.surface, in: Capsule())
             .overlay(Capsule().strokeBorder(Color.er.outline))
 
-            Menu {
+            // 一按就開相機；沒有相機（模擬器）才改成選照片
+            Button {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                    Button {
-                        showCamera = true
-                    } label: {
-                        Label("拍照", systemImage: "camera")
-                    }
-                }
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label("從照片選", systemImage: "photo")
+                    showCamera = true
+                } else {
+                    showPhotos = true
                 }
             } label: {
-                Image(systemName: "text.viewfinder")
+                Image(systemName: "camera")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.er.onPrimary)
                     .frame(width: 56, height: 56)
                     .background(Color.er.primary, in: Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("拍照找片語和句型")
         }
     }

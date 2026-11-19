@@ -39,10 +39,9 @@ struct SettingsView: View {
             .listRowBackground(Color.er.surface)
 
             Section {
-                Stepper(value: $dailyNewLimit, in: 0...200, step: 5) {
-                    LabeledContent("每日新卡上限") {
-                        Text(dailyNewLimit, format: .number).monospacedDigit()
-                    }
+                LabeledContent("每日新卡上限") {
+                    RollingCounter(value: $dailyNewLimit, in: 0...200)
+                        .accessibilityLabel("每日新卡上限")
                 }
                 Toggle("每日提醒", isOn: $reminderEnabled)
                 if reminderEnabled {

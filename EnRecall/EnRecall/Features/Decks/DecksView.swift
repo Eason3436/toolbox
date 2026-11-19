@@ -152,7 +152,9 @@ private struct NewCardQuotaCard: View {
             LinearMeter(value: summary.newLimit > 0 ? Double(summary.newDoneToday) / Double(summary.newLimit) : 0)
             Button("調整上限與順序", action: adjust)
                 .font(.footnote.weight(.semibold))
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
         }
         .erCard(elevated: true)
     }
@@ -195,10 +197,9 @@ struct NewCardLimitSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Stepper(value: $dailyNewLimit, in: 0...200, step: 5) {
-                        LabeledContent("每日新卡上限") {
-                            Text(dailyNewLimit, format: .number).monospacedDigit()
-                        }
+                    LabeledContent("每日新卡上限") {
+                        RollingCounter(value: $dailyNewLimit, in: 0...200)
+                            .accessibilityLabel("每日新卡上限")
                     }
                 } footer: {
                     Text("全部牌組合計，「新卡一次出完」的牌組不算在內。各牌組自己的上限在牌組卡片上調，順序長按牌組調整")
