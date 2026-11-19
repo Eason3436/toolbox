@@ -224,12 +224,17 @@ private struct HeatmapCard: View {
 
 // MARK: - 每日長條
 
-/// 堆疊長條：深色＝複習、淺色＝新學。0 張的日子畫一條 3pt 的淡線；週檢視每條上面寫總數，今天粗體
+/// 堆疊長條：主色＝複習、主色淡一點＝新學（同一個色相，淺灰會被看成「沒有資料」）。
+/// 長條窄一點、留白少一點；0 張的日子畫一條 3pt 的淡線；週檢視每條上面寫總數，今天粗體
 private struct DailyBarChart: View {
     let days: [DayCount]
     let annotate: Bool
 
-    private let plotHeight: CGFloat = 140
+    private let plotHeight: CGFloat = 120
+    private var reviewColor: Color { Color.er.primary }
+    private var newColor: Color { Color.er.primary.opacity(0.4) }
+    /// 週檢視 7 條、月檢視 30 條，長條都只佔一格的一半多一點
+    private let barWidth: MarkDimension = .ratio(0.56)
 
     var body: some View {
         let today = Calendar.current.startOfDay(for: Date())
@@ -240,8 +245,8 @@ private struct DailyBarChart: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Spacer()
-                legend(Color.er.text, "複習")
-                legend(Color.er.outlineStrong, "新學")
+                legend(reviewColor, "複習")
+                legend(newColor, "新學")
             }
             .font(.caption)
             .foregroundStyle(Color.er.textSecondary)
@@ -251,24 +256,27 @@ private struct DailyBarChart: View {
                     BarMark(
                         x: .value("日期", day.date, unit: .day),
                         yStart: .value("張數", 0.0),
-                        yEnd: .value("張數", zeroHeight)
+                        yEnd: .value("張數", zeroHeight),
+                        width: barWidth
                     )
-                    .foregroundStyle(Color.er.outline)
+                    .foregroundStyle(Color.er.fill)
                     .cornerRadius(1.5)
                 } else {
                     BarMark(
                         x: .value("日期", day.date, unit: .day),
                         yStart: .value("張數", 0.0),
-                        yEnd: .value("張數", Double(day.reviewCount))
+                        yEnd: .value("張數", Double(day.reviewCount)),
+                        width: barWidth
                     )
-                    .foregroundStyle(Color.er.text)
+                    .foregroundStyle(reviewColor)
                     .cornerRadius(day.newCount == 0 ? 3 : 0)
                     BarMark(
                         x: .value("日期", day.date, unit: .day),
                         yStart: .value("張數", Double(day.reviewCount)),
-                        yEnd: .value("張數", Double(day.count))
+                        yEnd: .value("張數", Double(day.count)),
+                        width: barWidth
                     )
-                    .foregroundStyle(Color.er.outlineStrong)
+                    .foregroundStyle(newColor)
                     .cornerRadius(3)
                     .annotation(position: .top, spacing: 2) {
                         if annotate {

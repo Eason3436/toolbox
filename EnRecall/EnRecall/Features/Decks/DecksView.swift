@@ -53,12 +53,9 @@ struct DecksView: View {
                             if offset > 0 {
                                 Divider().overlay(Color.er.outline)
                             }
-                            Button {
+                            DeckRow(deck: deck) {
                                 editing = deck
-                            } label: {
-                                DeckRow(deck: deck)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .erCard(padding: 0, elevated: true)
@@ -178,44 +175,62 @@ private struct NewCardAllocationCard: View {
 
 // MARK: - 牌組列
 
-/// 一列：名稱、已背／總數・每天 N 張、狀態標籤、箭頭，下面一條細進度
+/// 一列：名稱、已背／總數・每天 N 張、狀態標籤，最右邊一顆暫停／繼續，下面一條細進度。
+/// 點列本身打開設定面板；暫停鍵直接切換，不用打開面板
 private struct DeckRow: View {
     let deck: Deck
+    let open: () -> Void
 
     private var isPaused: Bool { deck.mode == .paused }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(deck.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.text)
-                        .lineLimit(1)
-                    HStack(spacing: 0) {
-                        LearnedCount(deck: deck)
-                        if deck.mode == .active {
-                            Text(deck.newCardsAll ? " · 新卡一次出完" : " · 每天 \(deck.dailyNewLimit.formatted()) 張")
+        HStack(spacing: 10) {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(deck.name)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.text)
+                                .lineLimit(1)
+                            HStack(spacing: 0) {
+                                LearnedCount(deck: deck)
+                                if deck.mode == .active {
+                                    Text(deck.newCardsAll ? " · 新卡一次出完" : " · 每天 \(deck.dailyNewLimit.formatted()) 張")
+                                }
+                            }
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.textSecondary)
                         }
+                        Spacer(minLength: 8)
+                        DeckStatusTag(mode: deck.mode)
                     }
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(isPaused ? Color.er.textTertiary : Color.er.textSecondary)
+                    LearnedMeter(deck: deck)
+                        .opacity(isPaused ? 0.5 : 1)
                 }
-                Spacer(minLength: 8)
-                DeckStatusTag(mode: deck.mode)
-                Image(systemName: "chevron.forward")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.er.textTertiary)
+                .contentShape(Rectangle())
             }
-            LearnedMeter(deck: deck)
-                .opacity(isPaused ? 0.5 : 1)
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("調整狀態和每天新卡")
+
+            Button {
+                withAnimation(.spring(duration: 0.25)) { deck.isPaused.toggle() }
+            } label: {
+                Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .tint(isPaused ? Color.er.primary : Color.er.textSecondary)
+            .sensoryFeedback(.selection, trigger: isPaused)
+            .accessibilityLabel(isPaused ? "繼續" : "暫停")
         }
         .padding(.horizontal, Theme.Spacing.cardLarge)
         .padding(.vertical, 14)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("調整狀態和每天新卡")
     }
 }
 

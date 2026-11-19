@@ -57,9 +57,20 @@ enum HandoutHTML {
 
     // MARK: 共同
 
-    /// 不能用透明（transparent、rgba、漸層）：印成 PDF 時透明的地方會變成黑色
-    private static let css = """
-    html { zoom: 0.75; }
+    /// 原本用 `html { zoom: 0.75 }` 縮小，但 WebKit 列印時先照全寬排版再縮，右邊空出四分之一。
+    /// 改成把每個 px 數字直接乘 0.75，大小一樣、版面吃滿整頁寬
+    private static let css = scaled(rawCSS, by: 0.75)
+
+    private static func scaled(_ css: String, by factor: Double) -> String {
+        css.replacing(#/(\d+(?:\.\d+)?)px/#) { match in
+            let value = (Double(match.1) ?? 0) * factor
+            return String(format: "%.2fpx", value)
+        }
+    }
+
+    /// 不能用透明（transparent、rgba、漸層）：印成 PDF 時透明的地方會變成黑色。
+    /// 分欄不用 CSS columns（WebKit 列印時常常不分欄，全部擠在左邊），一律用 grid
+    private static let rawCSS = """
     * { box-sizing: border-box; }
     body { margin: 0; font: 11px/1.45 -apple-system, "PingFang TC", sans-serif; color: rgb(28,28,30); background: white; -webkit-print-color-adjust: exact; }
     .sf { font-family: ui-serif, "New York", Georgia, serif; }
@@ -78,7 +89,7 @@ enum HandoutHTML {
     .note b { color: var(--a); font-weight: 600; }
 
     /* 講義：雙欄字卡 */
-    .cards { columns: 2; column-gap: 24px; }
+    .cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
     .e { break-inside: avoid; page-break-inside: avoid; padding: 8px 0 9px; border-top: 1px solid rgb(229,229,234); }
     .e .h { display: flex; align-items: baseline; gap: 6px; }
     .e .n { font: 600 8.5px ui-monospace, Menlo, monospace; color: var(--a); width: 16px; flex: none; }
@@ -132,7 +143,7 @@ enum HandoutHTML {
     .grp h3 { margin: 0 0 3px; padding-bottom: 3px; border-bottom: 1.5px solid var(--a); font-size: 11px; display: flex; align-items: baseline; gap: 6px; break-after: avoid; page-break-after: avoid; }
     .grp h3 i { width: 7px; height: 7px; border-radius: 50%; background: var(--a); display: inline-block; }
     .grp h3 span { font-weight: 400; font-size: 9px; color: rgb(110,110,115); }
-    .list { columns: 3; column-gap: 18px; }
+    .list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
     .it { break-inside: avoid; page-break-inside: avoid; display: flex; align-items: baseline; gap: 5px; padding: 2.6px 0; border-bottom: 1px dotted rgb(220,220,224); font-size: 9.6px; white-space: nowrap; overflow: hidden; }
     .it b { font: 700 10.6px ui-serif, "New York", Georgia, serif; }
     .it .ps { font: italic 8.4px ui-serif, "New York", Georgia, serif; color: rgb(150,150,155); }
