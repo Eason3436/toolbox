@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "1.4.0", date: DateComponents(year: 2026, month: 11, day: 19), notes: [
+            "首頁的扇子可以滑：拖一下或甩出去，前面那張退到這組最後面，後面的往前遞補",
+            "在首頁滑過的照片不算看過，點一下就從現在最前面那張開始整理",
+        ]),
         Entry(version: "1.3.1", date: DateComponents(year: 2026, month: 11, day: 18), notes: [
             "修正整理紀錄和統計有時不見：資料庫改放在 App 自己的資料夾，不會再跟 LiveContainer 裡的其他 App 共用同一個檔案",
         ]),

@@ -48,6 +48,26 @@ final class PhotoDeckModel {
         return (index..<end).map { DeckCard(depth: $0 - index, asset: assets[$0]) }
     }
 
+    /// 首頁扇子要畫的卡：前三張，加上排在最後面那張。
+    /// 最後一張就是剛被送到後面的那張，留著它才看得到它退到後面的過程（之後淡掉）。
+    var fanCards: [DeckCard] {
+        guard index < assets.count else { return [] }
+        var cards = visible
+        let last = assets.count - 1
+        if last - index >= cards.count {
+            cards.append(DeckCard(depth: last - index, asset: assets[last]))
+        }
+        return cards
+    }
+
+    /// 首頁滑動：目前這張排到這組最後面，後面的往前一格。
+    /// 不算看過、不記進復原紀錄；前面已經整理過的不動，所以復原紀錄的位置還是對的。
+    func sendToBack() {
+        guard phase == .ready, assets.count - index > 1 else { return }
+        let front = assets.remove(at: index)
+        assets.append(front)
+    }
+
     // MARK: - 抽組
 
     func load(filter: MediaFilter, size: Int, excludeViewed: Bool, excludeFavorites: Bool,

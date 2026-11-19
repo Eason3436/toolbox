@@ -91,9 +91,11 @@ struct PhotosView: View {
                 }
             }
         case .ready, .finished:
-            FanView(cards: deck.visible, namespace: namespace) {
+            FanView(cards: deck.fanCards, namespace: namespace) {
                 guard deck.phase == .ready else { return }
                 entered = true
+            } onSendBack: {
+                deck.sendToBack()
             }
             // 換組時重新從底部浮上來
             .id(deck.generation)
