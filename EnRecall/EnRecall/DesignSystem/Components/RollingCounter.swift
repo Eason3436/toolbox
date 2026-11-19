@@ -116,11 +116,18 @@ struct RollingCounter: View {
        （跟著 Dynamic Type 放大）。The buttons are upright keys the
        full height of the inside of the box, the same height as the
        window the digits roll in, so every edge of the box is the
-       same 5pt from something */
-    @ScaledMetric(relativeTo: .title) private var cell: CGFloat = 46
-    @ScaledMetric(relativeTo: .title) private var fontSize: CGFloat = 30
+       same 3pt from something.
+       尺寸照系統的分段控制：外框 36pt 高、內縮 3pt、字是 title3 粗細，
+       放在分段控制旁邊看起來是同一家的元件 */
+    @ScaledMetric(relativeTo: .body) private var cell: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var fontSize: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var keyWidth: CGFloat = 40
     /* the slab's inset round the buttons */
-    private let pad: CGFloat = 5
+    private let pad: CGFloat = 3
+
+    /// 一個數字的寬度（等寬數字大約 0.62em）
+    private var digitWidth: CGFloat { fontSize * 0.62 }
+    private var separatorWidth: CGFloat { fontSize * 0.26 }
 
     /// range 只支援 0 以上
     init(value: Binding<Int>, in range: ClosedRange<Int>, bounce: Double = 45, stagger: Double = 45, blur: Double = 50) {
@@ -133,19 +140,19 @@ struct RollingCounter: View {
     }
 
     var body: some View {
-        /* 5pt round each key — above, below and at the box's end —
-           and the corner is the box's less that same 5, so the keys
+        /* 3pt round each key — above, below and at the box's end —
+           and the corner is the box's less that same 3, so the keys
            sit concentric in it. 這裡整個是膠囊：外框半徑 = 高度一半，
-           按鍵就是半徑少 5 的圓，跟外框同心 */
+           按鍵是半徑少 3 的膠囊，跟外框同心。
+           底色跟分段控制的軌道一樣、沒有框線；按鍵平常是透明的，
+           按下才浮出一塊跟分段控制選中那格一樣的底 */
         HStack(spacing: 0) {
             key(-1)
             number
             key(1)
         }
         .padding(pad)
-        .background(Color.er.surfaceMuted, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.er.outline, lineWidth: 1))
-        .opacity(isEnabled ? 1 : 0.5)
+        .background(Color.er.fill, in: Capsule())
         .sensoryFeedback(.selection, trigger: model.value)
         .onChange(of: RollingCounterKnobs(bounce: bounce, stagger: stagger, still: reduceMotion), initial: true) { _, knobs in
             model.knobs = knobs
@@ -176,8 +183,8 @@ struct RollingCounter: View {
             model.tap(dir)
         } label: {
             Image(systemName: dir < 0 ? "minus" : "plus")
-                .font(.body.weight(.semibold))
-                .frame(width: cell, height: cell)
+                .font(.subheadline.weight(.semibold))
+                .frame(width: keyWidth, height: cell)
         }
         .buttonStyle(CounterKeyStyle { pressed in model.hold(dir, pressed: pressed) })
         .disabled(atEnd)
@@ -186,12 +193,16 @@ struct RollingCounter: View {
 
     // MARK: 數字
 
-    /* the number hugs its digits and the buttons hug the number:
-       a column arriving or leaving animates its own width, so the
-       pill grows and shrinks with the count rather than keeping
-       room for five digits it is not showing */
+    /* 原版是 the number hugs its digits：一欄出現或消失時改自己的寬度，
+       膠囊跟著變寬變窄。在 iPhone 上這會讓 9 → 10、10 → 9 的時候
+       兩顆按鍵被推來推去，每一格都在重新排版，看起來卡。
+       所以這裡改成：寬度一開始就留好最多幾位數（0...100 就是三位），
+       用不到的那幾欄只是淡掉，整排數字用位移（不重新排版）滑到正中間。
+       外框從頭到尾一樣大，按鍵不會動 */
     private var number: some View {
         let shown = max(1, String(model.value).count)
+        let hidden = model.places - shown
+        let hiddenWidth = CGFloat(hidden) * digitWidth + (model.places > 3 && shown <= 3 ? separatorWidth : 0)
         return HStack(spacing: 0) {
             ForEach(Array((0..<model.places).reversed()), id: \.self) { p in
                 column(p, on: p < shown)
@@ -200,12 +211,15 @@ struct RollingCounter: View {
                 }
             }
         }
-        .font(.system(size: fontSize, weight: .medium))
+        .animation(.smooth(duration: 0.25)) { content in
+            content.offset(x: -hiddenWidth / 2)
+        }
+        .font(.system(size: fontSize, weight: .semibold))
         .monospacedDigit()
-        .foregroundStyle(Color.er.text)
+        .foregroundStyle(isEnabled ? Color.er.text : Color.er.textTertiary)
         // 數字永遠由左到右，阿拉伯文等 RTL 語系也一樣
         .environment(\.layoutDirection, .leftToRight)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 6)
         .frame(height: cell)
         /* rolling digits fade at the window's top and bottom edge */
         .mask {
@@ -233,24 +247,21 @@ struct RollingCounter: View {
         .fixedSize()
         .offset(y: -m * cell)
         .blur(radius: smear > 0.15 ? smear : 0)
-        // 只有欄寬和透明度跟著彈簧動畫，滾動的位置由 model 每一格自己算
-        .animation(.spring(duration: 0.32, bounce: 0.35)) { content in
-            content
-                .frame(width: on ? fontSize * 0.64 : 0, height: cell, alignment: .top)
-                .opacity(on ? 1 : 0)
-        }
+        .frame(width: digitWidth, height: cell, alignment: .top)
         .clipped()
+        // 只有透明度跟著動畫，滾動的位置由 model 每一格自己算
+        .animation(.smooth(duration: 0.2)) { content in
+            content.opacity(on ? 1 : 0)
+        }
     }
 
     private func separator(on: Bool) -> some View {
         Text(verbatim: Locale.current.groupingSeparator ?? ",")
             .fixedSize()
-            .animation(.spring(duration: 0.32, bounce: 0.35)) { content in
-                content
-                    .frame(width: on ? fontSize * 0.26 : 0)
-                    .opacity(on ? 1 : 0)
+            .frame(width: separatorWidth)
+            .animation(.smooth(duration: 0.2)) { content in
+                content.opacity(on ? 1 : 0)
             }
-            .clipped()
     }
 
     /* ── taking the number itself ──────────────────────────── */
@@ -265,19 +276,23 @@ struct RollingCounter: View {
     }
 }
 
-/// 按鍵：圓的，按下縮小。按住不放交給 model 連續加減
+/// 按鍵：平常只有符號，按下浮出一塊膠囊底並縮一點。按住不放交給 model 連續加減
 private struct CounterKeyStyle: ButtonStyle {
     let onPress: (Bool) -> Void
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(Color.er.text)
-            .background(configuration.isPressed ? Color.er.outline : Color.er.fill, in: Circle())
-            .opacity(isEnabled ? 1 : 0.35)
-            .scaleEffect(configuration.isPressed ? 0.9 : 1)
-            .animation(.spring(duration: configuration.isPressed ? 0.11 : 0.2, bounce: 0.3), value: configuration.isPressed)
-            .contentShape(Circle())
+            .foregroundStyle(isEnabled ? Color.er.text : Color.er.textTertiary)
+            .background {
+                Capsule()
+                    .fill(Color.er.surface)
+                    .shadow(color: Color.er.shadow, radius: 2, y: 1)
+                    .opacity(configuration.isPressed ? 1 : 0)
+            }
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.spring(duration: configuration.isPressed ? 0.11 : 0.2, bounce: 0.2), value: configuration.isPressed)
+            .contentShape(Capsule())
             .onChange(of: configuration.isPressed) { _, pressed in
                 onPress(pressed)
             }
@@ -436,6 +451,8 @@ final class RollingCounterModel {
         guard link == nil else { return }
         prev = 0
         let link = CADisplayLink(target: RollingCounterTicker(self), selector: #selector(RollingCounterTicker.tick(_:)))
+        // ProMotion 的 iPhone 跑 120Hz（Info.plist 有 CADisableMinimumFrameDurationOnPhone），滾起來比較順
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         self.link = link
     }

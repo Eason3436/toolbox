@@ -2,10 +2,19 @@ import SwiftUI
 import SwiftData
 
 /// 牌組頁的一張牌組卡：模式、進度、每天新卡
-struct DeckCardView: View {
+struct DeckCardView<MenuItems: View>: View {
     @Bindable var deck: Deck
     /// 領新卡的順位（01、02…）
     let position: Int
+    /// 長按選單（往上移、往下移、刪除）。只掛在上面的牌組名稱那一列：
+    /// 掛在整張卡上會搶走「每天新卡」按住連續加減的長按
+    private let menu: () -> MenuItems
+
+    init(deck: Deck, position: Int, @ViewBuilder menu: @escaping () -> MenuItems) {
+        _deck = Bindable(wrappedValue: deck)
+        self.position = position
+        self.menu = menu
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -31,6 +40,7 @@ struct DeckCardView: View {
             }
             .buttonStyle(.plain)
             .opacity(deck.isPaused ? 0.55 : 1)
+            .contextMenu { menu() }
 
             HStack(spacing: 10) {
                 Picker("模式", selection: $deck.runMode) {
@@ -64,6 +74,12 @@ struct DeckCardView: View {
         .erCard(padding: Theme.Spacing.cardLarge, elevated: true)
         .animation(.spring(duration: 0.25), value: deck.mode)
         .animation(.spring(duration: 0.25), value: deck.newCardsAll)
+    }
+}
+
+extension DeckCardView where MenuItems == EmptyView {
+    init(deck: Deck, position: Int) {
+        self.init(deck: deck, position: position) { EmptyView() }
     }
 }
 

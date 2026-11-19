@@ -36,17 +36,16 @@ struct DecksView: View {
                     EmptyLine("還沒有牌組")
                 } else {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { offset, deck in
-                        DeckCardView(deck: deck, position: offset + 1)
-                            .contextMenu {
-                                Button("往上移", systemImage: "arrow.up") { move(deck, by: -1) }
-                                    .disabled(offset == 0)
-                                Button("往下移", systemImage: "arrow.down") { move(deck, by: 1) }
-                                    .disabled(offset == filtered.count - 1)
-                                Divider()
-                                Button("刪除牌組", systemImage: "trash", role: .destructive) {
-                                    pendingDelete = deck
-                                }
+                        DeckCardView(deck: deck, position: offset + 1) {
+                            Button("往上移", systemImage: "arrow.up") { move(deck, by: -1) }
+                                .disabled(offset == 0)
+                            Button("往下移", systemImage: "arrow.down") { move(deck, by: 1) }
+                                .disabled(offset == filtered.count - 1)
+                            Divider()
+                            Button("刪除牌組", systemImage: "trash", role: .destructive) {
+                                pendingDelete = deck
                             }
+                        }
                     }
                 }
             }
@@ -202,7 +201,7 @@ struct NewCardLimitSheet: View {
                             .accessibilityLabel("每日新卡上限")
                     }
                 } footer: {
-                    Text("全部牌組合計，「新卡一次出完」的牌組不算在內。各牌組自己的上限在牌組卡片上調，順序長按牌組調整")
+                    Text("全部牌組合計，「新卡一次出完」的牌組不算在內。各牌組自己的上限在牌組卡片上調，順序長按牌組名稱調整")
                 }
             }
             .scrollContentBackground(.hidden)

@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.22.0"
+    MARKETING_VERSION: "0.22.1"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
 targets:
@@ -35,6 +35,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # 讓 ProMotion 的 iPhone 可以跑到 120Hz（滾動計數器、動畫）
+        CADisableMinimumFrameDurationOnPhone: true
         NSCameraUsageDescription: 拍課本或雜誌，找出裡面的片語和句型
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
