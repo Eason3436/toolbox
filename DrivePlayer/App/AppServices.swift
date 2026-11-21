@@ -14,6 +14,7 @@ final class AppServices {
     let library: LibraryManager
     let matcher: MetadataMatcher
     let playback: PlaybackStore
+    let network = NetworkMonitor()
 
     enum Keys {
         static let autoPlayNext = "autoPlayNext"
@@ -63,6 +64,14 @@ final class AppServices {
     }
 
     func play(_ item: MediaItem, fromBeginning: Bool = false) {
+        guard network.isOnline else {
+            player.errorMessage = "沒有網路連線，請檢查網路後再試一次"
+            return
+        }
+        guard auth.state == .signedIn else {
+            player.errorMessage = auth.sessionExpired ? AuthError.expired.localizedDescription : AuthError.notSignedIn.localizedDescription
+            return
+        }
         let request = request(for: item, fromBeginning: fromBeginning)
         Task { await player.play(request) }
     }
@@ -98,6 +107,22 @@ final class AppServices {
     func didBecomeActive() {
         let proxy = proxy
         Task { try? await proxy.ensureRunning() }
+        // 上次比對時斷網的，回來再試
+        if network.isOnline { matcher.matchPending() }
+    }
+
+    /// 重新比對所有「未辨識」
+    func retryUnmatched() {
+        let unmatched = MatchState.unmatched.rawValue
+        let context = library.context
+        for item in (try? context.fetch(FetchDescriptor<MediaItem>(predicate: #Predicate { $0.matchStateRaw == unmatched }))) ?? [] {
+            item.matchState = .pending
+        }
+        for show in (try? context.fetch(FetchDescriptor<Show>(predicate: #Predicate { $0.matchStateRaw == unmatched }))) ?? [] {
+            show.matchState = .pending
+        }
+        try? context.save()
+        matcher.matchPending()
     }
 
     func didEnterBackground() {

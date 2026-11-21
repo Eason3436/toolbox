@@ -18,6 +18,7 @@
 | LiveContainer 捷徑版 | `livecontainer` | `LiveContainer/`（overlay + patches） | `livecontainer.yml` | [`livecontainer-latest`/LiveContainer.ipa](https://github.com/Eason3436/toolbox/releases/download/livecontainer-latest/LiveContainer.ipa)（另有 `LiveContainer+SideStore.ipa`） |
 | EnRecall 背單字 | `main` | `EnRecall/` | `enrecall.yml` | [`enrecall-latest`/EnRecall.ipa](https://github.com/Eason3436/toolbox/releases/download/enrecall-latest/EnRecall.ipa) |
 | Sweep 相簿清理 | `main` | `Sweep/` | `sweep.yml` | [`sweep-latest`/Sweep.ipa](https://github.com/Eason3436/toolbox/releases/download/sweep-latest/Sweep.ipa) |
+| DrivePlayer 雲端播放器 | `main` | `DrivePlayer/` | `driveplayer.yml` | [`driveplayer-latest`/DrivePlayer.ipa](https://github.com/Eason3436/toolbox/releases/download/driveplayer-latest/DrivePlayer.ipa) |
 | HealthMi（第三方） | `healthmi` | 無，CI 直接 clone 上游 | `healthmi.yml` | [`healthmi-latest`/HealthMi.ipa](https://github.com/Eason3436/toolbox/releases/download/healthmi-latest/HealthMi.ipa) |
 
 `ui-check` 是 Toolbox 早期的舊分支，可以忽略。`claude/project-thread-*` 是改名前的舊分支，內容都已在 `main`，不要再用。
@@ -103,6 +104,15 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - 更新日誌：`Sweep/Sweep/Features/Settings/ChangelogView.swift`（統計 → 齒輪 → 更新日誌），每次更新加一筆並同步改 `Sweep/project.yml` 的 `MARKETING_VERSION`
 - 細節、跟規劃書不同的地方、驗收步驟見 `Sweep/README.md`
 
+### DrivePlayer 雲端播放器（`DrivePlayer/`）
+依使用者的「DrivePlayer 開發規劃書（第一階段：MP4／MOV）」做的 Google Drive 影音播放器（類似 Infuse）。M0–M6 都寫完（2026-11-21），實機驗收待使用者確認。
+- 播放：AVPlayer → `LocalStreamProxy`（NWListener 只聽 127.0.0.1，每個請求帶最新 token 轉送 Range 到 Drive；token 一小時過期，不能直接塞進 AVURLAsset）。`PlaybackEngine` protocol 是給第二階段 MPVKit（MKV）預留的
+- `Packages/Core`：純 Swift（不准 import UIKit／AVFoundation／SwiftUI／SwiftData），沙盒可以裝 Linux 版 Swift 跑 `swift test`（`curl` swift.org 的 ubuntu24.04 tarball 解到 /opt/swift）；CI 另外在 ubuntu-latest 跑
+- Google 登入（GoogleSignIn-iOS，SPM，規劃書唯一允許的第三方套件）＋ TMDB；`TMDB_API_KEY`、`GOOGLE_CLIENT_ID`、`GOOGLE_REVERSED_CLIENT_ID` 放 Actions Secrets，CI 寫成 `Config/Secrets.xcconfig`（gitignore），沒設也照樣編譯、App 內顯示「尚未設定」
+- **Bundle ID 是 `com.yueze.driveplayer`**（規劃書指定，Google OAuth iOS 用戶端綁這個），不是 `com.eason3436.` 前綴；使用者照規劃書用 Sideloadly（不改 Bundle ID）安裝
+- iOS 18 起、**Swift 6 語言模式**（strict concurrency complete）；SwiftData 存在 `Application Support/DrivePlayer.store`
+- 細節、跟規劃書不同的地方、驗收步驟見 `DrivePlayer/README.md`
+
 ### HealthMi（只有 workflow）
 第三方開源 App [ShawnDiego/HealthMi](https://github.com/ShawnDiego/HealthMi)（Apache-2.0，小米運動健康 → Apple 健康）。`healthmi.yml` clone 上游、xcodegen、ad-hoc 簽 HealthKit entitlement 後打包。手動觸發時可用 `ref` 指定上游版本。注意：SideStore 免費帳號會把 HealthKit entitlement 拿掉。
 
@@ -110,10 +120,10 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 
 - 專案檔都用 **XcodeGen**（各 App 資料夾裡的 `project.yml`），不要提交 `.xcodeproj`
 - **沙盒裡沒有 Swift／Xcode，CI 就是編譯器**。改完 push，看 Actions 結果；失敗就讀 build log 修
-- Runner：Recap、Screenshots、Ledger（含磁力特別版）、EnRecall、Sweep、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
+- Runner：Recap、Screenshots、Ledger（含磁力特別版）、EnRecall、Sweep、DrivePlayer、HealthMi 用 `xcode-27`（iOS 27 SDK）；Toolbox、LiveContainer 用 `macos-26`（Toolbox 會自動挑最新的 Xcode）
 - 觸發：
-  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**`、`LedgerMagnet/**`、`EnRecall/**`、`Sweep/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
-  - `recap.yml`、`ledger.yml`、`ledger-magnet.yml`、`enrecall.yml`、`sweep.yml`：push 改到各自資料夾時跑，也可手動
+  - `build.yml`（Toolbox）只忽略 `Screenshots/**`、`Ledger/**`、`LedgerMagnet/**`、`EnRecall/**`、`Sweep/**`、`DrivePlayer/**` 和它們的 workflow，其他改動在**每個分支的每次 push 都會跑**；只有 push 到 `main` 才更新 `latest` release
+  - `recap.yml`、`ledger.yml`、`ledger-magnet.yml`、`enrecall.yml`、`sweep.yml`、`driveplayer.yml`：push 改到各自資料夾時跑，也可手動
   - `screenshots.yml`：只能手動
   - `livecontainer.yml`、`healthmi.yml`：改到 workflow 本身（或 `LiveContainer/**`）時跑，也可手動並指定上游 ref
   - GitHub 的 push 事件偶爾沒觸發，用 workflow_dispatch 手動跑；macOS job 偶爾沒拿到 runner 被取消，重跑即可

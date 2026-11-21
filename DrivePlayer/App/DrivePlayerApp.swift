@@ -46,6 +46,11 @@ struct RootView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            StatusBanner()
+                .animation(.snappy, value: services.network.isOnline)
+                .animation(.snappy, value: services.auth.sessionExpired)
+        }
         .alert(
             "無法播放",
             isPresented: Binding(

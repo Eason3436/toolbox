@@ -22,7 +22,7 @@ enum DriveError: LocalizedError {
 
     static func from(_ error: Error) -> DriveError {
         if let e = error as? DriveError { return e }
-        if let e = error as? AuthError { return .auth(e) }
+        if let e = error as? AuthError { return e == .network ? .offline : .auth(e) }
         if let e = error as? URLError {
             switch e.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost,

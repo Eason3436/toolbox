@@ -60,6 +60,8 @@ final class PlayerController: NSObject {
         report(.closed)
         engine.stop()
         current = nil
+        // 播放畫面裡已經顯示過錯誤，關掉後不要在首頁再跳一次
+        errorMessage = nil
         isPresented = false
         if let vc = viewController, vc.presentingViewController != nil {
             vc.dismiss(animated: true)

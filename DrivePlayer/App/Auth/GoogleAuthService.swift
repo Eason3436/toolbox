@@ -8,6 +8,8 @@ enum AuthError: LocalizedError, Equatable {
     case notSignedIn
     case missingScope
     case cancelled
+    case network
+    case expired
     case failed(String)
 
     var errorDescription: String? {
@@ -16,6 +18,8 @@ enum AuthError: LocalizedError, Equatable {
         case .notSignedIn: "尚未登入 Google，請到「設定」登入"
         case .missingScope: "沒有取得讀取 Google 雲端硬碟的權限，請重新登入並勾選允許"
         case .cancelled: "已取消登入"
+        case .network: "網路連線有問題，無法更新 Google 登入"
+        case .expired: "Google 登入已失效，請到「設定」重新登入"
         case .failed(let message): "Google 登入失敗：\(message)"
         }
     }
@@ -37,6 +41,8 @@ final class GoogleAuthService {
     private(set) var email: String?
     private(set) var displayName: String?
     private(set) var hasDriveScope = false
+    /// 原本有登入，但 token 換不到了（撤銷授權、測試中的 OAuth 7 天到期）
+    private(set) var sessionExpired = false
     let isConfigured: Bool
 
     /// 給 Drive API 與串流代理用的 token 快取（不在主執行緒上）
@@ -94,6 +100,7 @@ final class GoogleAuthService {
         email = nil
         displayName = nil
         hasDriveScope = false
+        sessionExpired = false
         state = .signedOut
     }
 
@@ -108,16 +115,24 @@ final class GoogleAuthService {
             if state == .signedIn { state = .signedOut }
             throw AuthError.notSignedIn
         }
-        let token: AccessToken = try await withCheckedThrowingContinuation { cont in
-            user.refreshTokensIfNeeded { user, error in
-                if let user {
-                    cont.resume(returning: AccessToken(value: user.accessToken.tokenString, expiry: user.accessToken.expirationDate))
-                } else {
-                    cont.resume(throwing: Self.map(error))
+        do {
+            return try await withCheckedThrowingContinuation { cont in
+                user.refreshTokensIfNeeded { user, error in
+                    if let user {
+                        cont.resume(returning: AccessToken(value: user.accessToken.tokenString, expiry: user.accessToken.expirationDate))
+                    } else {
+                        cont.resume(throwing: Self.map(error))
+                    }
                 }
             }
+        } catch AuthError.network {
+            throw AuthError.network
+        } catch {
+            // 換不到 token 而且不是網路問題：要重新登入
+            sessionExpired = true
+            state = .signedOut
+            throw AuthError.expired
         }
-        return token
     }
 
     // MARK: - 內部
@@ -135,6 +150,7 @@ final class GoogleAuthService {
     }
 
     private func apply(_ info: UserInfo) {
+        sessionExpired = false
         email = info.email
         displayName = info.name
         hasDriveScope = info.hasDriveScope
@@ -151,7 +167,8 @@ final class GoogleAuthService {
             default: break
             }
         }
-        if ns.domain == NSURLErrorDomain { return .failed("網路連線有問題") }
+        if ns.domain == NSURLErrorDomain { return .network }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain { return .network }
         return .failed(error.localizedDescription)
     }
 }

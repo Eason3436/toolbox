@@ -67,8 +67,8 @@ struct DriveBrowserView: View {
             }
         }
         .overlay {
-            if loading && items.isEmpty {
-                ProgressView("讀取中…")
+            if loading && items.isEmpty && error == nil {
+                SkeletonRows()
             } else if !loading && error == nil && items.isEmpty {
                 ContentUnavailableView("資料夾是空的", systemImage: "folder")
             }

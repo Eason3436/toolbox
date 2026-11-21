@@ -123,7 +123,9 @@ struct HomeView: View {
             .padding(.vertical)
         }
         .overlay {
-            if items.isEmpty {
+            if items.isEmpty && services.library.isScanning {
+                HomeSkeleton()
+            } else if items.isEmpty {
                 ContentUnavailableView {
                     Label("尚未加入媒體庫", systemImage: "film.stack")
                 } description: {
@@ -246,5 +248,32 @@ extension View {
             case .allFiles: LibraryListView()
             }
         }
+    }
+}
+
+/// 第一次掃描時的骨架畫面
+private struct HomeSkeleton: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("最近加入").font(.title3.weight(.bold)).padding(.horizontal)
+                        HStack(spacing: 12) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                PosterCard(url: nil, title: "片名佔位", subtitle: "2025")
+                                    .frame(width: 120)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .padding(.vertical)
+        }
+        .scrollDisabled(true)
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+        .accessibilityLabel("正在掃描媒體庫")
     }
 }
