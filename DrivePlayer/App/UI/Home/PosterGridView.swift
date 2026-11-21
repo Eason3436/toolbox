@@ -28,7 +28,7 @@ struct PosterGridView: View {
         var id: Self { self }
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 105, maximum: 160), spacing: 12, alignment: .top)]
+    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12, alignment: .top)]
 
     var body: some View {
         ScrollView {
@@ -37,7 +37,7 @@ struct PosterGridView: View {
                 case .movies:
                     ForEach(movieList) { m in
                         NavigationLink(value: Route.movie(m.fileId)) {
-                            PosterCard(url: m.posterURL, title: m.title, subtitle: m.year.map(String.init), watched: watchedIds.contains(m.fileId))
+                            PosterCard(url: m.posterURL, title: m.title, subtitle: m.year.map(String.init), watched: watchedIds.contains(m.fileId), rating: m.rating)
                         }
                         .buttonStyle(.plain)
                     }
@@ -45,7 +45,7 @@ struct PosterGridView: View {
                     ForEach(showList) { s in
                         NavigationLink(value: Route.show(s.key)) {
                             PosterCard(url: s.posterURL, title: s.title, subtitle: "\(s.episodes.count) 集",
-                                       watched: !s.episodes.isEmpty && s.episodes.allSatisfy { watchedIds.contains($0.fileId) })
+                                       watched: !s.episodes.isEmpty && s.episodes.allSatisfy { watchedIds.contains($0.fileId) }, rating: s.rating)
                         }
                         .buttonStyle(.plain)
                     }
@@ -58,6 +58,7 @@ struct PosterGridView: View {
                 ContentUnavailableView(filter == .all ? "沒有內容" : "沒有符合的項目", systemImage: kind == .movies ? "film" : "tv")
             }
         }
+        .softScrollEdges()
         .navigationTitle(kind == .movies ? "電影" : "劇集")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

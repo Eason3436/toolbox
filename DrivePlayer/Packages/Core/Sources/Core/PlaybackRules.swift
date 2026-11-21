@@ -2,8 +2,8 @@ import Foundation
 
 /// 播放進度規則（§5）
 public enum PlaybackRules {
-    /// 看完 90% 以上算看完
-    public static let watchedThreshold = 0.9
+    /// 看完 95% 以上算看完
+    public static let watchedThreshold = 0.95
     /// 播放中多久存一次
     public static let saveInterval: TimeInterval = 10
     /// 自動播下一集的倒數秒數

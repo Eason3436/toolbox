@@ -2,8 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppServices.self) private var services
-    @AppStorage(AppServices.Keys.autoPlayNext) private var autoPlayNext = true
-    @AppStorage(AppServices.Keys.askBeforeResume) private var askBeforeResume = false
     @State private var signingIn = false
     @State private var cacheSize: Int64 = 0
     @State private var error: String?
@@ -72,13 +70,17 @@ struct SettingsView: View {
 
             TMDBKeySection()
 
-            Section {
-                Toggle("自動播放下一集", isOn: $autoPlayNext)
-                Toggle("續播時先詢問", isOn: $askBeforeResume)
-            } header: {
-                Text("播放")
-            } footer: {
-                Text("自動播放下一集：一集播完後倒數 10 秒播下一集。續播時先詢問：有進度時讓你選擇繼續或從頭播放。")
+            Section("播放器") {
+                NavigationLink {
+                    PlaybackSettingsView()
+                } label: {
+                    Label("播放", systemImage: "play.rectangle")
+                }
+                NavigationLink {
+                    SubtitleSettingsView()
+                } label: {
+                    Label("字幕和音軌", systemImage: "captions.bubble")
+                }
             }
 
             Section {
@@ -114,6 +116,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("設定")
+        .softScrollEdges()
         .task { cacheSize = await ImageCache.shared.diskUsage() }
         .navigationDestination(for: DriveFolderRef.self) { folder in
             DriveBrowserView(folder: folder)

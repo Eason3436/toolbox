@@ -45,6 +45,8 @@ actor AsyncSemaphore {
 final class TMDBClient: Sendable {
     static let language = "zh-TW"
     static let fallbackLanguage = "en-US"
+    /// 片名 logo 要哪些語言的（null 是沒有文字的圖）
+    static let imageLanguages = "zh,en,ja,ko,null"
 
     private let apiKey: String
     private let session: URLSession
@@ -79,11 +81,11 @@ final class TMDBClient: Sendable {
     }
 
     func movie(id: Int, language: String = TMDBClient.language) async throws -> TMDBMovieDetails {
-        try await get("/movie/\(id)", ["language": language, "append_to_response": "credits,release_dates"])
+        try await get("/movie/\(id)", ["language": language, "append_to_response": "credits,release_dates,images", "include_image_language": Self.imageLanguages])
     }
 
     func tv(id: Int, language: String = TMDBClient.language) async throws -> TMDBTVDetails {
-        try await get("/tv/\(id)", ["language": language, "append_to_response": "credits,content_ratings"])
+        try await get("/tv/\(id)", ["language": language, "append_to_response": "credits,content_ratings,images", "include_image_language": Self.imageLanguages])
     }
 
     func season(tvId: Int, number: Int, language: String = TMDBClient.language) async throws -> TMDBSeasonDetails {

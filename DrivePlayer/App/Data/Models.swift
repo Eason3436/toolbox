@@ -40,6 +40,8 @@ final class MediaItem {
     var libraryFolderId: String
     /// 上層資料夾名稱（由近到遠），解析劇名用
     var parentFolders: [String]
+    /// 所在資料夾的 Drive ID（找同資料夾的外掛字幕）
+    var parentId: String?
     var size: Int64
     var modifiedTime: Date?
     var addedAt: Date
@@ -68,6 +70,14 @@ final class MediaItem {
     /// 劇集：TMDB 的單集標題與劇照
     var episodeTitle: String?
     var stillPath: String?
+    /// 片名 logo（TMDB images）
+    var logoPath: String?
+    /// 上映日期「2025-04-18」
+    var releaseDate: String?
+    /// 出品國家代碼「JP」
+    var countryCode: String?
+    /// TMDB 資料的版本；比 MetadataMatcher.metadataVersion 舊就在背景重抓（補 logo、導演）
+    var metadataVersion: Int = 0
 
     // 規格
     /// 秒（Drive 的 videoMediaMetadata 或 AVAsset）
@@ -81,6 +91,13 @@ final class MediaItem {
     var isHDR: Bool
     var isDolbyVision: Bool
     var audioFormat: String?
+    /// 聲道數（5.1 = 6）
+    var audioChannels: Int?
+    var isAtmos: Bool = false
+    /// HDR 種類：「HDR10」「HLG」
+    var hdrFormat: String?
+    /// 讀規格的版本；比 SpecProbe.version 舊就重讀
+    var specVersion: Int = 0
 
     // 使用者
     var isFavorite: Bool
@@ -93,6 +110,7 @@ final class MediaItem {
         fileName = file.name
         self.libraryFolderId = libraryFolderId
         self.parentFolders = parentFolders
+        parentId = file.parents?.first
         size = file.byteCount ?? 0
         modifiedTime = file.modifiedDate
         addedAt = file.createdTime.flatMap(DriveDate.parse) ?? .now
@@ -162,6 +180,14 @@ final class Show {
     var castData: Data?
     /// 一集的長度（分），TMDB episode_run_time
     var episodeRuntime: Int?
+    var logoPath: String?
+    var releaseDate: String?
+    var countryCode: String?
+    var metadataVersion: Int = 0
+    /// 片頭長度（秒）：自動跳過片頭用，0 表示沒設定
+    var introSeconds: Double = 0
+    /// 片尾長度（秒）：剩下這麼多時就當成播完
+    var outroSeconds: Double = 0
     var addedAt: Date
     var isFavorite: Bool
     var isWatchlisted: Bool

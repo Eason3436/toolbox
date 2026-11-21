@@ -18,72 +18,60 @@ struct MovieDetailLoader: View {
     }
 }
 
-/// 電影詳細頁
+/// 電影詳細頁：整張海報、片名 logo、海報主色的底
 struct MovieDetailView: View {
     @Environment(AppServices.self) private var services
-    @AppStorage(AppServices.Keys.askBeforeResume) private var askBeforeResume = false
     @Bindable var item: MediaItem
     @Query private var states: [PlaybackState]
     @State private var matching = false
-    @State private var askResume = false
+    @State private var tint: Color
 
     init(item: MediaItem) {
         self.item = item
         let id = item.fileId
         _states = Query(filter: #Predicate<PlaybackState> { $0.fileId == id })
+        _tint = State(initialValue: PosterTint.cached(item.posterURL) ?? Color(white: 0.12))
     }
 
     private var state: PlaybackState? { states.first }
     private var watched: Bool { state?.watched ?? false }
+    private var posterURL: URL? { TMDB.imageURL(item.posterPath, size: .posterLarge) ?? item.posterURL }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                DetailHeader(
-                    backdrop: item.backdropURL, poster: item.posterURL, title: item.title,
-                    info: info, badges: item.badges, genres: item.genres
-                )
-
-                VStack(spacing: 18) {
-                    PlayButton(resumeAt: state?.resumePosition, progress: state?.progress ?? 0) {
-                        if askBeforeResume, state?.resumePosition != nil {
-                            askResume = true
-                        } else {
-                            services.play(item)
-                        }
+            VStack(spacing: 22) {
+                DetailHero(posterURL: posterURL, logoURL: TMDB.imageURL(item.logoPath, size: .logo), title: item.title) {
+                    VStack(spacing: 8) {
+                        InfoLine(rating: item.rating, date: item.releaseDate ?? item.year.map(String.init),
+                                 countryCode: item.countryCode, genres: item.genres, certification: item.certification)
+                        Text(subline)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        let spec = MediaSpec(item)
+                        if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
                     }
-                    .confirmationDialog("要從哪裡開始？", isPresented: $askResume, titleVisibility: .visible) {
-                        if let t = state?.resumePosition {
-                            Button("從 \(Timecode.string(t)) 繼續") { services.play(item) }
-                        }
-                        Button("從頭播放") { services.play(item, fromBeginning: true) }
-                    }
+                }
 
-                    HStack(spacing: 0) {
-                        CircleActionButton(systemImage: watched ? "checkmark.circle.fill" : "checkmark.circle", label: watched ? "已看" : "未看", isOn: watched) {
-                            services.playback.setWatched([item.fileId], watched: !watched)
-                        }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: item.isFavorite ? "heart.fill" : "heart", label: "收藏", isOn: item.isFavorite) {
+                VStack(spacing: 16) {
+                    PlayCapsule(resumeAt: state?.resumePosition) { services.play(item) }
+
+                    HStack(spacing: 28) {
+                        IconAction(systemImage: item.isFavorite ? "heart.fill" : "heart", label: "收藏", isOn: item.isFavorite) {
                             item.isFavorite.toggle()
                         }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: item.isWatchlisted ? "bookmark.fill" : "bookmark", label: "待看", isOn: item.isWatchlisted) {
+                        IconAction(systemImage: item.isWatchlisted ? "text.badge.checkmark" : "text.badge.plus", label: "待看", isOn: item.isWatchlisted) {
                             item.isWatchlisted.toggle()
                         }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: "backward.end.fill", label: "從頭播放") {
+                        IconAction(systemImage: watched ? "checkmark.circle.fill" : "checkmark.circle", label: watched ? "已看" : "標記為已看", isOn: watched) {
+                            services.playback.setWatched([item.fileId], watched: !watched)
+                        }
+                        IconAction(systemImage: "arrow.counterclockwise", label: "從頭播放") {
                             services.play(item, fromBeginning: true)
                         }
-                        .frame(maxWidth: .infinity)
                     }
 
                     if let overview = item.overview, !overview.isEmpty {
                         ExpandableText(text: overview)
-                    }
-                    if let rating = item.rating, rating > 0 {
-                        RatingView(rating: rating)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.horizontal)
@@ -91,18 +79,23 @@ struct MovieDetailView: View {
                 if !item.cast.isEmpty {
                     CastRow(cast: item.cast)
                 }
-                FileInfoSection(item: item)
+                if !item.genres.isEmpty {
+                    GenreChips(genres: item.genres)
+                }
+                RelatedRow(genres: item.genres, excludeFileId: item.fileId)
+                FileLocationCard(item: item)
                     .padding(.bottom, 30)
             }
         }
-        .detailPageStyle()
+        .scrollIndicators(.hidden)
+        .detailPageStyle(tint: tint, posterURL: posterURL)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { matching = true } label: { Label("手動指定 TMDB", systemImage: "magnifyingglass") }
                     Button { services.matcher.rematch(item) } label: { Label("重新自動比對", systemImage: "arrow.triangle.2.circlepath") }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("更多")
             }
@@ -113,13 +106,17 @@ struct MovieDetailView: View {
         .task(id: item.fileId) {
             await services.probeSpecs(item)
         }
+        .task(id: posterURL) {
+            if let color = await PosterTint.color(for: posterURL) { tint = color }
+        }
     }
 
-    private var info: [String] {
-        var out: [String] = []
-        if item.duration > 0 { out.append(Timecode.duration(item.duration)) }
-        if let y = item.year { out.append(String(y)) }
-        if let c = item.certification, !c.isEmpty { out.append(c) }
-        return out
+    /// 「1 小時 49 分鐘 · 16.35 GB · 1080p」
+    private var subline: String {
+        var parts: [String] = []
+        if let runtime = DetailFormat.runtime(item.duration) { parts.append(runtime) }
+        if item.size > 0 { parts.append(item.size.formatted(.byteCount(style: .file))) }
+        if let resolution = MediaSpec(item).resolution { parts.append(resolution) }
+        return parts.joined(separator: " · ")
     }
 }

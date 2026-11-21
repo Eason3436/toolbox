@@ -87,6 +87,7 @@ struct LibrarySettingsView: View {
                 }
             }
         }
+        .softScrollEdges()
         .navigationTitle("媒體庫")
         .sheet(isPresented: $browsing) {
             NavigationStack {

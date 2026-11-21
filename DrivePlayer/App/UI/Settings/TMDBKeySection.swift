@@ -58,7 +58,7 @@ struct TMDBKeySection: View {
         } footer: {
             Text("海報、簡介、演員資料來自 TMDB。到 themoviedb.org 的帳號設定 → API 申請，v3 的 API Key 或 Read Access Token 都可以。Key 只存在這支 iPhone 的鑰匙圈，不會放進 App 安裝檔。")
         }
-        .sensoryFeedback(.success, trigger: saved)
+        .appFeedback(.success, trigger: saved)
     }
 
     private func save() async {

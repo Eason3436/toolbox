@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 @main
@@ -50,6 +51,27 @@ struct RootView: View {
             StatusBanner()
                 .animation(.snappy, value: services.network.isOnline)
                 .animation(.snappy, value: services.auth.sessionExpired)
+        }
+        .confirmationDialog(
+            "要從哪裡開始？",
+            isPresented: Binding(get: { services.pendingResume != nil }, set: { if !$0 { services.pendingResume = nil } }),
+            titleVisibility: .visible,
+            presenting: services.pendingResume
+        ) { item in
+            if let t = services.playback.resumePosition(for: item.fileId) {
+                Button("從 \(Timecode.string(t)) 繼續") { services.play(item, resumeDecided: true) }
+            }
+            Button("從頭播放") { services.play(item, fromBeginning: true, resumeDecided: true) }
+        }
+        .alert(
+            "正在使用行動網路",
+            isPresented: Binding(get: { services.pendingCellular != nil }, set: { if !$0 { services.pendingCellular = nil } }),
+            presenting: services.pendingCellular
+        ) { pending in
+            Button("播放") { services.approveCellular(pending) }
+            Button("取消", role: .cancel) {}
+        } message: { _ in
+            Text("4K 影片一小時可能用掉 20 GB 以上的流量。這次打開 App 期間不會再問。")
         }
         .alert(
             "無法播放",

@@ -8,7 +8,7 @@ extension MediaItem {
     var backdropURL: URL? { TMDB.imageURL(backdropPath ?? show?.backdropPath, size: .backdrop) }
     var stillURL: URL? { TMDB.imageURL(stillPath, size: .still) ?? TMDB.imageURL(backdropPath ?? show?.backdropPath, size: .still) }
 
-    /// 規格標籤：4K｜DV｜HDR10｜Atmos
+    /// 規格標籤（全部影片列表用）：4K｜DV｜HDR10｜Atmos
     var badges: [String] {
         var out: [String] = []
         let tags = Set(fileTags)
@@ -51,20 +51,6 @@ extension Show {
 
 // MARK: - 元件
 
-/// 規格標籤（4K、DV、Atmos）
-struct SpecBadge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption2.weight(.bold))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary, lineWidth: 1))
-            .foregroundStyle(.secondary)
-    }
-}
-
 /// 海報卡（2:3）
 struct PosterCard: View {
     let url: URL?
@@ -72,12 +58,23 @@ struct PosterCard: View {
     var subtitle: String?
     var progress: Double?
     var watched = false
+    /// TMDB 評分（右下角）
+    var rating: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             RemoteImage(url: url)
                 .aspectRatio(2 / 3, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if let rating, rating > 0, (progress ?? 0) == 0 {
+                        Text(rating.formatted(.number.precision(.fractionLength(1))))
+                            .font(.caption.weight(.heavy).monospacedDigit())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.black.opacity(0.55), in: UnevenRoundedRectangle(topLeadingRadius: 8, bottomTrailingRadius: 12))
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if watched {
                         Image(systemName: "checkmark.circle.fill")
@@ -155,68 +152,6 @@ struct ProgressBar: View {
         }
         .frame(height: 4)
         .accessibilityLabel("已看 \(Int(value * 100))%")
-    }
-}
-
-/// 詳細頁的圓形功能按鈕
-struct CircleActionButton: View {
-    let systemImage: String
-    let label: String
-    var isOn = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .frame(width: 50, height: 50)
-                    .background(isOn ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(.white.opacity(0.12)), in: Circle())
-                    .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-                    .contentTransition(.symbolEffect(.replace))
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: isOn)
-    }
-}
-
-/// 主按鈕：有進度時用底色當進度條
-struct PlayButton: View {
-    let resumeAt: Double?
-    let progress: Double
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "play.fill")
-                if let resumeAt {
-                    Text("自 \(Timecode.string(resumeAt)) 繼續")
-                } else {
-                    Text("播放")
-                }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .foregroundStyle(.black)
-            .background {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(.white.opacity(resumeAt == nil ? 1 : 0.7))
-                        if resumeAt != nil {
-                            Rectangle().fill(.white).frame(width: geo.size.width * progress)
-                        }
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 

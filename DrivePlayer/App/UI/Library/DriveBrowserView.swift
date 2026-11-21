@@ -73,6 +73,7 @@ struct DriveBrowserView: View {
                 ContentUnavailableView("資料夾是空的", systemImage: "folder")
             }
         }
+        .softScrollEdges()
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

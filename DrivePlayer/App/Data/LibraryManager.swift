@@ -111,6 +111,7 @@ final class LibraryManager {
                 let renamed = item.fileName != f.name || item.parentFolders != scanned.parentFolders
                 item.fileName = f.name
                 item.parentFolders = scanned.parentFolders
+                item.parentId = f.parents?.first ?? item.parentId
                 item.size = f.byteCount ?? item.size
                 item.modifiedTime = f.modifiedDate
                 if let d = f.videoMediaMetadata?.durationSeconds, item.duration == 0 { item.duration = d }

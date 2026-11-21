@@ -34,6 +34,9 @@ final class MetadataMatcher {
 
     var isConfigured: Bool { tmdb != nil }
 
+    /// TMDB 資料的版本。加了新欄位（2：logo、導演、國家、上映日）就加 1，舊資料會在背景補抓
+    static let metadataVersion = 2
+
     /// 在「設定」換了 TMDB API Key
     func useClient(_ client: TMDBClient?) {
         tmdb = client
@@ -45,6 +48,7 @@ final class MetadataMatcher {
 
     private enum Job: Sendable {
         case movie(fileId: String, title: String, year: Int?)
+        case refreshMovie(fileId: String, tmdbId: Int)
         case show(key: String, title: String, year: Int?, tmdbId: Int?, seasons: [Int])
     }
 
@@ -65,14 +69,28 @@ final class MetadataMatcher {
         let shows = (try? context.fetch(FetchDescriptor<Show>())) ?? []
 
         var jobs: [Job] = movies.map { .movie(fileId: $0.fileId, title: $0.parsedTitle, year: $0.parsedYear) }
+        // 舊版抓的資料：補 logo、導演
+        let version = Self.metadataVersion
+        let outdated = (try? context.fetch(FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.kindRaw == movieRaw && $0.metadataVersion < version && $0.tmdbId != nil }
+        ))) ?? []
+        for item in outdated where item.matchState == .matched || item.matchState == .manual {
+            if let id = item.tmdbId { jobs.append(.refreshMovie(fileId: item.fileId, tmdbId: id)) }
+        }
         for show in shows {
             switch show.matchState {
             case .pending:
                 jobs.append(.show(key: show.key, title: show.parsedTitle, year: show.parsedYear, tmdbId: nil, seasons: show.seasonNumbers))
             case .matched, .manual:
+                guard let id = show.tmdbId else { break }
+                if show.metadataVersion < version {
+                    // 舊版抓的資料：整部重抓（補 logo、主創）
+                    jobs.append(.show(key: show.key, title: show.title, year: show.year, tmdbId: id, seasons: show.seasonNumbers))
+                    break
+                }
                 // 新加入的集數：補單集標題與劇照
                 let missing = show.episodes.filter { $0.matchState == .pending }
-                if let id = show.tmdbId, !missing.isEmpty {
+                if !missing.isEmpty {
                     let seasons = Array(Set(missing.map { $0.season ?? 1 })).sorted()
                     jobs.append(.show(key: show.key, title: show.title, year: show.year, tmdbId: id, seasons: seasons))
                 }
@@ -107,6 +125,8 @@ final class MetadataMatcher {
             switch job {
             case let .movie(fileId, title, year):
                 return .movie(fileId: fileId, try await resolveMovie(title: title, year: year, tmdb: tmdb))
+            case let .refreshMovie(fileId, tmdbId):
+                return .movie(fileId: fileId, try await loadMovie(id: tmdbId, tmdb: tmdb))
             case let .show(key, title, year, tmdbId, seasons):
                 if let tmdbId {
                     return .show(key: key, try await loadShow(id: tmdbId, seasons: seasons, tmdb: tmdb))
@@ -122,7 +142,11 @@ final class MetadataMatcher {
         switch result {
         case let .movie(fileId, meta):
             guard let item = fetchItem(fileId) else { return }
-            if let meta { apply(meta, to: item) } else { item.matchState = .unmatched }
+            if let meta {
+                apply(meta, to: item, state: item.matchState == .manual ? .manual : .matched)
+            } else {
+                item.matchState = .unmatched
+            }
         case let .show(key, meta):
             guard let show = fetchShow(key) else { return }
             if let meta {
@@ -142,8 +166,7 @@ final class MetadataMatcher {
     func assignMovie(_ item: MediaItem, tmdbId: Int) async throws {
         guard let tmdb else { throw TMDBError.notConfigured }
         let meta = try await Self.loadMovie(id: tmdbId, tmdb: tmdb)
-        apply(meta, to: item)
-        item.matchState = .manual
+        apply(meta, to: item, state: .manual)
         try? context.save()
     }
 
@@ -168,7 +191,7 @@ final class MetadataMatcher {
 
     // MARK: - 寫進資料庫
 
-    private func apply(_ meta: MovieMetadata, to item: MediaItem) {
+    private func apply(_ meta: MovieMetadata, to item: MediaItem, state: MatchState) {
         let d = meta.details
         item.tmdbId = d.id
         item.title = d.title.isEmpty ? (d.originalTitle ?? item.parsedTitle) : d.title
@@ -179,9 +202,13 @@ final class MetadataMatcher {
         item.rating = d.voteAverage
         item.genres = d.genres?.map(GenreNames.name(for:)) ?? []
         item.certification = d.certification
-        item.cast = Array((d.credits?.cast ?? []).prefix(20))
+        item.cast = (d.credits?.directors ?? []) + Array((d.credits?.cast ?? []).prefix(20))
+        item.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        item.releaseDate = d.releaseDate
+        item.countryCode = d.countryCode
+        item.metadataVersion = Self.metadataVersion
         if item.duration == 0, let runtime = d.runtime { item.duration = Double(runtime * 60) }
-        item.matchState = .matched
+        item.matchState = state
     }
 
     private func apply(_ meta: ShowMetadata, to show: Show, state: MatchState) {
@@ -195,8 +222,12 @@ final class MetadataMatcher {
         show.rating = d.voteAverage
         show.genres = d.genres?.map(GenreNames.name(for:)) ?? []
         show.certification = d.certification
-        show.cast = Array((d.credits?.cast ?? []).prefix(20))
+        show.cast = d.creators + Array((d.credits?.cast ?? []).prefix(20))
         show.episodeRuntime = d.episodeRunTime?.first
+        show.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        show.releaseDate = d.firstAirDate
+        show.countryCode = d.countryCode
+        show.metadataVersion = Self.metadataVersion
         show.matchState = state
 
         for item in show.episodes {
@@ -205,6 +236,9 @@ final class MetadataMatcher {
             item.year = show.year
             item.genres = show.genres
             item.certification = show.certification
+            item.logoPath = show.logoPath
+            item.countryCode = show.countryCode
+            item.metadataVersion = Self.metadataVersion
             if item.posterPath == nil { item.posterPath = d.posterPath }
             if item.backdropPath == nil { item.backdropPath = d.backdropPath }
             if let season = meta.seasons[item.season ?? 1],

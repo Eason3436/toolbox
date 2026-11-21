@@ -86,8 +86,8 @@ final class TMDBModelTests: XCTestCase {
 
 final class PlaybackRulesTests: XCTestCase {
     func testWatchedAndResume() {
-        XCTAssertTrue(PlaybackRules.isWatched(position: 90, duration: 100))
-        XCTAssertFalse(PlaybackRules.isWatched(position: 89, duration: 100))
+        XCTAssertTrue(PlaybackRules.isWatched(position: 95, duration: 100))
+        XCTAssertFalse(PlaybackRules.isWatched(position: 94, duration: 100))
         XCTAssertEqual(PlaybackRules.resumePosition(position: 754, duration: 7200, watched: false), 754)
         XCTAssertNil(PlaybackRules.resumePosition(position: 5, duration: 7200, watched: false))
         XCTAssertNil(PlaybackRules.resumePosition(position: 7000, duration: 7200, watched: false))

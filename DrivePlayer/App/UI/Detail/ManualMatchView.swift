@@ -68,6 +68,7 @@ struct ManualMatchView: View {
                     ContentUnavailableView.search(text: query)
                 }
             }
+            .softScrollEdges()
             .navigationTitle("指定 TMDB")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

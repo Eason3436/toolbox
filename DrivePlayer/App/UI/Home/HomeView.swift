@@ -76,8 +76,8 @@ struct HomeView: View {
                     section("最近加入") {
                         ForEach(recentlyAdded) { entry in
                             NavigationLink(value: entry.route) {
-                                PosterCard(url: entry.posterURL, title: entry.title, subtitle: entry.subtitle)
-                                    .frame(width: 120)
+                                PosterCard(url: entry.posterURL, title: entry.title, subtitle: entry.subtitle, rating: entry.rating)
+                                    .frame(width: 140)
                             }
                             .buttonStyle(.plain)
                         }
@@ -87,8 +87,8 @@ struct HomeView: View {
                     section("電影", count: movies.count, all: .allMovies) {
                         ForEach(movies.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }.prefix(20)) { m in
                             NavigationLink(value: Route.movie(m.fileId)) {
-                                PosterCard(url: m.posterURL, title: m.title, subtitle: m.year.map(String.init))
-                                    .frame(width: 120)
+                                PosterCard(url: m.posterURL, title: m.title, subtitle: m.year.map(String.init), rating: m.rating)
+                                    .frame(width: 140)
                             }
                             .buttonStyle(.plain)
                         }
@@ -98,8 +98,8 @@ struct HomeView: View {
                     section("劇集", count: matchedShows.count, all: .allShows) {
                         ForEach(matchedShows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }.prefix(20)) { s in
                             NavigationLink(value: Route.show(s.key)) {
-                                PosterCard(url: s.posterURL, title: s.title, subtitle: "\(s.episodes.count) 集")
-                                    .frame(width: 120)
+                                PosterCard(url: s.posterURL, title: s.title, subtitle: "\(s.episodes.count) 集", rating: s.rating)
+                                    .frame(width: 140)
                             }
                             .buttonStyle(.plain)
                         }
@@ -135,6 +135,7 @@ struct HomeView: View {
                 }
             }
         }
+        .softScrollEdges()
         .navigationTitle("DrivePlayer")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -233,6 +234,13 @@ private enum RecentEntry: Identifiable {
         case .show(let s, _): "\(s.episodes.count) 集"
         }
     }
+
+    var rating: Double? {
+        switch self {
+        case .movie(let m): m.rating
+        case .show(let s, _): s.rating
+        }
+    }
 }
 
 extension View {
@@ -262,7 +270,7 @@ private struct HomeSkeleton: View {
                         HStack(spacing: 12) {
                             ForEach(0..<4, id: \.self) { _ in
                                 PosterCard(url: nil, title: "片名佔位", subtitle: "2025")
-                                    .frame(width: 120)
+                                    .frame(width: 140)
                             }
                         }
                         .padding(.horizontal)

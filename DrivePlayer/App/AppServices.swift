@@ -16,32 +16,41 @@ final class AppServices {
     let playback: PlaybackStore
     let network = NetworkMonitor()
 
-    enum Keys {
-        static let autoPlayNext = "autoPlayNext"
-        static let askBeforeResume = "askBeforeResume"
+    /// 有續播進度、設定是「每次詢問」時等使用者選
+    var pendingResume: MediaItem?
+    /// 行動網路提醒：等使用者確認
+    var pendingCellular: PendingPlay?
+    /// 這次打開 App 已經同意用行動網路播放
+    @ObservationIgnored private var cellularApproved = false
+
+    struct PendingPlay: Identifiable {
+        let item: MediaItem
+        let fromBeginning: Bool
+        var id: String { item.fileId }
     }
 
     init() {
+        Prefs.register()
         let auth = GoogleAuthService()
         self.auth = auth
         let tokens = auth.tokens!
         let context = AppDatabase.container.mainContext
         drive = DriveClient(tokens: tokens)
         proxy = LocalStreamProxy { force in try await tokens.token(forceRefresh: force) }
-        player = PlayerController(proxy: proxy)
+        player = PlayerController(proxy: proxy, drive: drive)
         library = LibraryManager(context: context, drive: drive)
         matcher = MetadataMatcher(context: context, tmdb: TMDBClient(apiKey: AppConfig.tmdbAPIKey))
         playback = PlaybackStore(context: context)
-        UserDefaults.standard.register(defaults: [Keys.autoPlayNext: true, Keys.askBeforeResume: false])
         wire()
     }
 
     private func wire() {
         library.onScanFinished = { [weak self] in self?.matcher.matchPending() }
-        player.onProgress = { [weak self] request, position, duration, _ in
-            self?.playback.record(fileId: request.fileId, position: position, duration: duration)
+        player.onProgress = { [weak self] request, position, duration, reason in
+            self?.playback.record(fileId: request.fileId, position: position, duration: duration,
+                                  finished: reason == .finished, autoMark: Prefs.bool(Prefs.autoMarkWatched))
         }
-        player.autoPlayNext = { UserDefaults.standard.bool(forKey: Keys.autoPlayNext) }
+        player.autoPlayNext = { Prefs.bool(Prefs.autoPlayNext) }
         player.nextProvider = { [weak self] request in
             guard let self, let item = self.item(request.fileId), let show = item.show else { return nil }
             let all = show.orderedEpisodes
@@ -54,16 +63,25 @@ final class AppServices {
 
     func request(for item: MediaItem, fromBeginning: Bool) -> PlaybackRequest {
         let start = fromBeginning ? nil : playback.resumePosition(for: item.fileId)
+        var request: PlaybackRequest
         if item.kind == .episode {
             let showTitle = item.show?.title ?? item.title
             var subtitle = item.episodeLabel ?? ""
             if let t = item.episodeTitle, !t.isEmpty { subtitle += subtitle.isEmpty ? t : "・" + t }
-            return PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: showTitle, subtitle: subtitle.isEmpty ? nil : subtitle, startAt: start)
+            request = PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: showTitle, subtitle: subtitle.isEmpty ? nil : subtitle, startAt: start)
+            if Prefs.bool(Prefs.skipIntroOutro), let show = item.show {
+                request.introEnd = show.introSeconds
+                request.outroLength = show.outroSeconds
+            }
+        } else {
+            request = PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: item.title, subtitle: item.year.map(String.init), startAt: start)
         }
-        return PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: item.title, subtitle: item.year.map(String.init), startAt: start)
+        request.parentId = item.parentId
+        return request
     }
 
-    func play(_ item: MediaItem, fromBeginning: Bool = false) {
+    /// 播放。有續播進度時照「繼續播放」設定；行動網路時先問
+    func play(_ item: MediaItem, fromBeginning: Bool = false, resumeDecided: Bool = false) {
         guard network.isOnline else {
             player.errorMessage = "沒有網路連線，請檢查網路後再試一次"
             return
@@ -72,8 +90,29 @@ final class AppServices {
             player.errorMessage = auth.sessionExpired ? AuthError.expired.localizedDescription : AuthError.notSignedIn.localizedDescription
             return
         }
+        var fromBeginning = fromBeginning
+        if !fromBeginning, !resumeDecided, playback.resumePosition(for: item.fileId) != nil {
+            switch Prefs.resume {
+            case .resume: break
+            case .beginning: fromBeginning = true
+            case .ask:
+                pendingResume = item
+                return
+            }
+        }
+        if Prefs.bool(Prefs.cellularWarning), network.isExpensive, !cellularApproved {
+            pendingCellular = PendingPlay(item: item, fromBeginning: fromBeginning)
+            return
+        }
         let request = request(for: item, fromBeginning: fromBeginning)
         Task { await player.play(request) }
+    }
+
+    /// 行動網路提醒按「播放」
+    func approveCellular(_ pending: PendingPlay) {
+        cellularApproved = true
+        pendingCellular = nil
+        play(pending.item, fromBeginning: pending.fromBeginning, resumeDecided: true)
     }
 
     func item(_ fileId: String) -> MediaItem? {
@@ -84,7 +123,7 @@ final class AppServices {
 
     /// 第一次開詳細頁：用 AVURLAsset 讀 track 資訊
     func probeSpecs(_ item: MediaItem) async {
-        guard !item.specProbed, auth.state == .signedIn else { return }
+        guard !item.specProbed || item.specVersion < SpecProbe.version, auth.state == .signedIn else { return }
         do {
             let url = try await proxy.streamURL(fileId: item.fileId, filename: item.fileName)
             let info = try await SpecProbe.probe(url: url)
@@ -93,8 +132,12 @@ final class AppServices {
             if let h = info.height { item.height = h }
             item.isHDR = info.isHDR || info.isDolbyVision
             item.isDolbyVision = info.isDolbyVision
+            item.hdrFormat = info.hdrFormat
             item.audioFormat = info.audioFormat
+            item.audioChannels = info.audioChannels
+            item.isAtmos = info.isAtmos
             item.specProbed = true
+            item.specVersion = SpecProbe.version
             try? library.context.save()
         } catch {
             // 讀不到（離線、沒登入）：下次開詳細頁再試

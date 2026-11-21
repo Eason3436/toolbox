@@ -27,12 +27,14 @@ final class PlaybackStore {
     }
 
     /// 播放器回報的進度
-    func record(fileId: String, position: Double, duration: Double) {
+    /// - finished: 播到最後（或跳過片尾）
+    /// - autoMark: 設定「播放超過 95% 後自動標記為已觀看」
+    func record(fileId: String, position: Double, duration: Double, finished: Bool = false, autoMark: Bool = true) {
         let s = stateOrCreate(fileId)
         if duration > 0 { s.duration = duration }
         s.lastPlayed = .now
-        if PlaybackRules.isWatched(position: position, duration: s.duration) {
-            s.watched = true
+        if finished || (autoMark && PlaybackRules.isWatched(position: position, duration: s.duration)) {
+            if autoMark { s.watched = true }
             s.position = 0
         } else {
             s.position = position

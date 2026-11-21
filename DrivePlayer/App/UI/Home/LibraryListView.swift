@@ -30,6 +30,7 @@ struct LibraryListView: View {
                 )
             }
         }
+        .softScrollEdges()
         .navigationTitle("全部影片")
     }
 

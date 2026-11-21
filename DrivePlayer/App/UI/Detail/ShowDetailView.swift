@@ -18,19 +18,22 @@ struct ShowDetailLoader: View {
     }
 }
 
-/// 劇集詳細頁：季別切換 + 集數列表
+/// 劇集詳細頁：整張海報、片名 logo、海報主色的底，季別切換 + 集數列表
 struct ShowDetailView: View {
     @Environment(AppServices.self) private var services
-    @AppStorage(AppServices.Keys.askBeforeResume) private var askBeforeResume = false
     @Bindable var show: Show
     @Query private var states: [PlaybackState]
     @State private var season: Int?
     @State private var matching = false
-    @State private var resumeCandidate: MediaItem?
+    @State private var editingIntro = false
+    @State private var tint: Color
 
     init(show: Show) {
         self.show = show
+        _tint = State(initialValue: PosterTint.cached(show.posterURL) ?? Color(white: 0.12))
     }
+
+    private var posterURL: URL? { TMDB.imageURL(show.posterPath, size: .posterLarge) ?? show.posterURL }
 
     private var stateById: [String: PlaybackState] {
         Dictionary(states.map { ($0.fileId, $0) }, uniquingKeysWith: { a, _ in a })
@@ -59,73 +62,78 @@ struct ShowDetailView: View {
     }
 
     var body: some View {
+        let next = nextUp
         ScrollView {
-            VStack(spacing: 20) {
-                DetailHeader(
-                    backdrop: show.backdropURL, poster: show.posterURL, title: show.title,
-                    info: info, badges: badges, genres: show.genres
-                )
+            VStack(spacing: 22) {
+                DetailHero(posterURL: posterURL, logoURL: TMDB.imageURL(show.logoPath, size: .logo), title: show.title) {
+                    VStack(spacing: 8) {
+                        InfoLine(rating: show.rating, date: show.releaseDate ?? show.year.map(String.init),
+                                 countryCode: show.countryCode, genres: show.genres, certification: show.certification)
+                        Text(subline)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if let next {
+                            let spec = MediaSpec(next)
+                            if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
+                        }
+                    }
+                }
 
-                VStack(spacing: 18) {
-                    if let next = nextUp {
-                        let st = stateById[next.fileId]
-                        VStack(spacing: 6) {
-                            PlayButton(resumeAt: st?.resumePosition, progress: st?.progress ?? 0) { play(next) }
-                            Text(next.episodeLabel.map { "\($0)・\(next.episodeTitle ?? next.fileName)" } ?? next.fileName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                VStack(spacing: 16) {
+                    if let next {
+                        PlayCapsule(resumeAt: stateById[next.fileId]?.resumePosition, caption: next.episodeLabel.map { "\($0)・\(next.episodeTitle ?? next.fileName)" }) {
+                            services.play(next)
                         }
                     }
 
-                    HStack(spacing: 0) {
-                        CircleActionButton(systemImage: allWatched ? "checkmark.circle.fill" : "checkmark.circle", label: allWatched ? "已看" : "未看", isOn: allWatched) {
-                            services.playback.setWatched(show.episodes.map(\.fileId), watched: !allWatched)
-                        }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: show.isFavorite ? "heart.fill" : "heart", label: "收藏", isOn: show.isFavorite) {
+                    HStack(spacing: 28) {
+                        IconAction(systemImage: show.isFavorite ? "heart.fill" : "heart", label: "收藏", isOn: show.isFavorite) {
                             show.isFavorite.toggle()
                         }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: show.isWatchlisted ? "bookmark.fill" : "bookmark", label: "待看", isOn: show.isWatchlisted) {
+                        IconAction(systemImage: show.isWatchlisted ? "text.badge.checkmark" : "text.badge.plus", label: "待看", isOn: show.isWatchlisted) {
                             show.isWatchlisted.toggle()
                         }
-                        .frame(maxWidth: .infinity)
-                        CircleActionButton(systemImage: "backward.end.fill", label: "從頭播放") {
+                        IconAction(systemImage: allWatched ? "checkmark.circle.fill" : "checkmark.circle", label: allWatched ? "已看完" : "全部標記為已看", isOn: allWatched) {
+                            services.playback.setWatched(show.episodes.map(\.fileId), watched: !allWatched)
+                        }
+                        IconAction(systemImage: "arrow.counterclockwise", label: "從第一集播放") {
                             if let first = show.orderedEpisodes.first { services.play(first, fromBeginning: true) }
                         }
-                        .frame(maxWidth: .infinity)
                     }
 
                     if let overview = show.overview, !overview.isEmpty {
                         ExpandableText(text: overview)
                     }
-                    if let rating = show.rating, rating > 0 {
-                        RatingView(rating: rating)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
                 }
                 .padding(.horizontal)
 
-                seasonPicker
-                episodeList
+                VStack(spacing: 14) {
+                    seasonPicker
+                    episodeList
+                }
 
                 if !show.cast.isEmpty {
                     CastRow(cast: show.cast)
-                        .padding(.bottom, 30)
                 }
+                if !show.genres.isEmpty {
+                    GenreChips(genres: show.genres)
+                }
+                RelatedRow(genres: show.genres, excludeShowKey: show.key)
+                    .padding(.bottom, 30)
             }
         }
-        .detailPageStyle()
+        .scrollIndicators(.hidden)
+        .detailPageStyle(tint: tint, posterURL: posterURL)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button { editingIntro = true } label: { Label("片頭片尾", systemImage: "forward.end") }
                     Button { matching = true } label: { Label("手動指定 TMDB", systemImage: "magnifyingglass") }
                     if let any = show.episodes.first {
                         Button { services.matcher.rematch(any) } label: { Label("重新自動比對", systemImage: "arrow.triangle.2.circlepath") }
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("更多")
             }
@@ -133,12 +141,28 @@ struct ShowDetailView: View {
         .sheet(isPresented: $matching) {
             ManualMatchView(target: .show(show))
         }
-        .confirmationDialog("要從哪裡開始？", isPresented: Binding(get: { resumeCandidate != nil }, set: { if !$0 { resumeCandidate = nil } }), titleVisibility: .visible) {
-            if let item = resumeCandidate, let t = stateById[item.fileId]?.resumePosition {
-                Button("從 \(Timecode.string(t)) 繼續") { services.play(item) }
-                Button("從頭播放") { services.play(item, fromBeginning: true) }
-            }
+        .sheet(isPresented: $editingIntro) {
+            IntroOutroSheet(show: show)
+                .presentationDetents([.medium])
         }
+        .task(id: next?.fileId) {
+            if let next { await services.probeSpecs(next) }
+        }
+        .task(id: posterURL) {
+            if let color = await PosterTint.color(for: posterURL) { tint = color }
+        }
+    }
+
+    /// 「2 季 · 24 集 · 每集 45 分鐘」
+    private var subline: String {
+        var parts: [String] = []
+        let seasons = show.seasonNumbers.filter { $0 != 0 }.count
+        if seasons > 0 { parts.append("\(seasons) 季") }
+        parts.append("\(show.episodes.count) 集")
+        if let minutes = show.episodeRuntime, let runtime = DetailFormat.runtime(Double(minutes * 60)) {
+            parts.append("每集 " + runtime)
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - 季與集
@@ -165,7 +189,7 @@ struct ShowDetailView: View {
                 }
                 .padding(.horizontal)
             }
-            .sensoryFeedback(.selection, trigger: season)
+            .appFeedback(.selection, trigger: season)
         } else if let only = seasons.first {
             Text(only == 0 ? "特別篇" : "第 \(only) 季")
                 .font(.headline)
@@ -178,7 +202,7 @@ struct ShowDetailView: View {
         let s = stateById
         return LazyVStack(spacing: 16) {
             ForEach(show.episodes(inSeason: selectedSeason)) { ep in
-                EpisodeRow(item: ep, state: s[ep.fileId]) { play(ep) }
+                EpisodeRow(item: ep, state: s[ep.fileId]) { services.play(ep) }
                     .contextMenu {
                         let watched = s[ep.fileId]?.watched ?? false
                         Button {
@@ -195,31 +219,39 @@ struct ShowDetailView: View {
         .padding(.horizontal)
     }
 
-    private func play(_ item: MediaItem) {
-        if askBeforeResume, stateById[item.fileId]?.resumePosition != nil {
-            resumeCandidate = item
-        } else {
-            services.play(item)
+}
+
+/// 每部劇的片頭、片尾長度（自動跳過用）
+struct IntroOutroSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var show: Show
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Stepper(value: $show.introSeconds, in: 0...600, step: 5) {
+                        LabeledContent("片頭結束於", value: label(show.introSeconds))
+                    }
+                    Stepper(value: $show.outroSeconds, in: 0...900, step: 5) {
+                        LabeledContent("片尾長度", value: label(show.outroSeconds))
+                    }
+                } footer: {
+                    Text("「設定 → 播放」打開「自動跳過片頭片尾」時：每集從片頭結束的地方開始播，剩下片尾長度時就當成看完、倒數播下一集。設成 0 就不跳。")
+                }
+            }
+            .navigationTitle("片頭片尾")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
         }
     }
 
-    private var info: [String] {
-        var out: [String] = []
-        if let y = show.year { out.append(String(y)) }
-        let seasons = show.seasonNumbers.filter { $0 != 0 }.count
-        if seasons > 0 { out.append("\(seasons) 季") }
-        out.append("\(show.episodes.count) 集")
-        if let c = show.certification, !c.isEmpty { out.append(c) }
-        return out
-    }
-
-    /// 所有集數共同的規格（全部都是 4K 才標 4K）
-    private var badges: [String] {
-        let all = show.episodes.map { Set($0.badges) }
-        guard var common = all.first else { return [] }
-        for b in all.dropFirst() { common.formIntersection(b) }
-        let order = ["4K", "HD", "DV", "HDR10+", "HDR10", "HDR", "Atmos", "E-AC3", "AC3"]
-        return order.filter(common.contains)
+    private func label(_ seconds: Double) -> String {
+        seconds <= 0 ? "不跳過" : Duration.seconds(seconds).formatted(.time(pattern: .minuteSecond))
     }
 }
 

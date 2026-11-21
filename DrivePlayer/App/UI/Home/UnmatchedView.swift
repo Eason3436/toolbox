@@ -41,6 +41,7 @@ struct UnmatchedView: View {
                 ContentUnavailableView("全部都辨識了", systemImage: "checkmark.circle")
             }
         }
+        .softScrollEdges()
         .navigationTitle("未辨識")
         .sheet(item: $target) { t in
             ManualMatchView(target: t.target)

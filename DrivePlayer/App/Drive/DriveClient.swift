@@ -67,6 +67,11 @@ final class DriveClient: Sendable {
         return try JSONDecoder().decode(DriveFile.self, from: data)
     }
 
+    /// 下載小檔案（字幕）
+    func download(fileId: String) async throws -> Data {
+        try await get(DriveAPI.mediaURL(fileId: fileId))
+    }
+
     /// 帶 token 的 GET；401 時換新 token 重試一次
     private func get(_ url: URL) async throws -> Data {
         do {
