@@ -72,12 +72,14 @@ struct DetailBackground: View {
 struct LogoTitle: View {
     let logoURL: URL?
     let title: String
+    var maxHeight: CGFloat = 120
     @State private var image: UIImage?
     @State private var failed = false
 
-    init(logoURL: URL?, title: String) {
+    init(logoURL: URL?, title: String, maxHeight: CGFloat = 120) {
         self.logoURL = logoURL
         self.title = title
+        self.maxHeight = maxHeight
         _image = State(initialValue: logoURL.flatMap { ImageCache.shared.cached($0) })
     }
 
@@ -87,7 +89,7 @@ struct LogoTitle: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 280, maxHeight: 120)
+                    .frame(maxWidth: 280, maxHeight: maxHeight)
                     .shadow(color: .black.opacity(0.45), radius: 10)
                     .accessibilityLabel(title)
                     .transition(.opacity)
@@ -99,7 +101,7 @@ struct LogoTitle: View {
                     .minimumScaleFactor(0.6)
                     .shadow(color: .black.opacity(0.5), radius: 8)
             } else {
-                Color.clear.frame(height: 100)
+                Color.clear.frame(height: min(100, maxHeight))
             }
         }
         .task(id: logoURL) {
@@ -113,32 +115,92 @@ struct LogoTitle: View {
     }
 }
 
-/// 大海報（整個寬度）往下淡出，片名 logo 與資訊疊在下緣
+/// 大海報（整個寬度）往下淡出，片名 logo 與資訊疊在下緣。
+/// 用沒有字的海報時 logo 疊在海報上；只有一般海報（上面本來就有片名）時 logo 放在海報下面，不會重疊。
+/// `pull` 是頂端往下拉超出的距離：海報跟著放大，不會露出空白
 struct DetailHero<Info: View>: View {
-    let posterURL: URL?
+    let poster: HeroPoster
     let logoURL: URL?
     let title: String
+    var pull: CGFloat = 0
     @ViewBuilder var info: Info
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            RemoteImage(url: posterURL)
-                .aspectRatio(2 / 3, contentMode: .fit)
-                .mask {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0),
-                            .init(color: .black, location: 0.55),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                }
+        if poster.url == nil {
             VStack(spacing: 12) {
                 LogoTitle(logoURL: logoURL, title: title)
                 info
             }
             .padding(.horizontal)
+            .padding(.top, 120)
+        } else if poster.hasTitleText {
+            VStack(spacing: 12) {
+                posterImage(solidUntil: 0.72)
+                VStack(spacing: 12) {
+                    LogoTitle(logoURL: logoURL, title: title, maxHeight: 90)
+                    info
+                }
+                .padding(.horizontal)
+                .padding(.top, -36)
+            }
+        } else {
+            ZStack(alignment: .bottom) {
+                posterImage(solidUntil: 0.55)
+                VStack(spacing: 12) {
+                    LogoTitle(logoURL: logoURL, title: title)
+                    info
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private func posterImage(solidUntil: CGFloat) -> some View {
+        let pull = self.pull
+        return RemoteImage(url: poster.url)
+            .aspectRatio(2 / 3, contentMode: .fit)
+            .mask {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: solidUntil),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            }
+            .visualEffect { content, proxy in
+                // 往下拉：以底部為基準放大，頂端剛好貼著螢幕上緣
+                let h = max(proxy.size.height, 1)
+                return content.scaleEffect(pull > 0 ? (h + pull) / h : 1, anchor: .bottom)
+            }
+    }
+}
+
+/// 詳細頁、首頁的捲動狀態：往下拉超出多少、是不是已經往上捲了
+struct HeroScroll: Equatable {
+    var pull: CGFloat = 0
+    var scrolled = false
+}
+
+extension View {
+    /// 追蹤捲動位置（給大海報放大、頂端柔和邊緣用）
+    func trackHeroScroll(_ state: Binding<HeroScroll>) -> some View {
+        onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentOffset.y + geo.contentInsets.top
+        } action: { _, y in
+            let next = HeroScroll(pull: max(0, -y), scrolled: y > 24)
+            if next != state.wrappedValue { state.wrappedValue = next }
+        }
+    }
+
+    /// 海報在最上面時，頂端不要柔和邊緣（不然海報上緣會被淡掉）；往上捲之後才出現
+    @ViewBuilder
+    func heroTopEdge(scrolled: Bool) -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectHidden(!scrolled, for: .top)
+        } else {
+            self
         }
     }
 }
@@ -504,14 +566,14 @@ struct RelatedRow: View {
         guard !wanted.isEmpty else { return [] }
         func overlap(_ g: [String]) -> Int { Set(g.map { GenreNames.name($0) }).intersection(wanted).count }
         var out: [Entry] = []
-        for m in items where m.fileId != excludeFileId && m.matchState != .unmatched {
+        for m in items where m.fileId != excludeFileId && m.matchState.isInLibrary {
             let n = overlap(m.genres)
             if n > 0 {
                 out.append(Entry(id: "m" + m.fileId, route: .movie(m.fileId), poster: m.posterURL, title: m.title,
                                  subtitle: DetailFormat.date(m.releaseDate) ?? m.year.map(String.init), rating: m.rating, overlap: n))
             }
         }
-        for s in shows where s.key != excludeShowKey && s.matchState != .unmatched {
+        for s in shows where s.key != excludeShowKey && s.matchState.isInLibrary {
             let n = overlap(s.genres)
             if n > 0 {
                 out.append(Entry(id: "s" + s.key, route: .show(s.key), poster: s.posterURL, title: s.title,
@@ -573,12 +635,14 @@ struct FileLocationCard: View {
 
 extension View {
     /// 詳細頁共用：海報主色當底、背景圖延伸到狀態列下面
-    func detailPageStyle(tint: Color, posterURL: URL?) -> some View {
-        background(DetailBackground(tint: tint, posterURL: posterURL))
+    func detailPageStyle(tint: Color, posterURL: URL?, scroll: Binding<HeroScroll>) -> some View {
+        trackHeroScroll(scroll)
+            .background(DetailBackground(tint: tint, posterURL: posterURL))
             .ignoresSafeArea(edges: .top)
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .softScrollEdges()
+            .heroTopEdge(scrolled: scroll.wrappedValue.scrolled)
             .animation(.easeInOut(duration: 0.35), value: tint)
     }
 }

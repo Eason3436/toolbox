@@ -115,7 +115,7 @@ final class LibraryManager {
                 item.size = f.byteCount ?? item.size
                 item.modifiedTime = f.modifiedDate
                 if let d = f.videoMediaMetadata?.durationSeconds, item.duration == 0 { item.duration = d }
-                if renamed, item.matchState != .manual { reparse(item) }
+                if renamed, item.matchState != .manual, item.matchState != .ignored { reparse(item) }
             } else if !allIds.contains(f.id) {
                 // 同一個檔案已經在別的媒體庫資料夾裡就不重複加
                 let item = MediaItem(file: f, libraryFolderId: folderId, parentFolders: scanned.parentFolders)

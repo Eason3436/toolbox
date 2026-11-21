@@ -34,8 +34,8 @@ final class MetadataMatcher {
 
     var isConfigured: Bool { tmdb != nil }
 
-    /// TMDB 資料的版本。加了新欄位（2：logo、導演、國家、上映日）就加 1，舊資料會在背景補抓
-    static let metadataVersion = 2
+    /// TMDB 資料的版本。加了新欄位就加 1，舊資料會在背景補抓（2：logo、導演、國家、上映日；3：沒有字的海報）
+    static let metadataVersion = 3
 
     /// 在「設定」換了 TMDB API Key
     func useClient(_ client: TMDBClient?) {
@@ -94,6 +94,9 @@ final class MetadataMatcher {
                     let seasons = Array(Set(missing.map { $0.season ?? 1 })).sorted()
                     jobs.append(.show(key: show.key, title: show.title, year: show.year, tmdbId: id, seasons: seasons))
                 }
+            case .ignored:
+                // 不需要配對的劇：新加入的集數也跟著不配對
+                for e in show.episodes where e.matchState == .pending { e.matchState = .ignored }
             case .unmatched:
                 break
             }
@@ -180,13 +183,78 @@ final class MetadataMatcher {
     /// 重新自動比對
     func rematch(_ item: MediaItem) {
         if let show = item.show {
-            show.matchState = .pending
-            show.tmdbId = nil
-        } else {
-            item.matchState = .pending
+            rematch(show)
+            return
         }
+        item.matchState = .pending
         try? context.save()
         matchPending()
+    }
+
+    func rematch(_ show: Show) {
+        show.matchState = .pending
+        show.tmdbId = nil
+        for e in show.episodes where e.matchState == .ignored || e.matchState == .unmatched { e.matchState = .pending }
+        try? context.save()
+        matchPending()
+    }
+
+    // MARK: - 不需要配對
+
+    /// 清掉 TMDB 資料、用檔名當標題，之後不再自動比對（「重新自動比對」可以恢復）
+    func ignore(_ item: MediaItem) {
+        if let show = item.show {
+            ignore(show)
+            return
+        }
+        clearMetadata(item)
+        item.title = item.parsedTitle.isEmpty ? (item.fileName as NSString).deletingPathExtension : item.parsedTitle
+        item.year = item.parsedYear
+        item.matchState = .ignored
+        try? context.save()
+    }
+
+    func ignore(_ show: Show) {
+        show.tmdbId = nil
+        show.title = show.parsedTitle
+        show.year = show.parsedYear
+        show.overview = nil
+        show.posterPath = nil
+        show.backdropPath = nil
+        show.textlessPosterPath = nil
+        show.logoPath = nil
+        show.rating = nil
+        show.genres = []
+        show.certification = nil
+        show.castData = nil
+        show.episodeRuntime = nil
+        show.releaseDate = nil
+        show.countryCode = nil
+        show.matchState = .ignored
+        for e in show.episodes {
+            clearMetadata(e)
+            e.title = show.title
+            e.year = show.year
+            e.matchState = .ignored
+        }
+        try? context.save()
+    }
+
+    private func clearMetadata(_ item: MediaItem) {
+        item.tmdbId = nil
+        item.overview = nil
+        item.posterPath = nil
+        item.backdropPath = nil
+        item.textlessPosterPath = nil
+        item.logoPath = nil
+        item.rating = nil
+        item.genres = []
+        item.certification = nil
+        item.castData = nil
+        item.episodeTitle = nil
+        item.stillPath = nil
+        item.releaseDate = nil
+        item.countryCode = nil
     }
 
     // MARK: - 寫進資料庫
@@ -204,6 +272,7 @@ final class MetadataMatcher {
         item.certification = d.certification
         item.cast = (d.credits?.directors ?? []) + Array((d.credits?.cast ?? []).prefix(20))
         item.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        item.textlessPosterPath = d.images?.textlessPoster()
         item.releaseDate = d.releaseDate
         item.countryCode = d.countryCode
         item.metadataVersion = Self.metadataVersion
@@ -225,6 +294,7 @@ final class MetadataMatcher {
         show.cast = d.creators + Array((d.credits?.cast ?? []).prefix(20))
         show.episodeRuntime = d.episodeRunTime?.first
         show.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        show.textlessPosterPath = d.images?.textlessPoster()
         show.releaseDate = d.firstAirDate
         show.countryCode = d.countryCode
         show.metadataVersion = Self.metadataVersion
@@ -237,6 +307,8 @@ final class MetadataMatcher {
             item.genres = show.genres
             item.certification = show.certification
             item.logoPath = show.logoPath
+            item.textlessPosterPath = show.textlessPosterPath
+            item.releaseDate = show.releaseDate
             item.countryCode = show.countryCode
             item.metadataVersion = Self.metadataVersion
             if item.posterPath == nil { item.posterPath = d.posterPath }

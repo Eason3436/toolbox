@@ -138,3 +138,38 @@ final class TMDBExtrasTests: XCTestCase {
         XCTAssertEqual(noZh.bestLogo(originalLanguage: "ja"), "/ja.png")
     }
 }
+
+final class LibraryTests: XCTestCase {
+    func testTextlessPoster() {
+        let images = TMDBImages(posters: [
+            TMDBImage(filePath: "/zh.jpg", iso6391: "zh", voteAverage: 9),
+            TMDBImage(filePath: "/none-low.jpg", iso6391: nil, voteAverage: 2),
+            TMDBImage(filePath: "/none-high.jpg", iso6391: nil, voteAverage: 5),
+            TMDBImage(filePath: "/xx.jpg", iso6391: "xx", voteAverage: 3),
+        ])
+        XCTAssertEqual(images.textlessPoster(), "/none-high.jpg")
+        XCTAssertNil(TMDBImages(posters: [TMDBImage(filePath: "/en.jpg", iso6391: "en")]).textlessPoster())
+    }
+
+    func testGenericEpisodeTitles() {
+        for t in ["第 5 集", "第5集", "第十二集", "第 3 話", "Episode 5", "EP05", "E5", "12", "エピソード 3", "3화"] {
+            XCTAssertTrue(EpisodeTitle.isGeneric(t), t)
+        }
+        for t in ["風起時", "The Beginning", "第一次約會", "Episode of the Year"] {
+            XCTAssertFalse(EpisodeTitle.isGeneric(t), t)
+        }
+        XCTAssertNil(EpisodeTitle.meaningful("第 5 集"))
+        XCTAssertEqual(EpisodeTitle.meaningful(" 重逢 "), "重逢")
+    }
+
+    func testCategories() {
+        XCTAssertEqual(LibraryCategory.ratingBucket(7.8), 7)
+        XCTAssertEqual(LibraryCategory.ratingBucket(10), 9)
+        XCTAssertNil(LibraryCategory.ratingBucket(0))
+        XCTAssertEqual(LibraryCategory.decade(2025), 2020)
+        XCTAssertEqual(LibraryCategory.values(.genre, genres: ["动画", "動畫", "冒險"], rating: nil, year: nil, certification: nil), ["動畫", "冒險"])
+        XCTAssertEqual(LibraryCategory.name(.decade, "2020"), "2020 年代")
+        XCTAssertEqual(LibraryCategory.sorted(.rating, counts: ["7": 3, "8": 1]), ["8", "7"])
+        XCTAssertEqual(LibraryCategory.sorted(.genre, counts: ["劇情": 1, "動畫": 4]), ["動畫", "劇情"])
+    }
+}

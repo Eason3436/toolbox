@@ -9,17 +9,19 @@ enum Route: Hashable {
     case allShows
     case unmatched
     case allFiles
+    case categories(CategoryKind)
+    case category(CategoryKind, String)
+    case others
 }
 
-/// 首頁：繼續觀看、最近加入、電影、劇集、未辨識
+/// 首頁：推薦輪播、繼續觀看、最近加入、電影、劇集、分類、其他影片、未辨識
 struct HomeView: View {
     @Environment(AppServices.self) private var services
     @Query(sort: \MediaItem.addedAt, order: .reverse) private var items: [MediaItem]
     @Query(sort: \Show.addedAt, order: .reverse) private var shows: [Show]
     @Query(sort: \PlaybackState.lastPlayed, order: .reverse) private var states: [PlaybackState]
+    @State private var scroll = HeroScroll()
 
-    private var movies: [MediaItem] { items.filter { $0.kind == .movie && $0.matchState != .unmatched } }
-    private var matchedShows: [Show] { shows.filter { $0.matchState != .unmatched } }
     private var unmatchedCount: Int {
         items.filter { $0.kind == .movie && $0.matchState == .unmatched }.count + shows.filter { $0.matchState == .unmatched }.count
     }
@@ -39,16 +41,19 @@ struct HomeView: View {
         return out
     }
 
-    /// 最近加入：電影與劇（劇用最新一集的加入時間）
-    private var recentlyAdded: [RecentEntry] {
-        var entries: [RecentEntry] = movies.prefix(20).map { .movie($0) }
-        entries += matchedShows.map { show in .show(show, show.episodes.map(\.addedAt).max() ?? show.addedAt) }
-        return Array(entries.sorted { $0.date > $1.date }.prefix(20))
-    }
-
     var body: some View {
+        let library = LibraryEntry.library(items: items, shows: shows)
+        let featured = FeaturedPicker.pick(from: library)
+        let others = LibraryEntry.others(items: items, shows: shows)
+        let movies = library.filter { $0.id.hasPrefix("m-") }
+        let showEntries = library.filter { $0.id.hasPrefix("s-") }
+        let byTitle: (LibraryEntry, LibraryEntry) -> Bool = { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
+                if !featured.isEmpty {
+                    FeaturedCarousel(entries: featured)
+                }
                 if services.matcher.isRunning {
                     matchingBanner
                 }
@@ -72,34 +77,39 @@ struct HomeView: View {
                         }
                     }
                 }
-                if !recentlyAdded.isEmpty {
+                if !library.isEmpty {
                     section("最近加入") {
-                        ForEach(recentlyAdded) { entry in
-                            NavigationLink(value: entry.route) {
-                                PosterCard(url: entry.posterURL, title: entry.title, subtitle: entry.subtitle, rating: entry.rating)
-                                    .frame(width: 140)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        posterRow(library.sorted { $0.addedAt > $1.addedAt }.prefix(20))
                     }
                 }
                 if !movies.isEmpty {
                     section("電影", count: movies.count, all: .allMovies) {
-                        ForEach(movies.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }.prefix(20)) { m in
-                            NavigationLink(value: Route.movie(m.fileId)) {
-                                PosterCard(url: m.posterURL, title: m.title, subtitle: m.year.map(String.init), rating: m.rating)
-                                    .frame(width: 140)
+                        posterRow(movies.sorted(by: byTitle).prefix(20))
+                    }
+                }
+                if !showEntries.isEmpty {
+                    section("劇集", count: showEntries.count, all: .allShows) {
+                        posterRow(showEntries.sorted(by: byTitle).prefix(20))
+                    }
+                }
+                ForEach(CategoryKind.allCases, id: \.self) { kind in
+                    let groups = CategoryGroup.groups(kind, in: library)
+                    if !groups.isEmpty {
+                        section(kind.title, count: groups.count, all: .categories(kind)) {
+                            ForEach(groups.prefix(12)) { group in
+                                NavigationLink(value: Route.category(kind, group.value)) {
+                                    CategoryCard(group: group)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
-                if !matchedShows.isEmpty {
-                    section("劇集", count: matchedShows.count, all: .allShows) {
-                        ForEach(matchedShows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }.prefix(20)) { s in
-                            NavigationLink(value: Route.show(s.key)) {
-                                PosterCard(url: s.posterURL, title: s.title, subtitle: "\(s.episodes.count) 集", rating: s.rating)
-                                    .frame(width: 140)
+                if !others.isEmpty {
+                    section("其他影片", count: others.count, all: .others) {
+                        ForEach(others.prefix(20)) { entry in
+                            NavigationLink(value: entry.route) {
+                                PlainVideoCard(entry: entry).frame(width: 200)
                             }
                             .buttonStyle(.plain)
                         }
@@ -120,8 +130,10 @@ struct HomeView: View {
                     .padding(.horizontal)
                 }
             }
-            .padding(.vertical)
+            .padding(.top, featured.isEmpty ? 16 : 0)
+            .padding(.bottom)
         }
+        .trackHeroScroll($scroll)
         .overlay {
             if items.isEmpty && services.library.isScanning {
                 HomeSkeleton()
@@ -135,9 +147,18 @@ struct HomeView: View {
                 }
             }
         }
+        .ignoresSafeArea(edges: featured.isEmpty ? [] : .top)
         .softScrollEdges()
+        .heroTopEdge(scrolled: scroll.scrolled || featured.isEmpty)
         .navigationTitle("DrivePlayer")
+        .navigationBarTitleDisplayMode(featured.isEmpty ? .automatic : .inline)
         .toolbar {
+            if !featured.isEmpty {
+                // 有輪播時不顯示標題，海報直接到頂
+                ToolbarItem(placement: .principal) {
+                    Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 NavigationLink(value: Route.allFiles) {
                     Image(systemName: "list.bullet")
@@ -145,10 +166,21 @@ struct HomeView: View {
                 .accessibilityLabel("全部影片")
             }
         }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .refreshable {
             services.library.scanAll()
         }
         .homeDestinations()
+    }
+
+    private func posterRow(_ entries: ArraySlice<LibraryEntry>) -> some View {
+        ForEach(entries) { entry in
+            NavigationLink(value: entry.route) {
+                PosterCard(url: entry.posterURL, title: entry.title, subtitle: entry.subtitle, rating: entry.rating)
+                    .frame(width: 140)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var matchingBanner: some View {
@@ -175,8 +207,13 @@ struct HomeView: View {
             SectionHeader(title) {
                 if let all, let count {
                     NavigationLink(value: all) {
-                        Text("全部 \(count)").font(.subheadline)
+                        HStack(spacing: 3) {
+                            Text("全部 · \(count)")
+                            Image(systemName: "chevron.forward").imageScale(.small)
+                        }
+                        .font(.subheadline)
                     }
+                    .accessibilityLabel("全部 \(count) 個")
                 }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -185,60 +222,6 @@ struct HomeView: View {
                 }
                 .padding(.horizontal)
             }
-        }
-    }
-}
-
-private enum RecentEntry: Identifiable {
-    case movie(MediaItem)
-    case show(Show, Date)
-
-    var id: String {
-        switch self {
-        case .movie(let m): "m-" + m.fileId
-        case .show(let s, _): "s-" + s.key
-        }
-    }
-
-    var date: Date {
-        switch self {
-        case .movie(let m): m.addedAt
-        case .show(_, let d): d
-        }
-    }
-
-    var route: Route {
-        switch self {
-        case .movie(let m): .movie(m.fileId)
-        case .show(let s, _): .show(s.key)
-        }
-    }
-
-    var posterURL: URL? {
-        switch self {
-        case .movie(let m): m.posterURL
-        case .show(let s, _): s.posterURL
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .movie(let m): m.title
-        case .show(let s, _): s.title
-        }
-    }
-
-    var subtitle: String? {
-        switch self {
-        case .movie(let m): m.year.map(String.init)
-        case .show(let s, _): "\(s.episodes.count) 集"
-        }
-    }
-
-    var rating: Double? {
-        switch self {
-        case .movie(let m): m.rating
-        case .show(let s, _): s.rating
         }
     }
 }
@@ -254,6 +237,9 @@ extension View {
             case .allShows: PosterGridView(kind: .shows)
             case .unmatched: UnmatchedView()
             case .allFiles: LibraryListView()
+            case .categories(let kind): CategoryListView(kind: kind)
+            case .category(let kind, let value): CategoryItemsView(kind: kind, value: value)
+            case .others: OthersView()
             }
         }
     }

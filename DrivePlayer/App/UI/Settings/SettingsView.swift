@@ -113,6 +113,11 @@ struct SettingsView: View {
 
             Section("關於") {
                 LabeledContent("版本", value: AppConfig.version)
+                NavigationLink {
+                    ChangelogView()
+                } label: {
+                    Text("更新日誌")
+                }
             }
         }
         .navigationTitle("設定")

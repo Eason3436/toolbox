@@ -34,19 +34,43 @@ extension MediaItem {
         return out
     }
 
-    /// 劇集：「第 5 集・標題」；電影：片名
+    /// 「第 5 集」「第 5–6 集」；沒有集數就用檔名
+    var episodeNumberText: String {
+        guard let episode else { return (fileName as NSString).deletingPathExtension }
+        if let end = episodeEnd { return "第 \(episode)–\(end) 集" }
+        return "第 \(episode) 集"
+    }
+
+    /// TMDB 的單集標題；只寫「第 5 集」這種的不算
+    var meaningfulEpisodeTitle: String? { EpisodeTitle.meaningful(episodeTitle) }
+
+    /// 劇集：「第 5 集・標題」（標題只是「第 5 集」就不重複）；電影：片名
     var displayEpisodeTitle: String {
         guard kind == .episode else { return title }
-        var s = episode.map { "第 \($0) 集" } ?? fileName
-        if let end = episodeEnd { s = "第 \(episode ?? 0)–\(end) 集" }
-        if let t = episodeTitle, !t.isEmpty { s += "・" + t }
-        return s
+        guard let t = meaningfulEpisodeTitle else { return episodeNumberText }
+        return episodeNumberText + "・" + t
+    }
+
+    /// 詳細頁、輪播用的大海報：有沒有字的版本就用它（疊 logo 才不會重疊）
+    var heroPoster: HeroPoster {
+        HeroPoster(textless: textlessPosterPath ?? show?.textlessPosterPath, regular: posterPath ?? show?.posterPath)
     }
 }
 
 extension Show {
     var posterURL: URL? { TMDB.imageURL(posterPath, size: .poster) }
     var backdropURL: URL? { TMDB.imageURL(backdropPath, size: .backdrop) }
+    var heroPoster: HeroPoster { HeroPoster(textless: textlessPosterPath, regular: posterPath) }
+}
+
+/// 大海報：沒有字的版本優先
+struct HeroPoster: Equatable {
+    var textless: String?
+    var regular: String?
+
+    var url: URL? { TMDB.imageURL(textless ?? regular, size: .posterLarge) }
+    /// 海報上本來就有片名（沒有無字版）：logo 不要疊在海報上
+    var hasTitleText: Bool { textless == nil && regular != nil }
 }
 
 // MARK: - 元件

@@ -46,7 +46,7 @@ final class TMDBClient: Sendable {
     static let language = "zh-TW"
     static let fallbackLanguage = "en-US"
     /// 片名 logo 要哪些語言的（null 是沒有文字的圖）
-    static let imageLanguages = "zh,en,ja,ko,null"
+    static let imageLanguages = "zh,en,ja,ko,xx,null"
 
     private let apiKey: String
     private let session: URLSession

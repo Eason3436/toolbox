@@ -67,7 +67,7 @@ final class AppServices {
         if item.kind == .episode {
             let showTitle = item.show?.title ?? item.title
             var subtitle = item.episodeLabel ?? ""
-            if let t = item.episodeTitle, !t.isEmpty { subtitle += subtitle.isEmpty ? t : "・" + t }
+            if let t = EpisodeTitle.meaningful(item.episodeTitle) { subtitle += subtitle.isEmpty ? t : "・" + t }
             request = PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: showTitle, subtitle: subtitle.isEmpty ? nil : subtitle, startAt: start)
             if Prefs.bool(Prefs.skipIntroOutro), let show = item.show {
                 request.introEnd = show.introSeconds

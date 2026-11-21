@@ -25,28 +25,31 @@ struct MovieDetailView: View {
     @Query private var states: [PlaybackState]
     @State private var matching = false
     @State private var tint: Color
+    @State private var scroll = HeroScroll()
 
     init(item: MediaItem) {
         self.item = item
         let id = item.fileId
         _states = Query(filter: #Predicate<PlaybackState> { $0.fileId == id })
-        _tint = State(initialValue: PosterTint.cached(item.posterURL) ?? Color(white: 0.12))
+        _tint = State(initialValue: PosterTint.cached(item.heroPoster.url) ?? Color(white: 0.12))
     }
 
     private var state: PlaybackState? { states.first }
     private var watched: Bool { state?.watched ?? false }
-    private var posterURL: URL? { TMDB.imageURL(item.posterPath, size: .posterLarge) ?? item.posterURL }
+    private var posterURL: URL? { item.heroPoster.url }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
-                DetailHero(posterURL: posterURL, logoURL: TMDB.imageURL(item.logoPath, size: .logo), title: item.title) {
+                DetailHero(poster: item.heroPoster, logoURL: TMDB.imageURL(item.logoPath, size: .logo), title: item.title, pull: scroll.pull) {
                     VStack(spacing: 8) {
                         InfoLine(rating: item.rating, date: item.releaseDate ?? item.year.map(String.init),
                                  countryCode: item.countryCode, genres: item.genres, certification: item.certification)
-                        Text(subline)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        if !subline.isEmpty {
+                            Text(subline)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         let spec = MediaSpec(item)
                         if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
                     }
@@ -88,12 +91,17 @@ struct MovieDetailView: View {
             }
         }
         .scrollIndicators(.hidden)
-        .detailPageStyle(tint: tint, posterURL: posterURL)
+        .detailPageStyle(tint: tint, posterURL: posterURL, scroll: $scroll)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { matching = true } label: { Label("手動指定 TMDB", systemImage: "magnifyingglass") }
                     Button { services.matcher.rematch(item) } label: { Label("重新自動比對", systemImage: "arrow.triangle.2.circlepath") }
+                    if item.matchState != .ignored {
+                        Button(role: .destructive) { services.matcher.ignore(item) } label: {
+                            Label("不需要配對", systemImage: "nosign")
+                        }
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -111,12 +119,11 @@ struct MovieDetailView: View {
         }
     }
 
-    /// 「1 小時 49 分鐘 · 16.35 GB · 1080p」
+    /// 「1 小時 49 分鐘 · 16.35 GB」（畫質已經在下面的規格 logo）
     private var subline: String {
         var parts: [String] = []
         if let runtime = DetailFormat.runtime(item.duration) { parts.append(runtime) }
         if item.size > 0 { parts.append(item.size.formatted(.byteCount(style: .file))) }
-        if let resolution = MediaSpec(item).resolution { parts.append(resolution) }
         return parts.joined(separator: " · ")
     }
 }

@@ -123,6 +123,23 @@ public struct TMDBImage: Codable, Sendable, Hashable {
 
 public struct TMDBImages: Codable, Sendable, Hashable {
     public var logos: [TMDBImage]?
+    public var posters: [TMDBImage]?
+
+    public init(logos: [TMDBImage]? = nil, posters: [TMDBImage]? = nil) {
+        self.logos = logos
+        self.posters = posters
+    }
+
+    /// 沒有文字的海報（TMDB 的語言是 null 或「xx」），疊片名 logo 才不會跟海報上的字重疊。挑評分高的
+    public func textlessPoster() -> String? {
+        (posters ?? [])
+            .filter { image in
+                let lang = image.iso6391?.lowercased() ?? ""
+                return lang.isEmpty || lang == "xx"
+            }
+            .max { ($0.voteAverage ?? 0) < ($1.voteAverage ?? 0) }?
+            .filePath
+    }
 
     /// 片名 logo：繁中（台灣、香港）→ 中文 → 英文 → 原文 → 沒有文字的。同語言挑評分高的
     public func bestLogo(originalLanguage: String?) -> String? {

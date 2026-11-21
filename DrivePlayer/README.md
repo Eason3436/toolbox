@@ -45,6 +45,16 @@ iOS 用戶端沒有 client secret，Client ID 本來就會放在 App 裡（Googl
 
 參考截圖裡有、這版沒做的：IMDb／爛番茄評分（要另外的付費或申請 API）、線上字幕搜尋（要 OpenSubtitles 帳號與 key）、HDR 字幕（只對圖片字幕有用，AVPlayer 沒有）、硬體加速與百度載入優化（AVPlayer 一律硬體解碼、沒有百度）、磁碟快取（要改寫本機代理）。杜比的 logo 是自己畫的雙 D＋字，不是官方圖檔。
 
+## 首頁與詳細頁（0.4.0）
+
+- **推薦輪播**：首頁最上面，每次打開 App 換一批，有無字海報＋片名 logo 的優先，7 秒自動換頁（`UI/Home/CategoryViews.swift` 的 `FeaturedCarousel`）
+- **分類**：類型、評分（7 分台、8 分台）、發行年代、分級；分類規則在 `Core/Library.swift`，卡片顏色由分類名稱算出來
+- **無字海報**：TMDB `images.posters` 裡語言是 null／`xx` 的那張存在 `textlessPosterPath`，詳細頁、輪播用它疊 logo；沒有無字版時 logo 放在海報下面
+- 詳細頁頂端：海報在最上面時不顯示柔和邊緣（`heroTopEdge`），往上捲才出現；往下拉時海報以底部為基準放大
+- 劇集的集數橫排（`EpisodeCard`），打開時停在下一集；TMDB 只寫「第 5 集」的單集標題不再重複（`Core` 的 `EpisodeTitle`）
+- **不需要配對**：`MatchState.ignored`，清掉 TMDB 資料、用檔名當標題，放在首頁「其他影片」；「重新自動比對」可以恢復
+- 更新日誌：`App/UI/Settings/ChangelogView.swift`（設定 → 關於 → 更新日誌），每次更新加一筆並同步改 `project.yml` 的 `MARKETING_VERSION`
+
 ## 驗收步驟（實機）
 
 | 里程碑 | 怎麼確認 |

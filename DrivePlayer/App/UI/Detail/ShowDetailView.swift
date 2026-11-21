@@ -27,13 +27,15 @@ struct ShowDetailView: View {
     @State private var matching = false
     @State private var editingIntro = false
     @State private var tint: Color
+    @State private var scroll = HeroScroll()
+    @State private var episodeAnchor: String?
 
     init(show: Show) {
         self.show = show
-        _tint = State(initialValue: PosterTint.cached(show.posterURL) ?? Color(white: 0.12))
+        _tint = State(initialValue: PosterTint.cached(show.heroPoster.url) ?? Color(white: 0.12))
     }
 
-    private var posterURL: URL? { TMDB.imageURL(show.posterPath, size: .posterLarge) ?? show.posterURL }
+    private var posterURL: URL? { show.heroPoster.url }
 
     private var stateById: [String: PlaybackState] {
         Dictionary(states.map { ($0.fileId, $0) }, uniquingKeysWith: { a, _ in a })
@@ -65,7 +67,7 @@ struct ShowDetailView: View {
         let next = nextUp
         ScrollView {
             VStack(spacing: 22) {
-                DetailHero(posterURL: posterURL, logoURL: TMDB.imageURL(show.logoPath, size: .logo), title: show.title) {
+                DetailHero(poster: show.heroPoster, logoURL: TMDB.imageURL(show.logoPath, size: .logo), title: show.title, pull: scroll.pull) {
                     VStack(spacing: 8) {
                         InfoLine(rating: show.rating, date: show.releaseDate ?? show.year.map(String.init),
                                  countryCode: show.countryCode, genres: show.genres, certification: show.certification)
@@ -81,7 +83,7 @@ struct ShowDetailView: View {
 
                 VStack(spacing: 16) {
                     if let next {
-                        PlayCapsule(resumeAt: stateById[next.fileId]?.resumePosition, caption: next.episodeLabel.map { "\($0)・\(next.episodeTitle ?? next.fileName)" }) {
+                        PlayCapsule(resumeAt: stateById[next.fileId]?.resumePosition, caption: next.episodeLabel.map { "\($0)・\(next.meaningfulEpisodeTitle ?? next.episodeNumberText)" }) {
                             services.play(next)
                         }
                     }
@@ -123,14 +125,17 @@ struct ShowDetailView: View {
             }
         }
         .scrollIndicators(.hidden)
-        .detailPageStyle(tint: tint, posterURL: posterURL)
+        .detailPageStyle(tint: tint, posterURL: posterURL, scroll: $scroll)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { editingIntro = true } label: { Label("片頭片尾", systemImage: "forward.end") }
                     Button { matching = true } label: { Label("手動指定 TMDB", systemImage: "magnifyingglass") }
-                    if let any = show.episodes.first {
-                        Button { services.matcher.rematch(any) } label: { Label("重新自動比對", systemImage: "arrow.triangle.2.circlepath") }
+                    Button { services.matcher.rematch(show) } label: { Label("重新自動比對", systemImage: "arrow.triangle.2.circlepath") }
+                    if show.matchState != .ignored {
+                        Button(role: .destructive) { services.matcher.ignore(show) } label: {
+                            Label("不需要配對", systemImage: "nosign")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -198,25 +203,46 @@ struct ShowDetailView: View {
         }
     }
 
+    /// 同一季的集數橫排，左右滑；一打開就停在下一集
     private var episodeList: some View {
         let s = stateById
-        return LazyVStack(spacing: 16) {
-            ForEach(show.episodes(inSeason: selectedSeason)) { ep in
-                EpisodeRow(item: ep, state: s[ep.fileId]) { services.play(ep) }
-                    .contextMenu {
-                        let watched = s[ep.fileId]?.watched ?? false
-                        Button {
-                            services.playback.setWatched([ep.fileId], watched: !watched)
-                        } label: {
-                            Label(watched ? "標記為未看" : "標記為已看", systemImage: watched ? "circle" : "checkmark.circle")
+        let episodes = show.episodes(inSeason: selectedSeason)
+        return ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(episodes) { ep in
+                    EpisodeCard(item: ep, state: s[ep.fileId]) { services.play(ep) }
+                        .frame(width: 260)
+                        .id(ep.fileId)
+                        .contextMenu {
+                            let watched = s[ep.fileId]?.watched ?? false
+                            Button {
+                                services.playback.setWatched([ep.fileId], watched: !watched)
+                            } label: {
+                                Label(watched ? "標記為未看" : "標記為已看", systemImage: watched ? "circle" : "checkmark.circle")
+                            }
+                            Button { services.play(ep, fromBeginning: true) } label: {
+                                Label("從頭播放", systemImage: "backward.end")
+                            }
                         }
-                        Button { services.play(ep, fromBeginning: true) } label: {
-                            Label("從頭播放", systemImage: "backward.end")
-                        }
-                    }
+                }
             }
+            .scrollTargetLayout()
         }
-        .padding(.horizontal)
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $episodeAnchor, anchor: .leading)
+        .onAppear { scrollToNext() }
+        .onChange(of: selectedSeason) { scrollToNext() }
+    }
+
+    private func scrollToNext() {
+        let episodes = show.episodes(inSeason: selectedSeason)
+        if let next = nextUp, episodes.contains(where: { $0.fileId == next.fileId }) {
+            episodeAnchor = next.fileId
+        } else {
+            episodeAnchor = episodes.first?.fileId
+        }
     }
 
 }
@@ -255,59 +281,61 @@ struct IntroOutroSheet: View {
     }
 }
 
-/// 一集：縮圖、標題、時長、簡介、進度
-struct EpisodeRow: View {
+/// 一集（橫排的卡片）：劇照、「第 5 集」、標題、時長、簡介、進度
+struct EpisodeCard: View {
     let item: MediaItem
     let state: PlaybackState?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 12) {
-                    RemoteImage(url: item.stillURL)
-                        .frame(width: 150, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(alignment: .bottom) {
-                            if let progress = state?.progress, progress > 0, state?.watched != true {
-                                ProgressBar(value: progress).padding(6)
-                            }
+            VStack(alignment: .leading, spacing: 6) {
+                RemoteImage(url: item.stillURL)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(alignment: .bottom) {
+                        if let progress = state?.progress, progress > 0, state?.watched != true {
+                            ProgressBar(value: progress).padding(8)
                         }
-                        .overlay(alignment: .topTrailing) {
-                            if state?.watched == true {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, .tint)
-                                    .padding(5)
-                            }
-                        }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.displayEpisodeTitle)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(2)
-                        HStack(spacing: 6) {
-                            if item.duration > 0 {
-                                Text(Timecode.duration(item.duration))
-                            }
-                            if let resume = state?.resumePosition, item.duration > 0 {
-                                Text("・剩 \(Timecode.duration(item.duration - resume))")
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 0)
+                    .overlay(alignment: .topTrailing) {
+                        if state?.watched == true {
+                            Image(systemName: "checkmark.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .tint)
+                                .padding(6)
+                        }
+                    }
+                HStack(spacing: 6) {
+                    Text(item.episodeNumberText)
+                    if item.duration > 0 {
+                        Text("·")
+                        if let resume = state?.resumePosition {
+                            Text("剩 \(Timecode.duration(item.duration - resume))")
+                        } else {
+                            Text(Timecode.duration(item.duration))
+                        }
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                if let title = item.meaningfulEpisodeTitle {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                 }
                 if let overview = item.overview, !overview.isEmpty {
                     Text(overview)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
     }
 }

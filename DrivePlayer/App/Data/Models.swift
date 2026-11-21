@@ -29,6 +29,11 @@ enum MatchState: String, Codable, Sendable {
     case unmatched
     /// 使用者手動指定
     case manual
+    /// 使用者選「不需要配對」：用檔名當標題，不再查 TMDB
+    case ignored
+
+    /// 放在電影、劇集、分類裡（有 TMDB 資料，或還在查）
+    var isInLibrary: Bool { self != .unmatched && self != .ignored }
 }
 
 /// 一個影片檔：電影，或劇集的一集（Episode 就是 kind == .episode 的 MediaItem，掛在 Show 底下）
@@ -76,6 +81,8 @@ final class MediaItem {
     var releaseDate: String?
     /// 出品國家代碼「JP」
     var countryCode: String?
+    /// 沒有文字的海報（詳細頁、首頁輪播疊 logo 用）
+    var textlessPosterPath: String?
     /// TMDB 資料的版本；比 MetadataMatcher.metadataVersion 舊就在背景重抓（補 logo、導演）
     var metadataVersion: Int = 0
 
@@ -183,6 +190,7 @@ final class Show {
     var logoPath: String?
     var releaseDate: String?
     var countryCode: String?
+    var textlessPosterPath: String?
     var metadataVersion: Int = 0
     /// 片頭長度（秒）：自動跳過片頭用，0 表示沒設定
     var introSeconds: Double = 0

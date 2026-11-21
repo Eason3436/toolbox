@@ -83,7 +83,7 @@ struct PosterGridView: View {
 
     private var movieList: [MediaItem] {
         let watched = watchedIds
-        var list = items.filter { $0.kind == .movie && $0.matchState != .unmatched }
+        var list = items.filter { $0.kind == .movie && $0.matchState.isInLibrary }
         switch filter {
         case .all: break
         case .favorites: list = list.filter(\.isFavorite)
@@ -101,7 +101,7 @@ struct PosterGridView: View {
 
     private var showList: [Show] {
         let watched = watchedIds
-        var list = shows.filter { $0.matchState != .unmatched }
+        var list = shows.filter { $0.matchState.isInLibrary }
         switch filter {
         case .all: break
         case .favorites: list = list.filter(\.isFavorite)

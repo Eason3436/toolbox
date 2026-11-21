@@ -20,19 +20,30 @@ struct UnmatchedView: View {
                             target = MatchTarget(target: .movie(item), id: item.fileId)
                         } play: {
                             services.play(item)
+                        } ignore: {
+                            services.matcher.ignore(item)
                         }
                     }
                 }
             }
             if !unmatchedShows.isEmpty {
-                Section("劇集") {
+                Section {
                     ForEach(unmatchedShows) { show in
                         row(title: show.parsedTitle, detail: "\(show.episodes.count) 集・\(show.episodes.first?.fileName ?? "")") {
                             target = MatchTarget(target: .show(show), id: show.key)
                         } play: {
                             if let first = show.orderedEpisodes.first { services.play(first) }
+                        } ignore: {
+                            services.matcher.ignore(show)
                         }
                     }
+                } header: {
+                    Text("劇集")
+                }
+            }
+            if !movies.isEmpty || !unmatchedShows.isEmpty {
+                Section {} footer: {
+                    Text("點一下手動搜尋 TMDB。自己拍的影片、不在 TMDB 上的，往左滑選「不需要配對」，會用檔名當標題，放到首頁的「其他影片」。")
                 }
             }
         }
@@ -48,7 +59,7 @@ struct UnmatchedView: View {
         }
     }
 
-    private func row(title: String, detail: String, match: @escaping () -> Void, play: @escaping () -> Void) -> some View {
+    private func row(title: String, detail: String, match: @escaping () -> Void, play: @escaping () -> Void, ignore: @escaping () -> Void) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.body)
@@ -63,7 +74,16 @@ struct UnmatchedView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: match)
+        .swipeActions(edge: .trailing) {
+            Button(action: ignore) { Label("不需要配對", systemImage: "nosign") }
+                .tint(.gray)
+        }
+        .contextMenu {
+            Button(action: match) { Label("手動指定 TMDB", systemImage: "magnifyingglass") }
+            Button(action: ignore) { Label("不需要配對", systemImage: "nosign") }
+        }
         .accessibilityAction(named: "手動指定", match)
+        .accessibilityAction(named: "不需要配對", ignore)
     }
 }
 

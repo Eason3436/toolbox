@@ -62,6 +62,20 @@ struct ManualMatchView: View {
                         }
                     }
                 }
+
+                Section {
+                    Button {
+                        switch target {
+                        case .movie(let item): services.matcher.ignore(item)
+                        case .show(let show): services.matcher.ignore(show)
+                        }
+                        dismiss()
+                    } label: {
+                        Label("不需要配對", systemImage: "nosign")
+                    }
+                } footer: {
+                    Text("不在 TMDB 上的影片（例如自己拍的）：用檔名當標題，不再自動比對，放到首頁的「其他影片」。")
+                }
             }
             .overlay {
                 if searched && !searching && movieResults.isEmpty && tvResults.isEmpty && error == nil {
