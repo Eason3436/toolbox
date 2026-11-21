@@ -173,3 +173,36 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(LibraryCategory.sorted(.genre, counts: ["劇情": 1, "動畫": 4]), ["動畫", "劇情"])
     }
 }
+
+final class MP4BoxTests: XCTestCase {
+    private func u32(_ v: Int) -> [UInt8] { [UInt8(v >> 24 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v & 0xFF)] }
+    private func box(_ type: String, _ payload: [UInt8]) -> [UInt8] { u32(payload.count + 8) + Array(type.utf8) + payload }
+
+    func testHeaders() {
+        let ftyp = box("ftyp", Array(repeating: 0, count: 12))
+        XCTAssertEqual(MP4Boxes.header(ftyp), .init(type: "ftyp", size: 20, headerSize: 8))
+        let big: [UInt8] = u32(1) + Array("mdat".utf8) + u32(1) + u32(16)
+        XCTAssertEqual(MP4Boxes.header(big), .init(type: "mdat", size: (1 << 32) + 16, headerSize: 16))
+        XCTAssertNil(MP4Boxes.header([0, 0, 0, 4, 0x6D, 0x6F, 0x6F, 0x76]))
+    }
+
+    func testHev1Patch() {
+        let hev1 = box("hev1", Array(repeating: 7, count: 20))
+        let mp4a = box("mp4a", Array(repeating: 1, count: 10))
+        let stsd = box("stsd", [0, 0, 0, 0] + u32(1) + hev1)
+        let stsd2 = box("stsd", [0, 0, 0, 0] + u32(1) + mp4a)
+        let moov = box("moov", box("trak", box("mdia", box("minf", box("stbl", stsd)))) + box("trak", stsd2))
+        let patches = MP4Boxes.sampleEntryPatches(inMoov: moov)
+        XCTAssertEqual(patches.count, 1)
+        let p = patches[0]
+        XCTAssertEqual(String(decoding: moov[p.offset..<(p.offset + 4)], as: UTF8.self), "hev1")
+        XCTAssertEqual(String(decoding: p.replacement, as: UTF8.self), "hvc1")
+    }
+
+    func testH264Profile() {
+        XCTAssertEqual(MP4Boxes.h264Profile(avcC: [1, 110, 0, 40]), 110)
+        XCTAssertTrue(MP4Boxes.isUnsupportedH264Profile(110))
+        XCTAssertFalse(MP4Boxes.isUnsupportedH264Profile(100))
+        XCTAssertEqual(CodecNames.name(fourCC: "dtsl"), "DTS-HD MA")
+    }
+}

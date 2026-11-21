@@ -2,6 +2,7 @@ import Core
 import Foundation
 import Observation
 import SwiftData
+import UIKit
 
 /// App 共用的服務，從 DrivePlayerApp 注入 environment。
 @MainActor
@@ -45,6 +46,10 @@ final class AppServices {
     }
 
     private func wire() {
+        let proxy = proxy
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
+            proxy.purgeCache()
+        }
         library.onScanFinished = { [weak self] in self?.matcher.matchPending() }
         player.onProgress = { [weak self] request, position, duration, reason in
             self?.playback.record(fileId: request.fileId, position: position, duration: duration,
@@ -136,6 +141,8 @@ final class AppServices {
             item.audioFormat = info.audioFormat
             item.audioChannels = info.audioChannels
             item.isAtmos = info.isAtmos
+            item.unsupportedVideo = info.unsupportedVideo
+            item.unsupportedAudio = info.unsupportedAudio
             item.specProbed = true
             item.specVersion = SpecProbe.version
             try? library.context.save()

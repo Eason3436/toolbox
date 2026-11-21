@@ -3,28 +3,22 @@ import Foundation
 import Network
 
 /// 本機串流代理：AVPlayer（之後的 mpv 也一樣）播放 `http://127.0.0.1:{port}/stream/{fileId}`，
-/// 這裡每個請求都拿**當下有效的** token 轉送到 Drive，並原樣轉送 Range。
+/// 這裡用當下有效的 token 向 Drive 分段下載（`ChunkCache`），再照播放器要的 Range 回給它。
 ///
 /// 為什麼要代理：Google 的 access token 一小時就過期，直接把 Authorization 塞進 AVURLAsset，
-/// 長片播到後半段會收到 401 而中斷。
+/// 長片播到後半段會收到 401 而中斷。順便：平行分段下載（比單一連線快很多）、修正 hev1 標記。
 ///
 /// - 只聽 loopback，外部連不進來
-/// - 回應分段串流，送出去還沒被吃掉的資料超過 `highWater` 就暫停下載（不會整部讀進記憶體）
+/// - 送給播放器時等 socket 吃掉才送下一段；往前最多多下載 `ChunkCache.readAhead` 段（不會整部讀進記憶體）
 /// - 一個連線只處理一個請求（`Connection: close`），AVPlayer 會自己開新的連線
 /// - 回到前景時呼叫 `ensureRunning()`，被系統關掉的 listener 會在同一個 port 重開
 final class LocalStreamProxy: @unchecked Sendable {
     typealias TokenProvider = @Sendable (_ forceRefresh: Bool) async throws -> String
 
-    /// 送出但還沒寫進 socket 的位元組超過這個數就暫停下載，低於 `lowWater` 再繼續
-    static let highWater = 8 * 1024 * 1024
-    static let lowWater = 2 * 1024 * 1024
-
-    let tokenProvider: TokenProvider
-    let upstreamURL: @Sendable (String) -> URL
+    let cache: ChunkCache
 
     /// 所有狀態都只在這個 queue 上讀寫
     let queue = DispatchQueue(label: "DrivePlayer.LocalStreamProxy", qos: .userInitiated)
-    let session: URLSession
 
     private var listener: NWListener?
     private var listenerPort: NWEndpoint.Port?
@@ -32,17 +26,13 @@ final class LocalStreamProxy: @unchecked Sendable {
     private var connections: [ObjectIdentifier: ProxyConnection] = [:]
 
     init(tokenProvider: @escaping TokenProvider, upstreamURL: @escaping @Sendable (String) -> URL = { DriveAPI.mediaURL(fileId: $0) }) {
-        self.tokenProvider = tokenProvider
-        self.upstreamURL = upstreamURL
-        let ops = OperationQueue()
-        ops.maxConcurrentOperationCount = 1
-        ops.underlyingQueue = queue
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.urlCache = nil
-        config.httpMaximumConnectionsPerHost = 8
-        session = URLSession(configuration: config, delegate: nil, delegateQueue: ops)
+        cache = ChunkCache(tokenProvider: tokenProvider, upstreamURL: upstreamURL)
+    }
+
+    /// 記憶體不夠：丟掉快取的分段
+    func purgeCache() {
+        let cache = cache
+        Task { await cache.purge() }
     }
 
     // MARK: - 對外
@@ -143,19 +133,13 @@ final class LocalStreamProxy: @unchecked Sendable {
     }
 }
 
-/// 一個 AVPlayer 的連線（一個請求）。所有方法都在 proxy.queue 上執行。
-private final class ProxyConnection: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+/// 一個 AVPlayer 的連線（一個請求）。連線狀態在 proxy.queue 上；回應在一個 Task 裡依序送出。
+private final class ProxyConnection: @unchecked Sendable {
     private let connection: NWConnection
     private unowned let proxy: LocalStreamProxy
     private var buffer = Data()
-    private var request: HTTPRequestHead?
-    private var fileId = ""
-    private var task: URLSessionDataTask?
-    private var retried = false
-    private var headSent = false
     private var closed = false
-    private var inFlight = 0
-    private var suspended = false
+    private var serving: Task<Void, Never>?
 
     init(connection: NWConnection, proxy: LocalStreamProxy) {
         self.connection = connection
@@ -192,168 +176,134 @@ private final class ProxyConnection: NSObject, URLSessionDataDelegate, @unchecke
     }
 
     private func handle(_ head: HTTPRequestHead) {
-        request = head
         guard head.method == "GET" || head.method == "HEAD" else {
             respondError(405, "只支援 GET／HEAD")
             return
         }
-        guard let id = StreamRoute.fileId(from: head.target) else {
+        guard let fileId = StreamRoute.fileId(from: head.target) else {
             respondError(404, "找不到")
             return
         }
-        fileId = id
-        fetchTokenAndStart(forceRefresh: false)
+        let cache = proxy.cache
+        serving = Task { [self] in
+            await serve(head, fileId: fileId, cache: cache)
+            proxy.queue.async { self.close() }
+        }
     }
 
-    private func fetchTokenAndStart(forceRefresh: Bool) {
-        let provider = proxy.tokenProvider
-        let queue = proxy.queue
-        Task {
-            do {
-                let token = try await provider(forceRefresh)
-                queue.async { self.startUpstream(token: token) }
-            } catch {
-                queue.async { self.respondError(401, error.localizedDescription) }
+    // MARK: 回應
+
+    private func serve(_ head: HTTPRequestHead, fileId: String, cache: ChunkCache) async {
+        var headSent = false
+        do {
+            await cache.prepare(fileId)
+            guard let info = await cache.info(fileId), let total = info.total, total > 0 else {
+                throw ProxyError.badResponse
             }
-        }
-    }
+            let contentType = info.contentType ?? "video/mp4"
 
-    // MARK: 轉送到 Drive
-
-    private func startUpstream(token: String) {
-        guard !closed, let request else { return }
-        var upstream = URLRequest(url: proxy.upstreamURL(fileId))
-        upstream.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        upstream.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        if request.method == "HEAD" {
-            // HEAD：只要 1 個位元組，從 Content-Range 讀出總長度
-            upstream.setValue("bytes=0-0", forHTTPHeaderField: "Range")
-        } else if let range = request.range, ByteRange.parse(range) != nil {
-            upstream.setValue(range, forHTTPHeaderField: "Range")
-        }
-        let task = proxy.session.dataTask(with: upstream)
-        task.delegate = self
-        self.task = task
-        task.resume()
-    }
-
-    func urlSession(
-        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
-        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
-    ) {
-        guard dataTask === task, !closed else {
-            completionHandler(.cancel)
-            return
-        }
-        let http = response as? HTTPURLResponse
-        let status = http?.statusCode ?? 502
-
-        if status == 401, !retried {
-            // token 剛好過期：換新的再試一次
-            retried = true
-            task = nil
-            completionHandler(.cancel)
-            fetchTokenAndStart(forceRefresh: true)
-            return
-        }
-        guard (200..<300).contains(status) else {
-            completionHandler(.cancel)
-            task = nil
-            if status == 416, let cr = http?.value(forHTTPHeaderField: "Content-Range") {
-                var head = HTTPResponseHead(status: 416, headers: [("Content-Range", cr), ("Content-Length", "0"), ("Connection", "close")]).serialized()
-                head.append(Data())
-                sendAndClose(head)
-            } else {
-                respondError(status, "Google 雲端硬碟回應 \(status)")
-            }
-            return
-        }
-
-        var upstreamHeaders: [String: String] = [:]
-        for name in HTTPResponseHead.forwardedHeaders {
-            if let v = http?.value(forHTTPHeaderField: name) { upstreamHeaders[name] = v }
-        }
-
-        if request?.method == "HEAD" {
-            completionHandler(.cancel)
-            task = nil
-            var headers: [String: String] = ["accept-ranges": "bytes"]
-            if let type = upstreamHeaders["content-type"] { headers["content-type"] = type }
-            if let cr = upstreamHeaders["content-range"], let total = cr.split(separator: "/").last {
-                headers["content-length"] = String(total)
-            }
-            sendAndClose(HTTPResponseHead.forwarding(status: 200, upstream: headers).serialized())
-            return
-        }
-
-        let head = HTTPResponseHead.forwarding(status: status, upstream: upstreamHeaders)
-        headSent = true
-        send(head.serialized())
-        completionHandler(.allow)
-    }
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard dataTask === task, !closed else { return }
-        send(data)
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard task === self.task, !closed else { return }
-        self.task = nil
-        if let error {
-            if headSent {
-                close()
-            } else {
-                let offline = (error as? URLError).map { [.notConnectedToInternet, .networkConnectionLost, .timedOut].contains($0.code) } ?? false
-                respondError(offline ? 503 : 502, error.localizedDescription)
-            }
-            return
-        }
-        // 全部送完：等 socket 寫完再關
-        connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
-            self?.close()
-        })
-    }
-
-    // MARK: 寫回播放器（有背壓）
-
-    private func send(_ data: Data) {
-        let count = data.count
-        inFlight += count
-        connection.send(content: data, completion: .contentProcessed { [weak self] error in
-            guard let self else { return }
-            self.inFlight -= count
-            if error != nil {
-                self.close()
+            if head.method == "HEAD" {
+                let response = HTTPResponseHead(status: 200, headers: [
+                    ("Content-Type", contentType), ("Content-Length", "\(total)"),
+                    ("Accept-Ranges", "bytes"), ("Connection", "close"),
+                ])
+                _ = await write(response.serialized(), final: true)
                 return
             }
-            if self.suspended, self.inFlight < LocalStreamProxy.lowWater {
-                self.suspended = false
-                self.task?.resume()
+
+            let requested = ByteRange.parse(head.range)
+            var start: Int64 = 0
+            var end = total - 1
+            if let requested {
+                if let s = requested.start {
+                    start = s
+                    if let e = requested.end { end = min(e, total - 1) }
+                } else if let suffix = requested.end {
+                    start = max(0, total - suffix)
+                }
             }
-        })
-        if !suspended, inFlight > LocalStreamProxy.highWater {
-            suspended = true
-            task?.suspend()
+            guard start < total, start <= end else { throw ProxyError.unsatisfiable(total: total) }
+
+            let status = requested == nil ? 200 : 206
+            var headers: [(String, String)] = [
+                ("Content-Type", contentType), ("Content-Length", "\(end - start + 1)"), ("Accept-Ranges", "bytes"),
+            ]
+            if status == 206 { headers.append(("Content-Range", "bytes \(start)-\(end)/\(total)")) }
+            headers.append(("Connection", "close"))
+            guard await write(HTTPResponseHead(status: status, headers: headers).serialized()) else { return }
+            headSent = true
+
+            let size = ChunkCache.chunkSize
+            let lastIndex = end / size
+            var pos = start
+            while pos <= end {
+                try Task.checkCancellation()
+                let index = pos / size
+                await cache.prefetch(fileId, after: index, last: lastIndex)
+                let data = try await cache.chunk(fileId, index)
+                let chunkStart = index * size
+                let lo = Int(pos - chunkStart)
+                let hi = Int(min(end + 1, chunkStart + Int64(data.count)) - chunkStart)
+                guard lo < hi else { throw ProxyError.badResponse }
+                var slice = Data(data[(data.startIndex + lo)..<(data.startIndex + hi)])
+                if !info.patches.isEmpty {
+                    let sliceEnd = pos + Int64(slice.count)
+                    for (offset, byte) in info.patches where offset >= pos && offset < sliceEnd {
+                        slice[Int(offset - pos)] = byte
+                    }
+                }
+                guard await write(slice) else { return }
+                pos += Int64(hi - lo)
+            }
+            _ = await write(nil, final: true)
+        } catch ProxyError.unsatisfiable(let total) {
+            guard !headSent else { return }
+            var headers: [(String, String)] = [("Content-Length", "0"), ("Connection", "close")]
+            if let total { headers.insert(("Content-Range", "bytes */\(total)"), at: 0) }
+            _ = await write(HTTPResponseHead(status: 416, headers: headers).serialized(), final: true)
+        } catch {
+            guard !headSent, !(error is CancellationError) else { return }
+            let (status, message) = Self.describe(error)
+            _ = await write(HTTPResponseHead.error(status, message: message), final: true)
+        }
+    }
+
+    private static func describe(_ error: Error) -> (Int, String) {
+        switch error {
+        case ProxyError.http(let status):
+            return (status, "Google 雲端硬碟回應 \(status)")
+        case let error as URLError where [URLError.Code.notConnectedToInternet, .networkConnectionLost, .timedOut].contains(error.code):
+            return (503, error.localizedDescription)
+        default:
+            return (502, error.localizedDescription)
+        }
+    }
+
+    /// 送出並等 socket 收下（背壓：播放器不讀，這裡就停）
+    private func write(_ data: Data?, final: Bool = false) async -> Bool {
+        let connection = connection
+        return await withCheckedContinuation { cont in
+            connection.send(
+                content: data,
+                contentContext: final ? .finalMessage : .defaultMessage,
+                isComplete: final,
+                completion: .contentProcessed { error in cont.resume(returning: error == nil) }
+            )
         }
     }
 
     private func respondError(_ status: Int, _ message: String) {
-        sendAndClose(HTTPResponseHead.error(status, message: message))
-    }
-
-    private func sendAndClose(_ data: Data) {
         guard !closed else { return }
-        connection.send(content: data, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
-            self?.close()
+        connection.send(content: HTTPResponseHead.error(status, message: message), contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
+            self?.proxy.queue.async { self?.close() }
         })
     }
 
     func close() {
         guard !closed else { return }
         closed = true
-        task?.cancel()
-        task = nil
+        serving?.cancel()
+        serving = nil
         connection.cancel()
         proxy.remove(self)
     }

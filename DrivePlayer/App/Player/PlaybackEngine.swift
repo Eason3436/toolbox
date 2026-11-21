@@ -256,10 +256,15 @@ final class AVPlayerEngine: PlaybackEngine {
                 item.select(nil, in: group)
             }
         }
-        if let language = options.audioLanguage, let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
-            let choices = group.options
-            if let index = language.bestIndex(choices.map { (languageTag: $0.extendedLanguageTag ?? $0.locale?.identifier, name: $0.displayName) }) {
+        if let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
+            // 只挑能播的音軌（DTS、TrueHD 系統解不了，選到就沒有聲音）
+            let choices = group.options.filter(\.isPlayable)
+            let current = item.currentMediaSelection.selectedMediaOption(in: group)
+            if let language = options.audioLanguage,
+               let index = language.bestIndex(choices.map { (languageTag: $0.extendedLanguageTag ?? $0.locale?.identifier, name: $0.displayName) }) {
                 item.select(choices[index], in: group)
+            } else if let current, !current.isPlayable, let first = choices.first {
+                item.select(first, in: group)
             }
         }
     }

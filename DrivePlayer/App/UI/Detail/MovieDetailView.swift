@@ -52,6 +52,7 @@ struct MovieDetailView: View {
                         }
                         let spec = MediaSpec(item)
                         if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
+                        CodecWarning(item: item)
                     }
                 }
 

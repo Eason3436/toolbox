@@ -77,6 +77,7 @@ struct ShowDetailView: View {
                         if let next {
                             let spec = MediaSpec(next)
                             if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
+                            CodecWarning(item: next)
                         }
                     }
                 }

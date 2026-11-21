@@ -14,11 +14,15 @@ struct SpecInfo: Sendable {
     var audioFormat: String?
     var audioChannels: Int?
     var isAtmos = false
+    /// 影片的編碼 iPhone 解不了（例如 H.264 10-bit）：播放時只有聲音
+    var unsupportedVideo: String?
+    /// 所有音軌的編碼都解不了（例如 DTS）：播放時沒有聲音
+    var unsupportedAudio: String?
 }
 
 enum SpecProbe {
-    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類）
-    static let version = 2
+    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類；3：不支援的編碼）
+    static let version = 3
 
     static func probe(url: URL) async throws -> SpecInfo {
         let asset = AVURLAsset(url: url)
@@ -27,6 +31,19 @@ enum SpecProbe {
         if duration.seconds.isFinite { info.duration = duration.seconds }
 
         for track in try await asset.loadTracks(withMediaType: .video) {
+            let playable = try await track.load(.isPlayable)
+            if let desc = try await track.load(.formatDescriptions).first {
+                let codec = fourCC(CMFormatDescriptionGetMediaSubType(desc))
+                if !playable {
+                    info.unsupportedVideo = CodecNames.name(fourCC: codec)
+                } else if codec == "avc1" || codec == "avc3",
+                          let atoms = CMFormatDescriptionGetExtension(desc, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any],
+                          let avcC = atoms["avcC"] as? Data,
+                          let profile = MP4Boxes.h264Profile(avcC: [UInt8](avcC)),
+                          MP4Boxes.isUnsupportedH264Profile(profile) {
+                    info.unsupportedVideo = "H.264 10-bit"
+                }
+            }
             let size = try await track.load(.naturalSize)
             info.width = Int(abs(size.width).rounded())
             info.height = Int(abs(size.height).rounded())
@@ -47,8 +64,14 @@ enum SpecProbe {
             break
         }
 
+        // 有好幾條音軌時用第一條能播的（播放器也會自動換過去）
+        var firstUnsupported: String?
         for track in try await asset.loadTracks(withMediaType: .audio) {
             if let desc = try await track.load(.formatDescriptions).first {
+                guard try await track.load(.isPlayable) else {
+                    if firstUnsupported == nil { firstUnsupported = CodecNames.name(fourCC: fourCC(CMFormatDescriptionGetMediaSubType(desc))) }
+                    continue
+                }
                 let subtype = fourCC(CMFormatDescriptionGetMediaSubType(desc))
                 info.audioFormat = audioName(CMFormatDescriptionGetMediaSubType(desc))
                 if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee, asbd.mChannelsPerFrame > 0 {
@@ -64,8 +87,10 @@ enum SpecProbe {
                     }
                 }
             }
+            firstUnsupported = nil
             break
         }
+        info.unsupportedAudio = firstUnsupported
         return info
     }
 

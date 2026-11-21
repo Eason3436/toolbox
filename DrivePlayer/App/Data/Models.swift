@@ -105,6 +105,10 @@ final class MediaItem {
     var hdrFormat: String?
     /// 讀規格的版本；比 SpecProbe.version 舊就重讀
     var specVersion: Int = 0
+    /// iPhone 內建播放器解不了的影片編碼（播放時只有聲音）
+    var unsupportedVideo: String?
+    /// iPhone 內建播放器解不了的音訊編碼（播放時沒有聲音）
+    var unsupportedAudio: String?
 
     // 使用者
     var isFavorite: Bool

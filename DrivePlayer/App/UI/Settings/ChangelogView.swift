@@ -10,6 +10,12 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.4.1", date: "2026-11-21", changes: [
+            "播放更順：改成同時下載好幾段、先讀到前面，不再播十幾秒就停下來載入",
+            "修正有些 HEVC 影片只有聲音、畫面一個 Q（檔案標成 hev1，播放時自動改成 iPhone 認得的 hvc1）",
+            "有好幾條音軌時，自動換到 iPhone 能播的那條（例如 DTS 旁邊的 AAC）",
+            "詳細頁會提醒 iPhone 內建播放器不支援的格式（DTS、TrueHD 音訊會沒有聲音；H.264 10-bit 影片只有聲音）",
+        ]),
         Entry(version: "0.4.0", date: "2026-11-21", changes: [
             "首頁最上面加推薦輪播，左右滑或等幾秒自動換頁",
             "首頁加分類：類型、評分、發行年代、分級，點「全部」看所有分類",

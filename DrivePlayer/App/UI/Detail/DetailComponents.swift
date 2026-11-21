@@ -401,6 +401,40 @@ struct DolbyMark: View {
     }
 }
 
+/// 系統播放器解不了的編碼：先講清楚，播放時才不會以為壞掉
+struct CodecWarning: View {
+    let item: MediaItem
+
+    var body: some View {
+        if let text {
+            Label {
+                Text(text)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    private var text: String? {
+        switch (item.unsupportedVideo, item.unsupportedAudio) {
+        case let (video?, audio?):
+            "影片（\(video)）和音訊（\(audio)）的格式 iPhone 內建播放器都不支援，這個檔案播不了。"
+        case let (video?, nil):
+            "影片格式（\(video)）iPhone 內建播放器不支援，播放時只有聲音。"
+        case let (nil, audio?):
+            "音訊格式（\(audio)）iPhone 內建播放器不支援，播放時沒有聲音。"
+        case (nil, nil):
+            nil
+        }
+    }
+}
+
 // MARK: - 播放與動作
 
 /// 淺色膠囊播放鍵：「播放」或「繼續播放／上次播放到：00:12:34」

@@ -55,6 +55,13 @@ iOS 用戶端沒有 client secret，Client ID 本來就會放在 App 裡（Googl
 - **不需要配對**：`MatchState.ignored`，清掉 TMDB 資料、用檔名當標題，放在首頁「其他影片」；「重新自動比對」可以恢復
 - 更新日誌：`App/UI/Settings/ChangelogView.swift`（設定 → 關於 → 更新日誌），每次更新加一筆並同步改 `project.yml` 的 `MARKETING_VERSION`
 
+## 串流（0.4.1）
+
+- `Streaming/ChunkCache.swift`：Drive 檔案切成 4 MB 一段，最多同時下載 6 段、往前多讀 6 段，記憶體最多放 192 MB（收到記憶體警告就清掉）。Drive 單一連線常常只有每秒幾 MB，藍光等級的位元率會追不上
+- 代理照播放器要的 Range 從分段組出回應，等 socket 收下才送下一段（播放器不讀就不會一直下載）
+- 第一次讀一個檔案時找 moov，把 `hev1`／`dvhe` sample entry 改名成 `hvc1`／`dvh1`（`Core/MP4Boxes.swift`），iPhone 才會解 ffmpeg 預設標記的 HEVC
+- 播放器只選能播的音軌；`SpecProbe` 記下系統解不了的編碼（DTS、TrueHD、H.264 10-bit），詳細頁顯示提醒。這些要等第二階段 MPVKit
+
 ## 驗收步驟（實機）
 
 | 里程碑 | 怎麼確認 |
