@@ -68,8 +68,8 @@ jobs:
           [ -z "$TMDB_API_KEY" ] && MISSING="$MISSING TMDB_API_KEY"
           [ -z "$GOOGLE_CLIENT_ID" ] && MISSING="$MISSING GOOGLE_CLIENT_ID"
           if [ -n "$MISSING" ]; then
-            echo "::warning::沒有設定 Actions Secrets：$MISSING。照樣編譯，但 App 裡對應的功能會顯示「尚未設定」"
-            echo "notes=⚠️ 這次編譯沒有設定：$MISSING（App 裡對應功能無法使用）。" >> "$GITHUB_OUTPUT"
+            echo "::warning::沒有設定 Actions Secrets：${MISSING}。照樣編譯，但 App 裡對應的功能會顯示「尚未設定」"
+            echo "notes=⚠️ 這次編譯沒有設定：${MISSING}（App 裡對應功能無法使用）。" >> "$GITHUB_OUTPUT"
           else
             echo "notes=" >> "$GITHUB_OUTPUT"
           fi
