@@ -112,6 +112,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - **TMDB API Key 不編進 IPA**（使用者 2026-11-21 要求不要公開；Release 是公開的）：在 App「設定 → TMDB」輸入，`/configuration` 檢查後存鑰匙圈（`Util/Keychain.swift`）。不要再把它加回 Secrets／Info.plist
 - **Bundle ID 是 `com.yueze.driveplayer`**（規劃書指定，Google OAuth iOS 用戶端綁這個），不是 `com.eason3436.` 前綴；使用者照規劃書用 Sideloadly（不改 Bundle ID）安裝
 - iOS 18 起、**Swift 6 語言模式**（strict concurrency complete）；SwiftData 存在 `Application Support/DrivePlayer.store`
+- 0.3.0（使用者給了參考 App 的截圖）：詳細頁整張海報＋片名 logo＋海報主色底（`UI/Detail/DetailComponents.swift`）、規格 logo、播放／字幕設定（`Util/Prefs.swift`、`UI/Settings/PlaybackSettingsView.swift`、`SubtitleSettingsView.swift`）、外掛字幕自己畫（`Core/Subtitles.swift`、`Player/PlayerView.swift`）、全 App `softScrollEdges()`。TMDB 資料加欄位時把 `MetadataMatcher.metadataVersion` 加 1，讀規格加欄位時把 `SpecProbe.version` 加 1，舊資料會自己補
 - 細節、跟規劃書不同的地方、驗收步驟見 `DrivePlayer/README.md`
 
 ### HealthMi（只有 workflow）
