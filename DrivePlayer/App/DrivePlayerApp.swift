@@ -2,10 +2,15 @@ import SwiftUI
 
 @main
 struct DrivePlayerApp: App {
+    @State private var services = AppServices()
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(services)
                 .preferredColorScheme(.dark)
+                .onOpenURL { services.auth.handle($0) }
+                .task { await services.auth.restore() }
         }
     }
 }
@@ -21,10 +26,7 @@ struct RootView: View {
             }
             Tab("設定", systemImage: "gearshape.fill") {
                 NavigationStack {
-                    List {
-                        LabeledContent("版本", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-")
-                    }
-                    .navigationTitle("設定")
+                    SettingsView()
                 }
             }
         }

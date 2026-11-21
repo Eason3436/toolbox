@@ -146,3 +146,27 @@ final class HTTPMessageTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("\r\n\r\n"))
     }
 }
+
+final class DriveModelTests: XCTestCase {
+    func testDecodeList() throws {
+        let json = #"{"nextPageToken":"t2","files":[{"id":"f1","name":"Movies","mimeType":"application/vnd.google-apps.folder"},{"id":"v1","name":"Zootopia.2.2025.2160p.DV.Atmos.mp4","mimeType":"video/mp4","size":"53687091200","modifiedTime":"2025-12-01T10:20:30.123Z","videoMediaMetadata":{"width":3840,"height":2160,"durationMillis":"6480000"}},{"id":"v2","name":"clip.MOV","mimeType":"video/quicktime"},{"id":"v3","name":"show.mkv","mimeType":"video/x-matroska"}]}"#
+        let list = try JSONDecoder().decode(DriveFileList.self, from: Data(json.utf8))
+        XCTAssertEqual(list.nextPageToken, "t2")
+        XCTAssertTrue(list.files[0].isFolder)
+        XCTAssertFalse(list.files[0].isPlayableVideo)
+        XCTAssertTrue(list.files[1].isPlayableVideo)
+        XCTAssertEqual(list.files[1].byteCount, 53_687_091_200)
+        XCTAssertEqual(list.files[1].videoMediaMetadata?.durationSeconds, 6480)
+        XCTAssertNotNil(list.files[1].modifiedDate)
+        XCTAssertTrue(list.files[2].isPlayableVideo)
+        XCTAssertFalse(list.files[3].isPlayableVideo, "MKV 是第二階段")
+    }
+
+    func testListURL() {
+        let url = DriveAPI.listURL(folderId: "abc", pageToken: "p+1").absoluteString
+        XCTAssertTrue(url.contains("q=%27abc%27%20in%20parents%20and%20trashed%20%3D%20false") || url.contains("q='abc'%20in%20parents"), url)
+        XCTAssertTrue(url.contains("pageToken=p%2B1"), url)
+        XCTAssertTrue(DriveAPI.listURL(folderId: DriveAPI.sharedWithMeId).absoluteString.contains("sharedWithMe"))
+        XCTAssertEqual(DriveAPI.mediaURL(fileId: "x").absoluteString, "https://www.googleapis.com/drive/v3/files/x?alt=media&supportsAllDrives=true")
+    }
+}
