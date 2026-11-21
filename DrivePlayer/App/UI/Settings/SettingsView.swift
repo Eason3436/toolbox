@@ -70,6 +70,8 @@ struct SettingsView: View {
                 }
             }
 
+            TMDBKeySection()
+
             Section {
                 Toggle("自動播放下一集", isOn: $autoPlayNext)
                 Toggle("續播時先詢問", isOn: $askBeforeResume)
@@ -109,7 +111,6 @@ struct SettingsView: View {
 
             Section("關於") {
                 LabeledContent("版本", value: AppConfig.version)
-                LabeledContent("TMDB", value: AppConfig.tmdbAPIKey == nil ? "尚未設定 API Key" : "已設定")
             }
         }
         .navigationTitle("設定")

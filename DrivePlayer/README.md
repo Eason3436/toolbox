@@ -23,20 +23,17 @@
    3. 建立 OAuth 用戶端 ID：類型 **iOS**，Bundle ID 填 `com.yueze.driveplayer`
    4. 記下 Client ID（`xxxx.apps.googleusercontent.com`）與「iOS URL scheme」（反轉後的 Client ID）
    - 「測試中」的登入大約 7 天失效一次，App 會提示重新登入
-2. **TMDB**：註冊後在設定頁申請 API Key（v3 的 key 或 v4 的 Read Access Token 都可以）
-3. **GitHub**：repo → Settings → Secrets and variables → Actions，新增
+2. **GitHub**：repo → Settings → Secrets and variables → Actions，新增
    - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_REVERSED_CLIENT_ID`（沒填會自動從 Client ID 算出來）
-   - `TMDB_API_KEY`
-4. 到 Actions 手動重跑「Build DrivePlayer IPA」，裝新的 IPA
+   - `GOOGLE_REVERSED_CLIENT_ID`（可以不填，會自動從 Client ID 算出來）
+3. 到 Actions 手動重跑「Build DrivePlayer IPA」，裝新的 IPA（Release 說明沒有出現「沒有設定 GOOGLE_CLIENT_ID」才是有 Client ID 的版本）
+4. **TMDB**：註冊後在帳號設定 → API 申請（v3 的 API Key 或 Read Access Token 都可以），**在 App 的「設定 → TMDB」貼上**。Key 只存在 iPhone 的鑰匙圈，不會編進 IPA，所以公開的 Release 裡看不到
 
-沒設定 Secrets 也能編譯，App 會在「設定」顯示哪一項沒設定。
-
-> 注意：這個 repo 是公開的，Release 裡的 IPA 也是公開下載。Client ID 本來就會放在 App 裡、不算機密；TMDB key 也會在 IPA 的 Info.plist 裡，被拿去用的話最多是用掉你的 TMDB 額度。
+沒設定 `GOOGLE_CLIENT_ID` 也能編譯，但 App 不能登入，「設定」會顯示原因。Client ID 會放在 App 裡（Google 的設計就是這樣，iOS 用戶端的 Client ID 不算機密）。
 
 ## 使用
 
-1. 「設定」→ 登入 Google（要勾選允許讀取雲端硬碟）
+1. 「設定」→ 登入 Google（要勾選允許讀取雲端硬碟），再到「設定 → TMDB」貼上 API Key
 2. 「媒體庫」→ 加入資料夾：瀏覽雲端硬碟，進到放影片的資料夾後按右上角「＋」。子資料夾會一起掃描
 3. 掃描完會自動從 TMDB 抓海報、簡介、演員、評分。比對不到的在首頁最下面「未辨識」，點一下可以手動搜尋指定
 4. 檔名建議：電影 `片名.年份.2160p.DV.Atmos.mp4` 或 `片名 (年份).mp4`；劇集 `劇名.S01E05.mp4`、`劇名 第05集.mp4`、`[字幕組] 劇名 - 05 [1080p].mp4`，或放在 `劇名/Season 1/` 底下

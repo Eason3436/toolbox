@@ -9,7 +9,7 @@ enum TMDBError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: "這個版本沒有設定 TMDB API Key（GitHub Secrets 的 TMDB_API_KEY）"
+        case .notConfigured: "還沒有輸入 TMDB API Key，請到「設定」輸入"
         case .unauthorized: "TMDB API Key 無效"
         case .http(let code): "TMDB 回應錯誤（\(code)）"
         case .offline: "沒有網路連線"
@@ -70,6 +70,12 @@ final class TMDBClient: Sendable {
         if let year { params["first_air_date_year"] = String(year) }
         let page: TMDBPage<TMDBTVSummary> = try await get("/search/tv", params)
         return page.results
+    }
+
+    /// 確認 key 能用（輸入時檢查）
+    func validate() async throws {
+        struct Configuration: Decodable, Sendable { var images: Images?; struct Images: Decodable, Sendable { var baseUrl: String? } }
+        let _: Configuration = try await get("/configuration", [:])
     }
 
     func movie(id: Int, language: String = TMDBClient.language) async throws -> TMDBMovieDetails {

@@ -9,10 +9,13 @@ enum AppConfig {
         return v
     }
 
+    /// TMDB API Key：在 App 的「設定」輸入，存在鑰匙圈（不編進 IPA，公開的 Release 裡看不到）
     static var tmdbAPIKey: String? {
-        guard let v = Bundle.main.object(forInfoDictionaryKey: "DPTMDBAPIKey") as? String,
-              !v.isEmpty, v != "PLACEHOLDER" else { return nil }
-        return v
+        get {
+            guard let v = Keychain.string("tmdbAPIKey")?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
+            return v
+        }
+        set { Keychain.set(newValue?.trimmingCharacters(in: .whitespacesAndNewlines), for: "tmdbAPIKey") }
     }
 
     static var version: String {

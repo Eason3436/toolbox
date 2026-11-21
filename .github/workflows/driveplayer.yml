@@ -46,11 +46,11 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphoneos
 
-      # TMDB API Key 與 Google Client ID 放在 repo 的 Actions Secrets，不進公開的原始碼
+      # Google Client ID 放在 repo 的 Actions Secrets，不進公開的原始碼。
+      # TMDB API Key 不編進 IPA（Release 是公開的）：使用者在 App 的「設定」輸入，存在鑰匙圈
       - name: Secrets.xcconfig
         id: config
         env:
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_REVERSED_CLIENT_ID: ${{ secrets.GOOGLE_REVERSED_CLIENT_ID }}
         run: |
@@ -59,13 +59,11 @@ jobs:
             GOOGLE_REVERSED_CLIENT_ID="com.googleusercontent.apps.${GOOGLE_CLIENT_ID%.apps.googleusercontent.com}"
           fi
           : > Config/Secrets.xcconfig
-          if [ -n "$TMDB_API_KEY" ]; then echo "TMDB_API_KEY = $TMDB_API_KEY" >> Config/Secrets.xcconfig; fi
           if [ -n "$GOOGLE_CLIENT_ID" ]; then
             echo "GOOGLE_CLIENT_ID = $GOOGLE_CLIENT_ID" >> Config/Secrets.xcconfig
             echo "GOOGLE_REVERSED_CLIENT_ID = $GOOGLE_REVERSED_CLIENT_ID" >> Config/Secrets.xcconfig
           fi
           MISSING=""
-          [ -z "$TMDB_API_KEY" ] && MISSING="$MISSING TMDB_API_KEY"
           [ -z "$GOOGLE_CLIENT_ID" ] && MISSING="$MISSING GOOGLE_CLIENT_ID"
           if [ -n "$MISSING" ]; then
             echo "::warning::沒有設定 Actions Secrets：${MISSING}。照樣編譯，但 App 裡對應的功能會顯示「尚未設定」"

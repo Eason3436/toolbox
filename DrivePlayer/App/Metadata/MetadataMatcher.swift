@@ -25,7 +25,7 @@ final class MetadataMatcher {
     private(set) var lastError: String?
 
     @ObservationIgnored private let context: ModelContext
-    @ObservationIgnored let tmdb: TMDBClient?
+    private(set) var tmdb: TMDBClient?
 
     init(context: ModelContext, tmdb: TMDBClient?) {
         self.context = context
@@ -33,6 +33,13 @@ final class MetadataMatcher {
     }
 
     var isConfigured: Bool { tmdb != nil }
+
+    /// 在「設定」換了 TMDB API Key
+    func useClient(_ client: TMDBClient?) {
+        tmdb = client
+        lastError = nil
+        if client != nil { matchPending() }
+    }
 
     // MARK: - 自動比對
 
