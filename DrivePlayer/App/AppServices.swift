@@ -9,6 +9,7 @@ final class AppServices {
     let drive: DriveClient
     let proxy: LocalStreamProxy
     let player: PlayerController
+    let library: LibraryManager
 
     init() {
         let auth = GoogleAuthService()
@@ -17,6 +18,7 @@ final class AppServices {
         drive = DriveClient(tokens: tokens)
         proxy = LocalStreamProxy { force in try await tokens.token(forceRefresh: force) }
         player = PlayerController(proxy: proxy)
+        library = LibraryManager(context: AppDatabase.container.mainContext, drive: drive)
     }
 
     /// App 回到前景：代理被系統關掉的話重開
