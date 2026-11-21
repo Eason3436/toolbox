@@ -64,9 +64,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section("播放") {
+            Section {
                 Toggle("自動播放下一集", isOn: $autoPlayNext)
                 Toggle("續播時先詢問", isOn: $askBeforeResume)
+            } header: {
+                Text("播放")
             } footer: {
                 Text("自動播放下一集：一集播完後倒數 10 秒播下一集。續播時先詢問：有進度時讓你選擇繼續或從頭播放。")
             }
