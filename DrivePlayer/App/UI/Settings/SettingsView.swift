@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppServices.self) private var services
+    @AppStorage(AppServices.Keys.autoPlayNext) private var autoPlayNext = true
+    @AppStorage(AppServices.Keys.askBeforeResume) private var askBeforeResume = false
     @State private var signingIn = false
     @State private var error: String?
 
@@ -60,6 +62,13 @@ struct SettingsView: View {
                         Label("與我共用", systemImage: "person.2.fill")
                     }
                 }
+            }
+
+            Section("播放") {
+                Toggle("自動播放下一集", isOn: $autoPlayNext)
+                Toggle("續播時先詢問", isOn: $askBeforeResume)
+            } footer: {
+                Text("自動播放下一集：一集播完後倒數 10 秒播下一集。續播時先詢問：有進度時讓你選擇繼續或從頭播放。")
             }
 
             Section("關於") {
