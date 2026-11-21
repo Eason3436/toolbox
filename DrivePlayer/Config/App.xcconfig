@@ -1,0 +1,12 @@
+// DrivePlayer 設定
+//
+// TMDB API Key 與 Google Client ID 不放在 repo：CI 從 GitHub Actions Secrets
+// （TMDB_API_KEY、GOOGLE_CLIENT_ID、GOOGLE_REVERSED_CLIENT_ID）寫出 Secrets.xcconfig，這個檔案在 .gitignore 裡。
+// 沒有 Secrets.xcconfig 時是 PLACEHOLDER：App 照樣能開，登入與 TMDB 會顯示「尚未設定」。
+// 範本見 Secrets.xcconfig.template。
+
+TMDB_API_KEY = PLACEHOLDER
+GOOGLE_CLIENT_ID = PLACEHOLDER
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.placeholder
+
+#include? "Secrets.xcconfig"

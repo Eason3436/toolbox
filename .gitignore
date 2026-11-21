@@ -13,3 +13,9 @@ LiveContainer/LiveActivityWidget/LCLiveActivity.xcodeproj/
 LiveContainer/LiveActivityWidget/Info.plist
 EnRecall/EnRecall.xcodeproj/
 EnRecall/EnRecall/Info.plist
+# DrivePlayer：專案檔由 XcodeGen 產生；Secrets 由 CI 從 Actions Secrets 產生
+DrivePlayer/DrivePlayer.xcodeproj/
+DrivePlayer/Config/Info.plist
+DrivePlayer/Config/Secrets.xcconfig
+DrivePlayer/Packages/Core/.build/
+DrivePlayer/Packages/Core/.swiftpm/
