@@ -25,7 +25,7 @@ enum AuthError: LocalizedError, Equatable {
 @MainActor
 @Observable
 final class GoogleAuthService {
-    static let driveScope = "https://www.googleapis.com/auth/drive.readonly"
+    nonisolated static let driveScope = "https://www.googleapis.com/auth/drive.readonly"
 
     enum State: Equatable {
         case restoring
