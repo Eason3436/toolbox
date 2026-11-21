@@ -32,7 +32,7 @@ struct RootView: View {
         TabView {
             Tab("首頁", systemImage: "house.fill") {
                 NavigationStack {
-                    LibraryListView()
+                    HomeView()
                 }
             }
             Tab("媒體庫", systemImage: "folder.fill") {

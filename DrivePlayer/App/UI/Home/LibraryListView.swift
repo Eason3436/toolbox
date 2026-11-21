@@ -35,11 +35,7 @@ struct LibraryListView: View {
 
     private func row(_ item: MediaItem) -> some View {
         Button {
-            Task {
-                await services.player.play(PlaybackRequest(
-                    fileId: item.fileId, fileName: item.fileName, title: item.title, subtitle: item.episodeLabel
-                ))
-            }
+            services.play(item)
         } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
