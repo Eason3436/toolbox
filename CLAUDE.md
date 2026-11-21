@@ -108,7 +108,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 依使用者的「DrivePlayer 開發規劃書（第一階段：MP4／MOV）」做的 Google Drive 影音播放器（類似 Infuse）。M0–M6 都寫完（2026-11-21），實機驗收待使用者確認。
 - 播放：AVPlayer → `LocalStreamProxy`（NWListener 只聽 127.0.0.1，每個請求帶最新 token 轉送 Range 到 Drive；token 一小時過期，不能直接塞進 AVURLAsset）。`PlaybackEngine` protocol 是給第二階段 MPVKit（MKV）預留的
 - `Packages/Core`：純 Swift（不准 import UIKit／AVFoundation／SwiftUI／SwiftData），沙盒可以裝 Linux 版 Swift 跑 `swift test`（`curl` swift.org 的 ubuntu24.04 tarball 解到 /opt/swift）；CI 另外在 ubuntu-latest 跑
-- Google 登入（GoogleSignIn-iOS，SPM，規劃書唯一允許的第三方套件）：`GOOGLE_CLIENT_ID`、`GOOGLE_REVERSED_CLIENT_ID` 放 Actions Secrets，CI 寫成 `Config/Secrets.xcconfig`（gitignore），沒設也照樣編譯、App 內顯示原因
+- Google 登入（GoogleSignIn-iOS，SPM，規劃書唯一允許的第三方套件）：iOS 用戶端 ID 寫在 `Config/App.xcconfig`（使用者的 Muse 2026-11-21 在 Google Cloud 建的；iOS 用戶端沒有 secret、本來就在 IPA 裡，所以放 repo）。有設 Actions Secret `GOOGLE_CLIENT_ID` 時 CI 寫成 `Config/Secrets.xcconfig`（gitignore）蓋過去
 - **TMDB API Key 不編進 IPA**（使用者 2026-11-21 要求不要公開；Release 是公開的）：在 App「設定 → TMDB」輸入，`/configuration` 檢查後存鑰匙圈（`Util/Keychain.swift`）。不要再把它加回 Secrets／Info.plist
 - **Bundle ID 是 `com.yueze.driveplayer`**（規劃書指定，Google OAuth iOS 用戶端綁這個），不是 `com.eason3436.` 前綴；使用者照規劃書用 Sideloadly（不改 Bundle ID）安裝
 - iOS 18 起、**Swift 6 語言模式**（strict concurrency complete）；SwiftData 存在 `Application Support/DrivePlayer.store`

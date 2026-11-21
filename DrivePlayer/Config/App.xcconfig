@@ -1,12 +1,11 @@
 // DrivePlayer 設定
 //
-// Google Client ID 不放在 repo：CI 從 GitHub Actions Secrets
-// （GOOGLE_CLIENT_ID、GOOGLE_REVERSED_CLIENT_ID）寫出 Secrets.xcconfig，這個檔案在 .gitignore 裡。
-// 沒有 Secrets.xcconfig 時是 PLACEHOLDER：App 照樣能開，登入會顯示「尚未設定」。
+// Google 登入的 iOS 用戶端 ID（Bundle ID com.yueze.driveplayer）。
+// iOS 用戶端沒有 client secret，Client ID 本來就會出現在 IPA 裡，Google 不把它當機密，所以直接放在這裡。
+// 要換用戶端：改這兩行，或在 GitHub Actions Secrets 設 GOOGLE_CLIENT_ID（CI 會寫成 Secrets.xcconfig 蓋過這裡）。
 // TMDB API Key 不編進 App：在 App 的「設定」輸入，存在 iPhone 的鑰匙圈。
-// 範本見 Secrets.xcconfig.template。
 
-GOOGLE_CLIENT_ID = PLACEHOLDER
-GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.placeholder
+GOOGLE_CLIENT_ID = 65409042076-jjat9ks267m38el24c50lrmfs0pf70m9.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.65409042076-jjat9ks267m38el24c50lrmfs0pf70m9
 
 #include? "Secrets.xcconfig"

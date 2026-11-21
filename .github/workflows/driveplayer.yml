@@ -46,10 +46,9 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphoneos
 
-      # Google Client ID 放在 repo 的 Actions Secrets，不進公開的原始碼。
+      # Google Client ID 寫在 Config/App.xcconfig；有設 Actions Secrets 時改用 Secrets 的值。
       # TMDB API Key 不編進 IPA（Release 是公開的）：使用者在 App 的「設定」輸入，存在鑰匙圈
       - name: Secrets.xcconfig
-        id: config
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_REVERSED_CLIENT_ID: ${{ secrets.GOOGLE_REVERSED_CLIENT_ID }}
@@ -62,14 +61,6 @@ jobs:
           if [ -n "$GOOGLE_CLIENT_ID" ]; then
             echo "GOOGLE_CLIENT_ID = $GOOGLE_CLIENT_ID" >> Config/Secrets.xcconfig
             echo "GOOGLE_REVERSED_CLIENT_ID = $GOOGLE_REVERSED_CLIENT_ID" >> Config/Secrets.xcconfig
-          fi
-          MISSING=""
-          [ -z "$GOOGLE_CLIENT_ID" ] && MISSING="$MISSING GOOGLE_CLIENT_ID"
-          if [ -n "$MISSING" ]; then
-            echo "::warning::沒有設定 Actions Secrets：${MISSING}。照樣編譯，但 App 裡對應的功能會顯示「尚未設定」"
-            echo "notes=⚠️ 這次編譯沒有設定：${MISSING}（App 裡對應功能無法使用）。" >> "$GITHUB_OUTPUT"
-          else
-            echo "notes=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Generate Xcode project
@@ -116,11 +107,10 @@ jobs:
       - name: Publish to "driveplayer-latest" release
         env:
           GH_TOKEN: ${{ github.token }}
-          EXTRA: ${{ steps.config.outputs.notes }}
         run: |
           gh release delete driveplayer-latest --yes --cleanup-tag || true
           gh release create driveplayer-latest DrivePlayer.ipa \
             --target "$GITHUB_SHA" \
             --title "DrivePlayer（${GITHUB_SHA::7}）" \
-            --notes "DrivePlayer：Google Drive 影音播放器（iOS 18 以上）。用 Sideloadly 或 SideStore 安裝，詳見 DrivePlayer/README.md。${EXTRA}" \
+            --notes "DrivePlayer：Google Drive 影音播放器（iOS 18 以上）。用 Sideloadly 或 SideStore 安裝，詳見 DrivePlayer/README.md。" \
             --prerelease

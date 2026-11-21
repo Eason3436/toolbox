@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.2.0"
+    MARKETING_VERSION: "0.2.1"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
 
@@ -59,7 +59,7 @@ targets:
         # 本機代理：AVPlayer 播 http://127.0.0.1:{port}/stream/{fileId}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        # Google 登入（值由 CI 從 GitHub Secrets 寫進 Secrets.xcconfig）
+        # Google 登入（值在 Config/App.xcconfig）
         GIDClientID: $(GOOGLE_CLIENT_ID)
         CFBundleURLTypes:
           - CFBundleURLName: GoogleSignIn

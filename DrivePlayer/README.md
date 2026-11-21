@@ -23,13 +23,10 @@
    3. 建立 OAuth 用戶端 ID：類型 **iOS**，Bundle ID 填 `com.yueze.driveplayer`
    4. 記下 Client ID（`xxxx.apps.googleusercontent.com`）與「iOS URL scheme」（反轉後的 Client ID）
    - 「測試中」的登入大約 7 天失效一次，App 會提示重新登入
-2. **GitHub**：repo → Settings → Secrets and variables → Actions，新增
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_REVERSED_CLIENT_ID`（可以不填，會自動從 Client ID 算出來）
-3. 到 Actions 手動重跑「Build DrivePlayer IPA」，裝新的 IPA（Release 說明沒有出現「沒有設定 GOOGLE_CLIENT_ID」才是有 Client ID 的版本）
-4. **TMDB**：註冊後在帳號設定 → API 申請（v3 的 API Key 或 Read Access Token 都可以），**在 App 的「設定 → TMDB」貼上**。Key 只存在 iPhone 的鑰匙圈，不會編進 IPA，所以公開的 Release 裡看不到
+2. Client ID 寫在 `Config/App.xcconfig`（已經填好，2026-11-21）。要換用戶端就改那兩行；或在 GitHub Actions Secrets 設 `GOOGLE_CLIENT_ID`，CI 會用 Secrets 的值蓋過去
+3. **TMDB**：註冊後在帳號設定 → API 申請（v3 的 API Key 或 Read Access Token 都可以），**在 App 的「設定 → TMDB」貼上**。Key 只存在 iPhone 的鑰匙圈，不會編進 IPA，所以公開的 Release 裡看不到
 
-沒設定 `GOOGLE_CLIENT_ID` 也能編譯，但 App 不能登入，「設定」會顯示原因。Client ID 會放在 App 裡（Google 的設計就是這樣，iOS 用戶端的 Client ID 不算機密）。
+iOS 用戶端沒有 client secret，Client ID 本來就會放在 App 裡（Google 的設計就是這樣，不算機密），所以直接寫在 repo。
 
 ## 使用
 

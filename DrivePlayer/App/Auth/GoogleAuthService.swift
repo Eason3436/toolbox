@@ -14,7 +14,7 @@ enum AuthError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: "這個安裝檔編譯時沒有 Google Client ID，所以還不能登入。請在 GitHub repo 的 Actions Secrets 加上 GOOGLE_CLIENT_ID，重新編譯後安裝新的 IPA。"
+        case .notConfigured: "這個安裝檔編譯時沒有 Google Client ID，所以還不能登入。請在 Config/App.xcconfig 填上 Google Client ID，重新編譯後安裝新的 IPA。"
         case .notSignedIn: "尚未登入 Google，請到「設定」登入"
         case .missingScope: "沒有取得讀取 Google 雲端硬碟的權限，請重新登入並勾選允許"
         case .cancelled: "已取消登入"
