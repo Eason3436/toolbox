@@ -1,0 +1,388 @@
+import Core
+import Foundation
+import Observation
+import SwiftData
+
+struct MovieMetadata: Sendable {
+    var details: TMDBMovieDetails
+    var overview: String?
+}
+
+struct ShowMetadata: Sendable {
+    var details: TMDBTVDetails
+    var overview: String?
+    var seasons: [Int: TMDBSeasonDetails]
+}
+
+/// 媒體庫 ↔ TMDB：片名 + 年份比對，抓海報、背景圖、簡介、演員、評分，存回 SwiftData。
+/// 比對不到的放進「未辨識」，可以手動搜尋指定。
+@MainActor
+@Observable
+final class MetadataMatcher {
+    private(set) var isRunning = false
+    private(set) var done = 0
+    private(set) var total = 0
+    private(set) var lastError: String?
+
+    @ObservationIgnored private let context: ModelContext
+    private(set) var tmdb: TMDBClient?
+
+    init(context: ModelContext, tmdb: TMDBClient?) {
+        self.context = context
+        self.tmdb = tmdb
+    }
+
+    var isConfigured: Bool { tmdb != nil }
+
+    /// TMDB 資料的版本。加了新欄位就加 1，舊資料會在背景補抓（2：logo、導演、國家、上映日；3：沒有字的海報）
+    static let metadataVersion = 3
+
+    /// 在「設定」換了 TMDB API Key
+    func useClient(_ client: TMDBClient?) {
+        tmdb = client
+        lastError = nil
+        if client != nil { matchPending() }
+    }
+
+    // MARK: - 自動比對
+
+    private enum Job: Sendable {
+        case movie(fileId: String, title: String, year: Int?)
+        case refreshMovie(fileId: String, tmdbId: Int)
+        case show(key: String, title: String, year: Int?, tmdbId: Int?, seasons: [Int])
+    }
+
+    private enum JobResult: Sendable {
+        case movie(fileId: String, MovieMetadata?)
+        case show(key: String, ShowMetadata?)
+        case failed(String)
+    }
+
+    /// 比對所有還沒查過的電影與劇集（掃描完自動呼叫）
+    func matchPending() {
+        guard let tmdb, !isRunning else { return }
+        let pendingRaw = MatchState.pending.rawValue
+        let movieRaw = MediaKind.movie.rawValue
+        let movies = (try? context.fetch(FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.matchStateRaw == pendingRaw && $0.kindRaw == movieRaw }
+        ))) ?? []
+        let shows = (try? context.fetch(FetchDescriptor<Show>())) ?? []
+
+        var jobs: [Job] = movies.map { .movie(fileId: $0.fileId, title: $0.parsedTitle, year: $0.parsedYear) }
+        // 舊版抓的資料：補 logo、導演
+        let version = Self.metadataVersion
+        let outdated = (try? context.fetch(FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.kindRaw == movieRaw && $0.metadataVersion < version && $0.tmdbId != nil }
+        ))) ?? []
+        for item in outdated where item.matchState == .matched || item.matchState == .manual {
+            if let id = item.tmdbId { jobs.append(.refreshMovie(fileId: item.fileId, tmdbId: id)) }
+        }
+        for show in shows {
+            switch show.matchState {
+            case .pending:
+                jobs.append(.show(key: show.key, title: show.parsedTitle, year: show.parsedYear, tmdbId: nil, seasons: show.seasonNumbers))
+            case .matched, .manual:
+                guard let id = show.tmdbId else { break }
+                if show.metadataVersion < version {
+                    // 舊版抓的資料：整部重抓（補 logo、主創）
+                    jobs.append(.show(key: show.key, title: show.title, year: show.year, tmdbId: id, seasons: show.seasonNumbers))
+                    break
+                }
+                // 新加入的集數：補單集標題與劇照
+                let missing = show.episodes.filter { $0.matchState == .pending }
+                if !missing.isEmpty {
+                    let seasons = Array(Set(missing.map { $0.season ?? 1 })).sorted()
+                    jobs.append(.show(key: show.key, title: show.title, year: show.year, tmdbId: id, seasons: seasons))
+                }
+            case .ignored:
+                // 不需要配對的劇：新加入的集數也跟著不配對
+                for e in show.episodes where e.matchState == .pending { e.matchState = .ignored }
+            case .unmatched:
+                break
+            }
+        }
+        guard !jobs.isEmpty else { return }
+
+        isRunning = true
+        done = 0
+        total = jobs.count
+        lastError = nil
+        Task {
+            await withTaskGroup(of: JobResult.self) { group in
+                for job in jobs {
+                    group.addTask { await Self.run(job, tmdb: tmdb) }
+                }
+                for await result in group {
+                    apply(result)
+                    done += 1
+                    if done % 10 == 0 { try? context.save() }
+                }
+            }
+            try? context.save()
+            isRunning = false
+        }
+    }
+
+    nonisolated private static func run(_ job: Job, tmdb: TMDBClient) async -> JobResult {
+        do {
+            switch job {
+            case let .movie(fileId, title, year):
+                return .movie(fileId: fileId, try await resolveMovie(title: title, year: year, tmdb: tmdb))
+            case let .refreshMovie(fileId, tmdbId):
+                return .movie(fileId: fileId, try await loadMovie(id: tmdbId, tmdb: tmdb))
+            case let .show(key, title, year, tmdbId, seasons):
+                if let tmdbId {
+                    return .show(key: key, try await loadShow(id: tmdbId, seasons: seasons, tmdb: tmdb))
+                }
+                return .show(key: key, try await resolveShow(title: title, year: year, seasons: seasons, tmdb: tmdb))
+            }
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func apply(_ result: JobResult) {
+        switch result {
+        case let .movie(fileId, meta):
+            guard let item = fetchItem(fileId) else { return }
+            if let meta {
+                apply(meta, to: item, state: item.matchState == .manual ? .manual : .matched)
+            } else {
+                item.matchState = .unmatched
+            }
+        case let .show(key, meta):
+            guard let show = fetchShow(key) else { return }
+            if let meta {
+                apply(meta, to: show, state: show.matchState == .manual ? .manual : .matched)
+            } else {
+                show.matchState = .unmatched
+                for e in show.episodes { e.matchState = .unmatched }
+            }
+        case .failed(let message):
+            // 網路錯誤之類：保持 pending，下次再試
+            lastError = message
+        }
+    }
+
+    // MARK: - 手動指定
+
+    func assignMovie(_ item: MediaItem, tmdbId: Int) async throws {
+        guard let tmdb else { throw TMDBError.notConfigured }
+        let meta = try await Self.loadMovie(id: tmdbId, tmdb: tmdb)
+        apply(meta, to: item, state: .manual)
+        try? context.save()
+    }
+
+    func assignShow(_ show: Show, tmdbId: Int) async throws {
+        guard let tmdb else { throw TMDBError.notConfigured }
+        let meta = try await Self.loadShow(id: tmdbId, seasons: show.seasonNumbers, tmdb: tmdb)
+        apply(meta, to: show, state: .manual)
+        try? context.save()
+    }
+
+    /// 重新自動比對
+    func rematch(_ item: MediaItem) {
+        if let show = item.show {
+            rematch(show)
+            return
+        }
+        item.matchState = .pending
+        try? context.save()
+        matchPending()
+    }
+
+    func rematch(_ show: Show) {
+        show.matchState = .pending
+        show.tmdbId = nil
+        for e in show.episodes where e.matchState == .ignored || e.matchState == .unmatched { e.matchState = .pending }
+        try? context.save()
+        matchPending()
+    }
+
+    // MARK: - 不需要配對
+
+    /// 清掉 TMDB 資料、用檔名當標題，之後不再自動比對（「重新自動比對」可以恢復）
+    func ignore(_ item: MediaItem) {
+        if let show = item.show {
+            ignore(show)
+            return
+        }
+        clearMetadata(item)
+        item.title = item.parsedTitle.isEmpty ? (item.fileName as NSString).deletingPathExtension : item.parsedTitle
+        item.year = item.parsedYear
+        item.matchState = .ignored
+        try? context.save()
+    }
+
+    func ignore(_ show: Show) {
+        show.tmdbId = nil
+        show.title = show.parsedTitle
+        show.year = show.parsedYear
+        show.overview = nil
+        show.posterPath = nil
+        show.backdropPath = nil
+        show.textlessPosterPath = nil
+        show.logoPath = nil
+        show.rating = nil
+        show.genres = []
+        show.certification = nil
+        show.castData = nil
+        show.episodeRuntime = nil
+        show.releaseDate = nil
+        show.countryCode = nil
+        show.matchState = .ignored
+        for e in show.episodes {
+            clearMetadata(e)
+            e.title = show.title
+            e.year = show.year
+            e.matchState = .ignored
+        }
+        try? context.save()
+    }
+
+    private func clearMetadata(_ item: MediaItem) {
+        item.tmdbId = nil
+        item.overview = nil
+        item.posterPath = nil
+        item.backdropPath = nil
+        item.textlessPosterPath = nil
+        item.logoPath = nil
+        item.rating = nil
+        item.genres = []
+        item.certification = nil
+        item.castData = nil
+        item.episodeTitle = nil
+        item.stillPath = nil
+        item.releaseDate = nil
+        item.countryCode = nil
+    }
+
+    // MARK: - 寫進資料庫
+
+    private func apply(_ meta: MovieMetadata, to item: MediaItem, state: MatchState) {
+        let d = meta.details
+        item.tmdbId = d.id
+        item.title = d.title.isEmpty ? (d.originalTitle ?? item.parsedTitle) : d.title
+        item.year = d.year ?? item.parsedYear
+        item.overview = meta.overview
+        item.posterPath = d.posterPath
+        item.backdropPath = d.backdropPath
+        item.rating = d.voteAverage
+        item.genres = d.genres?.map(GenreNames.name(for:)) ?? []
+        item.certification = d.certification
+        item.cast = (d.credits?.directors ?? []) + Array((d.credits?.cast ?? []).prefix(20))
+        item.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        item.textlessPosterPath = d.images?.textlessPoster()
+        item.releaseDate = d.releaseDate
+        item.countryCode = d.countryCode
+        item.metadataVersion = Self.metadataVersion
+        if item.duration == 0, let runtime = d.runtime { item.duration = Double(runtime * 60) }
+        item.matchState = state
+    }
+
+    private func apply(_ meta: ShowMetadata, to show: Show, state: MatchState) {
+        let d = meta.details
+        show.tmdbId = d.id
+        show.title = d.name.isEmpty ? (d.originalName ?? show.parsedTitle) : d.name
+        show.year = d.year ?? show.parsedYear
+        show.overview = meta.overview
+        show.posterPath = d.posterPath
+        show.backdropPath = d.backdropPath
+        show.rating = d.voteAverage
+        show.genres = d.genres?.map(GenreNames.name(for:)) ?? []
+        show.certification = d.certification
+        show.cast = d.creators + Array((d.credits?.cast ?? []).prefix(20))
+        show.episodeRuntime = d.episodeRunTime?.first
+        show.logoPath = d.images?.bestLogo(originalLanguage: d.originalLanguage)
+        show.textlessPosterPath = d.images?.textlessPoster()
+        show.releaseDate = d.firstAirDate
+        show.countryCode = d.countryCode
+        show.metadataVersion = Self.metadataVersion
+        show.matchState = state
+
+        for item in show.episodes {
+            item.tmdbId = d.id
+            item.title = show.title
+            item.year = show.year
+            item.genres = show.genres
+            item.certification = show.certification
+            item.logoPath = show.logoPath
+            item.textlessPosterPath = show.textlessPosterPath
+            item.releaseDate = show.releaseDate
+            item.countryCode = show.countryCode
+            item.metadataVersion = Self.metadataVersion
+            if item.posterPath == nil { item.posterPath = d.posterPath }
+            if item.backdropPath == nil { item.backdropPath = d.backdropPath }
+            if let season = meta.seasons[item.season ?? 1],
+               let ep = season.episodes.first(where: { $0.episodeNumber == item.episode }) {
+                item.episodeTitle = ep.name
+                item.overview = ep.overview
+                item.stillPath = ep.stillPath
+                item.rating = ep.voteAverage
+                if item.duration == 0, let runtime = ep.runtime { item.duration = Double(runtime * 60) }
+            }
+            item.matchState = state
+        }
+    }
+
+    private func fetchItem(_ fileId: String) -> MediaItem? {
+        try? context.fetch(FetchDescriptor<MediaItem>(predicate: #Predicate { $0.fileId == fileId })).first
+    }
+
+    private func fetchShow(_ key: String) -> Show? {
+        try? context.fetch(FetchDescriptor<Show>(predicate: #Predicate { $0.key == key })).first
+    }
+
+    // MARK: - TMDB 查詢（不在主執行緒）
+
+    nonisolated static func resolveMovie(title: String, year: Int?, tmdb: TMDBClient) async throws -> MovieMetadata? {
+        guard !title.isEmpty else { return nil }
+        var results = try await tmdb.searchMovies(title, year: year)
+        if results.isEmpty, year != nil { results = try await tmdb.searchMovies(title) }
+        let candidates = results.map {
+            MatchScoring.Candidate(id: $0.id, title: $0.title, originalTitle: $0.originalTitle, year: $0.year, popularity: $0.popularity ?? 0)
+        }
+        guard let best = MatchScoring.best(query: title, year: year, candidates: candidates) else { return nil }
+        return try await loadMovie(id: best.id, tmdb: tmdb)
+    }
+
+    nonisolated static func loadMovie(id: Int, tmdb: TMDBClient) async throws -> MovieMetadata {
+        let details = try await tmdb.movie(id: id)
+        var overview = details.overview
+        if overview?.isEmpty ?? true {
+            overview = try? await tmdb.movie(id: id, language: TMDBClient.fallbackLanguage).overview
+        }
+        return MovieMetadata(details: details, overview: overview)
+    }
+
+    nonisolated static func resolveShow(title: String, year: Int?, seasons: [Int], tmdb: TMDBClient) async throws -> ShowMetadata? {
+        guard !title.isEmpty else { return nil }
+        var results = try await tmdb.searchTV(title, year: year)
+        if results.isEmpty, year != nil { results = try await tmdb.searchTV(title) }
+        let candidates = results.map {
+            MatchScoring.Candidate(id: $0.id, title: $0.name, originalTitle: $0.originalName, year: $0.year, popularity: $0.popularity ?? 0)
+        }
+        // 劇集的年份常常是那一季的年份，不是首播年份，所以年份只當加分
+        guard let best = MatchScoring.best(query: title, year: nil, candidates: candidates)
+            ?? MatchScoring.best(query: title, year: year, candidates: candidates) else { return nil }
+        return try await loadShow(id: best.id, seasons: seasons, tmdb: tmdb)
+    }
+
+    nonisolated static func loadShow(id: Int, seasons: [Int], tmdb: TMDBClient) async throws -> ShowMetadata {
+        let details = try await tmdb.tv(id: id)
+        var overview = details.overview
+        if overview?.isEmpty ?? true {
+            overview = try? await tmdb.tv(id: id, language: TMDBClient.fallbackLanguage).overview
+        }
+        var seasonDetails: [Int: TMDBSeasonDetails] = [:]
+        await withTaskGroup(of: (Int, TMDBSeasonDetails?).self) { group in
+            for n in seasons {
+                group.addTask { (n, try? await tmdb.season(tvId: id, number: n)) }
+            }
+            for await (n, s) in group {
+                if let s { seasonDetails[n] = s }
+            }
+        }
+        return ShowMetadata(details: details, overview: overview, seasons: seasonDetails)
+    }
+}

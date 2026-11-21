@@ -1,0 +1,79 @@
+name: DrivePlayer
+options:
+  bundleIdPrefix: com.yueze
+  developmentLanguage: zh-Hant
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.4.1"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+
+packages:
+  Core:
+    path: Packages/Core
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 8.0.0
+
+targets:
+  DrivePlayer:
+    type: application
+    platform: iOS
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    sources:
+      - path: App
+        excludes:
+          - "AppIcon.icon"
+          - "AppIcon.icon/**"
+      - path: App/AppIcon.icon
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: Core
+      - package: GoogleSignIn
+        product: GoogleSignIn
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: DrivePlayer
+        CFBundleName: DrivePlayer
+        CFBundleDevelopmentRegion: zh-Hant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        UIUserInterfaceStyle: Dark
+        # 本機代理：AVPlayer 播 http://127.0.0.1:{port}/stream/{fileId}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Google 登入（值在 Config/App.xcconfig）
+        GIDClientID: $(GOOGLE_CLIENT_ID)
+        CFBundleURLTypes:
+          - CFBundleURLName: GoogleSignIn
+            CFBundleURLSchemes:
+              - $(GOOGLE_REVERSED_CLIENT_ID)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yueze.driveplayer
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+
+schemes:
+  DrivePlayer:
+    build:
+      targets:
+        DrivePlayer: all
