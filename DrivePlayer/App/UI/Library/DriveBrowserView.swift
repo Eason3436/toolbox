@@ -47,7 +47,14 @@ struct DriveBrowserView: View {
             if !videos.isEmpty {
                 Section("影片（\(videos.count)）") {
                     ForEach(videos) { v in
-                        DriveFileRow(file: v)
+                        Button {
+                            Task {
+                                await services.player.play(PlaybackRequest(fileId: v.id, fileName: v.name, title: v.name))
+                            }
+                        } label: {
+                            DriveFileRow(file: v)
+                        }
+                        .tint(.primary)
                     }
                 }
             }

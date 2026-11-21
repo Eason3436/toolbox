@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct DrivePlayerApp: App {
     @State private var services = AppServices()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -11,6 +12,13 @@ struct DrivePlayerApp: App {
                 .preferredColorScheme(.dark)
                 .onOpenURL { services.auth.handle($0) }
                 .task { await services.auth.restore() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: services.didBecomeActive()
+            case .background: services.didEnterBackground()
+            default: break
+            }
         }
     }
 }
