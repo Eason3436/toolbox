@@ -177,7 +177,7 @@ final class MetadataMatcher {
         item.posterPath = d.posterPath
         item.backdropPath = d.backdropPath
         item.rating = d.voteAverage
-        item.genres = d.genres?.map(\.name) ?? []
+        item.genres = d.genres?.map(GenreNames.name(for:)) ?? []
         item.certification = d.certification
         item.cast = Array((d.credits?.cast ?? []).prefix(20))
         if item.duration == 0, let runtime = d.runtime { item.duration = Double(runtime * 60) }
@@ -193,7 +193,7 @@ final class MetadataMatcher {
         show.posterPath = d.posterPath
         show.backdropPath = d.backdropPath
         show.rating = d.voteAverage
-        show.genres = d.genres?.map(\.name) ?? []
+        show.genres = d.genres?.map(GenreNames.name(for:)) ?? []
         show.certification = d.certification
         show.cast = Array((d.credits?.cast ?? []).prefix(20))
         show.episodeRuntime = d.episodeRunTime?.first

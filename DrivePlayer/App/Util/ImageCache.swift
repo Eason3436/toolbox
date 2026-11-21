@@ -74,7 +74,9 @@ actor ImageCache {
     }
 }
 
-/// 從快取載入的網路圖片；載入中顯示骨架
+/// 從快取載入的網路圖片；載入中顯示骨架。
+/// 大小一律等於外面給的框（Color.clear 墊底、圖片放 overlay 再裁掉）：
+/// 直接用 .fill 的圖片會回報比框還大的尺寸，把整個詳細頁撐得比螢幕寬。
 struct RemoteImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
@@ -89,6 +91,13 @@ struct RemoteImage: View {
     }
 
     var body: some View {
+        Color.clear
+            .overlay { content }
+            .clipped()
+            .task(id: url) { await load() }
+    }
+
+    @ViewBuilder private var content: some View {
         ZStack {
             if let image {
                 Image(uiImage: image)
@@ -107,20 +116,21 @@ struct RemoteImage: View {
                     }
             }
         }
-        .task(id: url) {
-            guard let url else {
-                image = nil
-                return
-            }
-            if let cached = ImageCache.shared.cached(url) {
-                image = cached
-                return
-            }
-            let loaded = await ImageCache.shared.image(for: url)
-            withAnimation(.easeOut(duration: 0.2)) {
-                image = loaded
-                failed = loaded == nil
-            }
+    }
+
+    private func load() async {
+        guard let url else {
+            image = nil
+            return
+        }
+        if let cached = ImageCache.shared.cached(url) {
+            image = cached
+            return
+        }
+        let loaded = await ImageCache.shared.image(for: url)
+        withAnimation(.easeOut(duration: 0.2)) {
+            image = loaded
+            failed = loaded == nil
         }
     }
 }

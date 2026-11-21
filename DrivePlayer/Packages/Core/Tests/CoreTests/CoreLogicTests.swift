@@ -170,3 +170,13 @@ final class DriveModelTests: XCTestCase {
         XCTAssertEqual(DriveAPI.mediaURL(fileId: "x").absoluteString, "https://www.googleapis.com/drive/v3/files/x?alt=media&supportsAllDrives=true")
     }
 }
+
+final class GenreNamesTests: XCTestCase {
+    func testTraditionalNames() {
+        XCTAssertEqual(GenreNames.name(for: TMDBGenre(id: 16, name: "动画")), "動畫")
+        XCTAssertEqual(GenreNames.name(for: TMDBGenre(id: 99999, name: "悬疑")), "懸疑")
+        XCTAssertEqual(GenreNames.name("犯罪"), "犯罪")
+        XCTAssertEqual(GenreNames.name("Sci-Fi & Fantasy"), "科幻奇幻")
+        XCTAssertEqual(GenreNames.name("其他"), "其他")
+    }
+}

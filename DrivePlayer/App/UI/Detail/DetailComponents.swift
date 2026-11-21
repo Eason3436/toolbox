@@ -36,7 +36,7 @@ struct DetailHeader: View {
                     .shadow(radius: 8)
                 infoLine
                 if !genres.isEmpty {
-                    Text(genres.joined(separator: "・"))
+                    Text(genres.map { GenreNames.name($0) }.joined(separator: "・"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
