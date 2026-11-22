@@ -78,9 +78,14 @@ final class AppServices {
                 request.introEnd = show.introSeconds
                 request.outroLength = show.outroSeconds
             }
+            request.audioKey = item.show?.audioKey
+            request.backdropURL = TMDB.imageURL(item.stillPath, size: .backdrop) ?? item.backdropURL
         } else {
             request = PlaybackRequest(fileId: item.fileId, fileName: item.fileName, title: item.title, subtitle: item.year.map(String.init), startAt: start)
+            request.audioChoice = item.audioTrackChoice
+            request.backdropURL = item.backdropURL
         }
+        request.logoURL = TMDB.imageURL(item.logoPath ?? item.show?.logoPath, size: .logo)
         request.parentId = item.parentId
         return request
     }
@@ -131,7 +136,7 @@ final class AppServices {
         guard !item.specProbed || item.specVersion < SpecProbe.version, auth.state == .signedIn else { return }
         do {
             let url = try await proxy.streamURL(fileId: item.fileId, filename: item.fileName)
-            let info = try await SpecProbe.probe(url: url)
+            let info = try await SpecProbe.probe(url: url, truehd: await proxy.remuxedAudio(fileId: item.fileId))
             if info.duration > 0 { item.duration = info.duration }
             if let w = info.width { item.width = w }
             if let h = info.height { item.height = h }
@@ -143,13 +148,7 @@ final class AppServices {
             item.isAtmos = info.isAtmos
             item.unsupportedVideo = info.unsupportedVideo
             item.unsupportedAudio = info.unsupportedAudio
-            // TrueHD 在代理裡轉成 PCM 了：系統看到的是 PCM，標示照原本的格式
-            if let truehd = await proxy.remuxedAudio(fileId: item.fileId) {
-                item.audioFormat = "TrueHD"
-                item.audioChannels = truehd.channels
-                item.isAtmos = truehd.isAtmos
-                item.unsupportedAudio = nil
-            }
+            item.audioTracks = info.audioTracks
             item.specProbed = true
             item.specVersion = SpecProbe.version
             try? library.context.save()

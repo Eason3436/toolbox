@@ -50,9 +50,11 @@ final class LocalStreamProxy: @unchecked Sendable {
         return URL(string: "http://127.0.0.1:\(port)" + StreamRoute.path(fileId: fileId, filename: name))!
     }
 
-    /// 轉換後的 TrueHD 格式（沒轉換是 nil）
-    func remuxedAudio(fileId: String) async -> TrueHDFormat? {
-        await cache.info(fileId)?.remux?.format
+    /// 轉換成 PCM 的 TrueHD 音軌：track ID → 原本的格式（沒轉換是空的）
+    func remuxedAudio(fileId: String) async -> [Int: TrueHDFormat] {
+        var out: [Int: TrueHDFormat] = [:]
+        for track in await cache.info(fileId)?.remux?.tracks ?? [] { out[track.trackID] = track.format }
+        return out
     }
 
     /// 確保 listener 在跑，回傳 port
@@ -279,18 +281,17 @@ private final class ProxyConnection: @unchecked Sendable {
                     guard await write(Data(plan.header[lo..<hi])) else { return }
                     pos += Int64(hi - lo)
                 }
-                if pos <= end {
-                    let transcoder = await transcoders.transcoder(fileId: fileId, plan: plan, cache: cache)
-                    // 一次送一個 PCM chunk（約 0.5 秒）
-                    let piece = Int64(TrueHDRemux.framesPerChunk * plan.bytesPerFrame)
-                    while pos <= end {
-                        try Task.checkCancellation()
-                        let relative = pos - plan.pcmStart
-                        let pieceEnd = min(end + 1 - plan.pcmStart, (relative / piece + 1) * piece)
-                        let data = try await transcoder.pcm(relative..<pieceEnd)
-                        guard await write(data) else { return }
-                        pos = plan.pcmStart + pieceEnd
-                    }
+                // 每條音軌的 PCM 依序排著；一次送一個 PCM chunk（約 0.5 秒）
+                while pos <= end {
+                    try Task.checkCancellation()
+                    guard let track = plan.track(containing: pos) else { throw ProxyError.badResponse }
+                    let transcoder = await transcoders.transcoder(fileId: fileId, track: track, cache: cache)
+                    let piece = Int64(TrueHDRemux.framesPerChunk * track.bytesPerFrame)
+                    let relative = pos - track.pcmStart
+                    let pieceEnd = min(end + 1, track.pcmEnd) - track.pcmStart
+                    let data = try await transcoder.pcm(relative..<min(pieceEnd, (relative / piece + 1) * piece))
+                    guard await write(data) else { return }
+                    pos += Int64(data.count)
                 }
             }
             _ = await write(nil, final: true)

@@ -52,6 +52,9 @@ struct MovieDetailView: View {
                         }
                         let spec = MediaSpec(item)
                         if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
+                        AudioTrackMenu(tracks: item.audioTracks, selected: item.resolvedAudioTrack,
+                                       isAutomatic: item.audioTrackChoice == nil) { item.audioTrackChoice = $0 }
+                            .padding(.top, 2)
                         CodecWarning(item: item)
                     }
                 }

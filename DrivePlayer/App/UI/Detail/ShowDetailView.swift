@@ -77,6 +77,11 @@ struct ShowDetailView: View {
                         if let next {
                             let spec = MediaSpec(next)
                             if !spec.isEmpty { FormatBadges(spec: spec).padding(.top, 2) }
+                            // 選的音軌記在整部劇：每一集找語言、格式最像的
+                            let tracks = next.audioTracks
+                            AudioTrackMenu(tracks: tracks, selected: next.resolvedAudioTrack,
+                                           isAutomatic: show.audioKey == nil) { show.audioKey = $0.map { tracks[$0].key } }
+                                .padding(.top, 2)
                             CodecWarning(item: next)
                         }
                     }

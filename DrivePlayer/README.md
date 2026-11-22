@@ -64,13 +64,19 @@ iOS 用戶端沒有 client secret，Client ID 本來就會放在 App 裡（Googl
 
 ## TrueHD（0.4.2）
 
-iPhone 的播放器不能解杜比 TrueHD（藍光的「杜比無損音訊」），MP4 裡只有 TrueHD 音軌時會完全沒聲音。代理把它換成邊播邊解的 PCM，播放器還是 AVPlayer（子母畫面、AirPlay、杜比視界照常）：
+iPhone 的播放器不能解杜比 TrueHD（藍光的「杜比無損音訊」），MP4 裡的 TrueHD 音軌選到會完全沒聲音。代理把它換成邊播邊解的 PCM，播放器還是 AVPlayer（子母畫面、AirPlay、杜比視界照常）：
 
 - `Core/TrueHD/TrueHDDecoder.swift`：照 FFmpeg 的 `mlpdec.c` 移植的 TrueHD 解碼器（**LGPL-2.1+**，檔頭有寫）。最多解 3 個子串流，全景聲的片子輸出 7.1 底層。單元測試用 FFmpeg FATE 的杜比 5.1、全景聲樣本，結果跟 ffmpeg 逐位元相同；Linux 上大約 35 倍速
-- `Core/TrueHD/TrueHDRemux.swift`：播放器看到的是「虛擬檔案」＝原檔（ftyp 改成 `qt  `、原本的 moov 改名 `free`）＋新的 moov（TrueHD 那條軌換成 QuickTime `lpcm` 24-bit、`chan` 聲道配置）＋一個 mdat 放 PCM。影片 sample 的位置沒動，照原檔讀；網址副檔名換成 `.mov`、Content-Type `video/quicktime`
+- `Core/TrueHD/TrueHDRemux.swift`：播放器看到的是「虛擬檔案」＝原檔（ftyp 改成 `qt  `、原本的 moov 改名 `free`）＋新的 moov（每條 TrueHD 軌換成 QuickTime `lpcm` 24-bit、`chan` 聲道配置）＋一個 mdat，每條音軌的 PCM 依序排在裡面（`TrueHDRemuxPlan.tracks`）。影片 sample 的位置沒動，照原檔讀；網址副檔名換成 `.mov`、Content-Type `video/quicktime`
 - `Streaming/TrueHDTranscoder.swift`：播放器讀 PCM 區時，找出對應的 TrueHD sample、從分段快取拿資料、解碼。照順序讀就接著解；跳位置時往前退 256 個 AU 重新開始（要碰到 major sync 才解得出來）
-- 只在「沒有其他能播的音軌」時轉換（有 AC3／AAC 就用那條）；fragmented MP4、最後一個盒子大小寫 0 的檔案不轉
+- 0.5.0 起所有 TrueHD 音軌都轉（旁邊有 AC3／AAC 也轉，才能切換）；轉換器一條音軌一個。fragmented MP4、最後一個盒子大小寫 0 的檔案不轉
 - MKV 裡的 TrueHD 要等第二階段
+
+## 0.5.0：載入畫面、音軌選單、首頁輪播
+
+- 載入畫面（`Player/PlayerLoadingView.swift`）：按播放先開播放畫面，中間是片名 logo（沒有 logo 用片名），暗的 logo 上疊亮的 logo、亮的那層只露出進度寬度。進度分段（`LoadingStage`：代理讀檔頭 → 播放器讀 → 可以播 → 開始播），每段之間慢慢往上限爬，開始播時填滿、淡出。載入時藏起系統控制列，載入畫面自己有關閉鍵
+- 音軌（`Core/AudioTracks.swift`）：`SpecProbe` 記下所有音軌（`MediaItem.audioTracks`，語言、格式、聲道、全景聲、能不能播）。詳細頁「音軌」選單：電影記在 `MediaItem.audioTrackChoice`；劇集記在 `Show.audioKey`（語言＋格式＋聲道），每一集找最像的。播放時 `AudioTrackSelection.resolve`（自己選的 → 劇集記住的 → 設定的語言 → 檔案預設 → 第一條能播的），再用同編碼的第幾個對到 `AVMediaSelectionOption`
+- 首頁輪播（`UI/Home/CategoryViews.swift`）：改成分頁的橫向 ScrollView。海報用 `visualEffect` 抵銷頁面位移留在原地（像擦掉一樣換頁），logo 和文字照常滑。`CarouselTint` 記滑到哪裡和每頁海報下半部的主色，首頁底色兩頁之間用 `Color.mix` 漸變；它是獨立的 @Observable，滑動時只有背景重畫
 
 ## 驗收步驟（實機）
 

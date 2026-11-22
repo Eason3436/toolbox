@@ -18,13 +18,16 @@ struct SpecInfo: Sendable {
     var unsupportedVideo: String?
     /// 所有音軌的編碼都解不了（例如 DTS）：播放時沒有聲音
     var unsupportedAudio: String?
+    /// 所有音軌（檔案裡的順序）
+    var audioTracks: [AudioTrackInfo] = []
 }
 
 enum SpecProbe {
-    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類；3：不支援的編碼；4：TrueHD 轉成 PCM）
-    static let version = 4
+    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類；3：不支援的編碼；4：TrueHD 轉成 PCM；5：音軌清單）
+    static let version = 5
 
-    static func probe(url: URL) async throws -> SpecInfo {
+    /// `truehd`：代理轉成 PCM 的 TrueHD 音軌（track ID → 原本的格式），標示照原本的格式
+    static func probe(url: URL, truehd: [Int: TrueHDFormat] = [:]) async throws -> SpecInfo {
         let asset = AVURLAsset(url: url)
         var info = SpecInfo()
         let duration = try await asset.load(.duration)
@@ -64,34 +67,73 @@ enum SpecProbe {
             break
         }
 
-        // 有好幾條音軌時用第一條能播的（播放器也會自動換過去）
-        var firstUnsupported: String?
+        info.audioTracks = try await audioTracks(asset, truehd: truehd)
+        // 規格標示用預設會播的那條
+        if let i = AudioTrackSelection.resolve(info.audioTracks, choice: nil, key: nil, language: nil) {
+            let track = info.audioTracks[i]
+            info.audioFormat = track.format
+            info.audioChannels = track.channels
+            info.isAtmos = track.isAtmos
+        } else {
+            info.unsupportedAudio = info.audioTracks.first?.format
+        }
+        return info
+    }
+
+    /// 播放時對音軌用（另外開一個 asset，資料代理已經快取了）
+    static func audioTracks(url: URL, truehd: [Int: TrueHDFormat]) async throws -> [AudioTrackInfo] {
+        try await audioTracks(AVURLAsset(url: url), truehd: truehd)
+    }
+
+    /// 所有音軌，檔案裡的順序（跟 `loadTracks(withMediaType: .audio)` 一樣）
+    static func audioTracks(_ asset: AVAsset, truehd: [Int: TrueHDFormat]) async throws -> [AudioTrackInfo] {
+        var out: [AudioTrackInfo] = []
         for track in try await asset.loadTracks(withMediaType: .audio) {
-            if let desc = try await track.load(.formatDescriptions).first {
-                guard try await track.load(.isPlayable) else {
-                    if firstUnsupported == nil { firstUnsupported = CodecNames.name(fourCC: fourCC(CMFormatDescriptionGetMediaSubType(desc))) }
-                    continue
-                }
-                let subtype = fourCC(CMFormatDescriptionGetMediaSubType(desc))
-                info.audioFormat = audioName(CMFormatDescriptionGetMediaSubType(desc))
+            let playable = try await track.load(.isPlayable)
+            let enabled = try await track.load(.isEnabled)
+            let descs = try await track.load(.formatDescriptions)
+            let extendedTag = try await track.load(.extendedLanguageTag)
+            let code = try await track.load(.languageCode)
+            let metadata = (try? await track.load(.commonMetadata)) ?? []
+            let desc = descs.first
+            let subtype = desc.map { fourCC(CMFormatDescriptionGetMediaSubType($0)) } ?? ""
+            var info = AudioTrackInfo(
+                languageTag: languageTag(extendedTag ?? code), title: nil,
+                format: desc.map { playable ? audioName(CMFormatDescriptionGetMediaSubType($0)) : CodecNames.name(fourCC: subtype) } ?? "?",
+                subtype: subtype, channels: nil, isAtmos: false, playable: playable, isDefault: enabled)
+            if let title = metadata.first(where: { $0.commonKey == .commonKeyTitle }),
+               let value = try? await title.load(.stringValue), !value.isEmpty {
+                info.title = value
+            }
+            if let desc {
                 if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee, asbd.mChannelsPerFrame > 0 {
-                    info.audioChannels = Int(asbd.mChannelsPerFrame)
+                    info.channels = Int(asbd.mChannelsPerFrame)
                 }
                 // 杜比的設定盒比 ASBD 準（E-AC3 7.1、全景聲 JOC）
                 if let atoms = CMFormatDescriptionGetExtension(desc, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any] {
                     if subtype == "ec-3", let data = atoms["dec3"] as? Data, let dolby = DolbyAudioConfig.parseDEC3([UInt8](data)) {
-                        info.audioChannels = dolby.channels
+                        info.channels = dolby.channels
                         info.isAtmos = dolby.isAtmos
                     } else if subtype == "ac-3", let data = atoms["dac3"] as? Data, let dolby = DolbyAudioConfig.parseDAC3([UInt8](data)) {
-                        info.audioChannels = dolby.channels
+                        info.channels = dolby.channels
                     }
                 }
             }
-            firstUnsupported = nil
-            break
+            if let original = truehd[Int(track.trackID)] {
+                info.format = "TrueHD"
+                info.channels = original.channels
+                info.isAtmos = original.isAtmos
+            }
+            out.append(info)
         }
-        info.unsupportedAudio = firstUnsupported
-        return info
+        return out
+    }
+
+    /// 「jpn」→「ja」；沒標（und）是 nil
+    static func languageTag(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty, raw.lowercased() != "und" else { return nil }
+        if raw.count == 3, let code = Locale.LanguageCode(raw).identifier(.alpha2) { return code }
+        return raw
     }
 
     /// dvh1／dvhe（Profile 5、8 的 sample entry），或 hvc1 加上 dvcC／dvvC 設定（Profile 8.1 常見）

@@ -9,36 +9,45 @@ import Foundation
 /// 影片 sample 的位置都沒動，所以影片照原檔讀；新的 moov 裡 TrueHD 那條軌改成 lpcm，
 /// sample 指到最後面的 PCM 區。播放器讀 PCM 區時，代理找出對應的 TrueHD sample、解碼、送出。
 public enum TrueHDRemux {
-    /// 系統播放器解不了的音訊編碼（其他的都當成可以播）
-    static let unplayableAudio: Set<String> = ["mlpa", "dtsc", "dtsh", "dtsl", "dtse", "dtsx", "dts+", "dts-"]
 
     /// TrueHD 音軌
     public struct Track: Sendable {
         /// moov 裡第幾個 trak
         public let index: Int
+        /// tkhd 的 track ID
+        public let trackID: Int
         public let table: MP4SampleTable
+    }
+
+    /// moov 裡所有的 TrueHD 音軌
+    public struct Tracks: Sendable {
+        public let tracks: [Track]
         /// 解析好的 moov（做計畫時用，不用再解析一次）
         let moov: MP4Box
     }
 
-    /// 需要轉換時回傳 TrueHD 音軌：沒有其他能播的音軌、不是 fragmented MP4
-    public static func findTrack(moov: [UInt8]) -> Track? {
+    /// 找出要轉換的 TrueHD 音軌（全部都轉，旁邊有能播的音軌也一樣，才能切換）。沒有或是 fragmented MP4 回傳 nil
+    public static func findTracks(moov: [UInt8]) -> Tracks? {
         guard let top = MP4Box.parse(moov[...]), let moovBox = top.first, moovBox.type == "moov",
               moovBox.child("mvex") == nil else { return nil }
-        var found: Track?
+        var found: [Track] = []
         for (index, trak) in moovBox.children.enumerated() where trak.type == "trak" {
             guard let hdlr = trak.find("mdia/hdlr")?.payload, hdlr.count >= 12,
                   String(decoding: hdlr[8..<12], as: UTF8.self) == "soun",
-                  let codec = sampleEntryType(trak) else { continue }
-            if !unplayableAudio.contains(codec) { return nil }
-            guard found == nil, codec == "mlpa",
+                  sampleEntryType(trak) == "mlpa",
+                  let trackID = trackID(trak),
                   let stbl = trak.find("mdia/minf/stbl"),
                   let timescale = mediaTimescale(trak),
                   let table = MP4SampleTable(stbl: stbl, timescale: timescale),
                   table.sampleCount > 0 else { continue }
-            found = Track(index: index, table: table, moov: moovBox)
+            found.append(Track(index: index, trackID: trackID, table: table))
         }
-        return found
+        return found.isEmpty ? nil : Tracks(tracks: found, moov: moovBox)
+    }
+
+    static func trackID(_ trak: MP4Box) -> Int? {
+        guard let tkhd = trak.child("tkhd")?.payload, tkhd.count >= 24 else { return nil }
+        return Int(BE.u32(tkhd, tkhd[0] == 1 ? 20 : 12))
     }
 
     static func sampleEntryType(_ trak: MP4Box) -> String? {
@@ -66,63 +75,81 @@ public enum TrueHDRemux {
     /// 一個 PCM chunk 幾個取樣格（0.5 秒左右）
     public static let framesPerChunk = 24000
 
-    /// 做好轉換計畫。檔案結構不支援（最後一個盒子大小寫 0、找不到 ftyp）就回傳 nil
-    public static func plan(track: Track, topLevel: [TopLevelBox], fileSize: Int64,
-                            format: TrueHDFormat) -> TrueHDRemuxPlan? {
-        let moovBox = track.moov
+    /// 做好轉換計畫。`formats` 是每條音軌解出來的格式（解不出來的放 nil，那條就不轉）。
+    /// 檔案結構不支援（最後一個盒子大小寫 0、找不到 ftyp）或一條都不能轉就回傳 nil
+    public static func plan(tracks: Tracks, formats: [TrueHDFormat?], topLevel: [TopLevelBox],
+                            fileSize: Int64) -> TrueHDRemuxPlan? {
         // 後面要接新的盒子：原檔的盒子要剛好排到檔尾（沒有「大小 0＝到檔尾」）
         guard let moovEntry = topLevel.first(where: { $0.type == "moov" }),
               let ftyp = topLevel.first(where: { $0.type == "ftyp" }), ftyp.size >= 12,
               topLevel.allSatisfy({ $0.size > 0 }),
               let last = topLevel.last, last.offset + last.size == fileSize,
-              format.sampleRate > 0, format.channels > 0 else { return nil }
+              formats.count == tracks.tracks.count else { return nil }
 
-        let table = track.table
-        let rate = Int64(format.sampleRate)
-        let totalFrames = table.duration * rate / Int64(table.timescale)
-        guard totalFrames > 0, totalFrames < Int64(UInt32.max) else { return nil }
-        let channels = format.channels
-        let bytesPerFrame = channels * 3
-        let pcmBytes = totalFrames * Int64(bytesPerFrame)
+        struct Pending {
+            let track: Track
+            let format: TrueHDFormat
+            let totalFrames: Int64
+            let bytesPerFrame: Int
+            /// 在 PCM 區裡的位置
+            let relativeStart: Int64
+        }
+        var pending: [Pending] = []
+        var pcmBytes: Int64 = 0
+        for (track, format) in zip(tracks.tracks, formats) {
+            guard let format, format.sampleRate > 0, format.channels > 0 else { continue }
+            let table = track.table
+            let totalFrames = table.duration * Int64(format.sampleRate) / Int64(table.timescale)
+            guard totalFrames > 0, totalFrames < Int64(UInt32.max) else { continue }
+            let bytesPerFrame = format.channels * 3
+            pending.append(Pending(track: track, format: format, totalFrames: totalFrames,
+                                   bytesPerFrame: bytesPerFrame, relativeStart: pcmBytes))
+            pcmBytes += totalFrames * Int64(bytesPerFrame)
+        }
+        guard !pending.isEmpty else { return nil }
 
-        let trak = moovBox.children[track.index]
         let fpc = Int64(framesPerChunk)
-        let chunkCount = Int((totalFrames + fpc - 1) / fpc)
-
         // 新的 moov 大小跟 co64 的位置有關、co64 又要知道 moov 多大：先用 0 算大小，再填
         func buildMoov(pcmStart: Int64) -> [UInt8] {
-            let stbl = MP4Box(type: "stbl", children: [
-                MP4Box(type: "stsd", payload: stsd(format: format)),
-                MP4Box(type: "stts", payload: fullBox { o in
-                    BE.put32(&o, 1); BE.put32(&o, UInt32(totalFrames)); BE.put32(&o, 1)
-                }),
-                MP4Box(type: "stsc", payload: fullBox { o in
-                    let rem = totalFrames % fpc
-                    let full = Int(totalFrames / fpc)
-                    if rem == 0 || full == 0 {
-                        BE.put32(&o, 1)
-                        BE.put32(&o, 1); BE.put32(&o, UInt32(full == 0 ? rem : fpc)); BE.put32(&o, 1)
-                    } else {
-                        BE.put32(&o, 2)
-                        BE.put32(&o, 1); BE.put32(&o, UInt32(fpc)); BE.put32(&o, 1)
-                        BE.put32(&o, UInt32(full + 1)); BE.put32(&o, UInt32(rem)); BE.put32(&o, 1)
-                    }
-                }),
-                MP4Box(type: "stsz", payload: fullBox { o in
-                    BE.put32(&o, UInt32(bytesPerFrame)); BE.put32(&o, UInt32(totalFrames))
-                }),
-                MP4Box(type: "co64", payload: fullBox { o in
-                    BE.put32(&o, UInt32(chunkCount))
-                    for c in 0..<chunkCount {
-                        BE.put64(&o, UInt64(pcmStart + Int64(c) * fpc * Int64(bytesPerFrame)))
-                    }
-                }),
-            ])
-            var copy = trak
-            replace(&copy, path: ["mdia", "minf", "stbl"], with: stbl)
-            if table.timescale != format.sampleRate { rescaleMedia(&copy, from: table.timescale, to: format.sampleRate) }
-            var movie = moovBox
-            movie.children[track.index] = copy
+            var movie = tracks.moov
+            for p in pending {
+                let totalFrames = p.totalFrames
+                let chunkCount = Int((totalFrames + fpc - 1) / fpc)
+                let start = pcmStart + p.relativeStart
+                let stbl = MP4Box(type: "stbl", children: [
+                    MP4Box(type: "stsd", payload: stsd(format: p.format)),
+                    MP4Box(type: "stts", payload: fullBox { o in
+                        BE.put32(&o, 1); BE.put32(&o, UInt32(totalFrames)); BE.put32(&o, 1)
+                    }),
+                    MP4Box(type: "stsc", payload: fullBox { o in
+                        let rem = totalFrames % fpc
+                        let full = Int(totalFrames / fpc)
+                        if rem == 0 || full == 0 {
+                            BE.put32(&o, 1)
+                            BE.put32(&o, 1); BE.put32(&o, UInt32(full == 0 ? rem : fpc)); BE.put32(&o, 1)
+                        } else {
+                            BE.put32(&o, 2)
+                            BE.put32(&o, 1); BE.put32(&o, UInt32(fpc)); BE.put32(&o, 1)
+                            BE.put32(&o, UInt32(full + 1)); BE.put32(&o, UInt32(rem)); BE.put32(&o, 1)
+                        }
+                    }),
+                    MP4Box(type: "stsz", payload: fullBox { o in
+                        BE.put32(&o, UInt32(p.bytesPerFrame)); BE.put32(&o, UInt32(totalFrames))
+                    }),
+                    MP4Box(type: "co64", payload: fullBox { o in
+                        BE.put32(&o, UInt32(chunkCount))
+                        for c in 0..<chunkCount {
+                            BE.put64(&o, UInt64(start + Int64(c) * fpc * Int64(p.bytesPerFrame)))
+                        }
+                    }),
+                ])
+                var copy = movie.children[p.track.index]
+                replace(&copy, path: ["mdia", "minf", "stbl"], with: stbl)
+                if p.track.table.timescale != p.format.sampleRate {
+                    rescaleMedia(&copy, from: p.track.table.timescale, to: p.format.sampleRate)
+                }
+                movie.children[p.track.index] = copy
+            }
             return movie.serialized()
         }
 
@@ -143,11 +170,13 @@ public enum TrueHDRemux {
         for (i, byte) in "free".utf8.enumerated() { patches[moovEntry.offset + 4 + Int64(i)] = byte }
         for (i, byte) in "qt  ".utf8.enumerated() { patches[ftyp.offset + 8 + Int64(i)] = byte }
 
-        return TrueHDRemuxPlan(
-            originalSize: fileSize, header: header, patches: patches, pcmStart: pcmStart,
-            totalSize: pcmStart + pcmBytes, bytesPerFrame: bytesPerFrame, totalFrames: totalFrames,
-            format: format, table: table
-        )
+        let planned = pending.map {
+            TrueHDTrackPlan(trackID: $0.track.trackID, pcmStart: pcmStart + $0.relativeStart,
+                            bytesPerFrame: $0.bytesPerFrame, totalFrames: $0.totalFrames,
+                            format: $0.format, table: $0.track.table)
+        }
+        return TrueHDRemuxPlan(originalSize: fileSize, header: header, patches: patches,
+                               tracks: planned, totalSize: pcmStart + pcmBytes)
     }
 
     private static func fullBox(_ body: (inout [UInt8]) -> Void) -> [UInt8] {
@@ -277,13 +306,30 @@ public struct TrueHDRemuxPlan: Sendable {
     public let header: [UInt8]
     /// 原檔要改的位元組
     public let patches: [Int64: UInt8]
-    /// PCM 從哪裡開始
-    public let pcmStart: Int64
+    /// 轉換的音軌，PCM 依序排在最後面的 mdat 裡
+    public let tracks: [TrueHDTrackPlan]
     public let totalSize: Int64
+
+    /// PCM 區從哪裡開始
+    public var pcmStart: Int64 { tracks[0].pcmStart }
+
+    /// 包含這個位置的音軌
+    public func track(containing offset: Int64) -> TrueHDTrackPlan? {
+        tracks.first { $0.pcmStart <= offset && offset < $0.pcmEnd }
+    }
+}
+
+/// 一條 TrueHD 音軌轉成的 PCM
+public struct TrueHDTrackPlan: Sendable {
+    public let trackID: Int
+    /// 這條音軌的 PCM 從哪裡開始（虛擬檔案裡的位置）
+    public let pcmStart: Int64
     public let bytesPerFrame: Int
     public let totalFrames: Int64
     public let format: TrueHDFormat
     public let table: MP4SampleTable
+
+    public var pcmEnd: Int64 { pcmStart + totalFrames * Int64(bytesPerFrame) }
 
     /// TrueHD sample 開始的取樣格
     public func frame(ofSample sample: Int) -> Int64 {
@@ -303,7 +349,7 @@ public struct TrueHDRemuxPlan: Sendable {
 /// 把 TrueHD sample 解成 PCM 位元組。記得上次解到哪裡：播放器照順序讀時接著解，跳位置時往前退一段再開始解
 /// （要從 major sync 開始才解得出來）。
 public final class TrueHDPCMRenderer {
-    public let plan: TrueHDRemuxPlan
+    public let plan: TrueHDTrackPlan
     private let decoder = TrueHDDecoder()
     /// 下一個要解的 sample（解碼器狀態接得上）
     private var cursor = -1
@@ -316,13 +362,13 @@ public final class TrueHDPCMRenderer {
     /// 跳位置時往前退幾個 sample
     private let preroll: Int
 
-    public init(plan: TrueHDRemuxPlan) {
+    public init(plan: TrueHDTrackPlan) {
         self.plan = plan
         let unitsPerSample = max(1, Int(plan.frame(ofSample: 1) - plan.frame(ofSample: 0)) / max(plan.format.accessUnitSize, 1))
         preroll = max(1, Self.prerollAccessUnits / unitsPerSample)
     }
 
-    /// 這段 PCM（相對 PCM 區開頭的位元組範圍）需要解哪些 TrueHD sample；空的表示都解過了
+    /// 這段 PCM（相對這條音軌 PCM 開頭的位元組範圍）需要解哪些 TrueHD sample；空的表示都解過了
     public func samplesNeeded(for range: Range<Int64>) -> Range<Int> {
         let (first, last) = sampleSpan(range)
         guard let missing = (first...last).first(where: { recent[$0] == nil }) else { return cursor..<cursor }

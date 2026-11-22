@@ -21,6 +21,7 @@ struct HomeView: View {
     @Query(sort: \Show.addedAt, order: .reverse) private var shows: [Show]
     @Query(sort: \PlaybackState.lastPlayed, order: .reverse) private var states: [PlaybackState]
     @State private var scroll = HeroScroll()
+    @State private var carouselTint = CarouselTint()
 
     private var unmatchedCount: Int {
         items.filter { $0.kind == .movie && $0.matchState == .unmatched }.count + shows.filter { $0.matchState == .unmatched }.count
@@ -52,7 +53,7 @@ struct HomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
                 if !featured.isEmpty {
-                    FeaturedCarousel(entries: featured)
+                    FeaturedCarousel(entries: featured, tint: carouselTint)
                 }
                 if services.matcher.isRunning {
                     matchingBanner
@@ -134,6 +135,19 @@ struct HomeView: View {
             .padding(.bottom)
         }
         .trackHeroScroll($scroll)
+        .background {
+            if !featured.isEmpty {
+                CarouselBackground(tint: carouselTint, ids: featured.map(\.id))
+            }
+        }
+        .task(id: featured.map(\.id)) {
+            // 每一頁海報的主色（下半部，跟首頁底色接起來）
+            for entry in featured where carouselTint.colors[entry.id] == nil {
+                if let color = await PosterTint.color(for: entry.hero.url) {
+                    carouselTint.colors[entry.id] = color
+                }
+            }
+        }
         .overlay {
             if items.isEmpty && services.library.isScanning {
                 HomeSkeleton()

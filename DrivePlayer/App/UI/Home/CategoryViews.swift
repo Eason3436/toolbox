@@ -183,24 +183,82 @@ struct PlainVideoCard: View {
 
 // MARK: - 首頁輪播
 
-/// 首頁最上面的推薦輪播：無字海報 + 片名 logo + 資訊 + 簡介，左右滑、會自己換頁
+/// 輪播滑到哪裡（頁數，滑動中是小數）和每一頁海報的主色：首頁的底色跟著換。
+/// 獨立一個物件，滑動時只有背景重畫，首頁其他東西不用重算
+@MainActor
+@Observable
+final class CarouselTint {
+    var position: Double = 0
+    var colors: [String: Color] = [:]
+
+    /// 目前位置的顏色：滑到一半時兩頁的顏色混在一起
+    func color(ids: [String]) -> Color? {
+        guard !ids.isEmpty else { return nil }
+        let clamped = min(max(position, 0), Double(ids.count - 1))
+        let i = Int(clamped.rounded(.down))
+        let fraction = clamped - Double(i)
+        let base = colors[ids[i]] ?? Self.fallback
+        guard fraction > 0.001, i + 1 < ids.count else { return base }
+        return base.mix(with: colors[ids[i + 1]] ?? Self.fallback, by: fraction)
+    }
+
+    static let fallback = Color(white: 0.12)
+}
+
+/// 首頁底色：跟著輪播那一頁的海報主色，往下漸暗
+struct CarouselBackground: View {
+    let tint: CarouselTint
+    let ids: [String]
+
+    var body: some View {
+        ZStack {
+            if let color = tint.color(ids: ids) {
+                color
+                LinearGradient(colors: [.clear, .black.opacity(0.4)], startPoint: .top, endPoint: .bottom)
+            } else {
+                Color.black
+            }
+        }
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.35), value: tint.colors)
+    }
+}
+
+/// 首頁最上面的推薦輪播：無字海報 + 片名 logo + 資訊 + 簡介，左右滑、會自己換頁。
+/// 海報不跟著滑（像擦掉一樣換成下一張），logo 和文字那層照常滑過去
 struct FeaturedCarousel: View {
     let entries: [LibraryEntry]
+    let tint: CarouselTint
     @State private var page: String?
+    @State private var dragging = false
 
     var body: some View {
         let current = page ?? entries.first?.id
         VStack(spacing: 10) {
-            TabView(selection: Binding(get: { current ?? "" }, set: { page = $0 })) {
-                ForEach(entries) { entry in
-                    NavigationLink(value: entry.route) {
-                        FeaturedPage(entry: entry)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(entries) { entry in
+                        NavigationLink(value: entry.route) {
+                            FeaturedPage(entry: entry)
+                        }
+                        .buttonStyle(.plain)
+                        .containerRelativeFrame(.horizontal)
+                        .id(entry.id)
                     }
-                    .buttonStyle(.plain)
-                    .tag(entry.id)
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $page)
+            .onScrollGeometryChange(for: Double.self) { geo in
+                geo.containerSize.width > 0 ? (geo.contentOffset.x + geo.contentInsets.leading) / geo.containerSize.width : 0
+            } action: { _, position in
+                tint.position = position
+            }
+            .onScrollPhaseChange { _, phase in
+                dragging = phase == .interacting || phase == .tracking
+            }
             .containerRelativeFrame(.vertical) { height, _ in height * 0.7 }
 
             if entries.count > 1 {
@@ -214,13 +272,18 @@ struct FeaturedCarousel: View {
                 .accessibilityHidden(true)
             }
         }
-        // 停在同一頁 7 秒就換下一頁；手動滑了就重新計時
-        .task(id: current) {
-            guard entries.count > 1 else { return }
+        // 停在同一頁 7 秒就換下一頁；手指放在上面時不換，手動滑了就重新計時
+        .task(id: AutoAdvance(page: current, paused: dragging)) {
+            guard entries.count > 1, !dragging else { return }
             try? await Task.sleep(for: .seconds(7))
             guard !Task.isCancelled, let current, let i = entries.firstIndex(where: { $0.id == current }) else { return }
-            withAnimation(.smooth) { page = entries[(i + 1) % entries.count].id }
+            withAnimation(.smooth(duration: 0.6)) { page = entries[(i + 1) % entries.count].id }
         }
+    }
+
+    private struct AutoAdvance: Equatable {
+        var page: String?
+        var paused: Bool
     }
 }
 
@@ -229,7 +292,12 @@ private struct FeaturedPage: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            // 海報抵銷頁面的位移，留在原地；頁面的邊界滑過去時就像擦掉換成下一張
             RemoteImage(url: entry.hero.url)
+                .visualEffect { content, proxy in
+                    content.offset(x: -proxy.frame(in: .scrollView(axis: .horizontal)).minX)
+                }
+                .clipped()
                 .mask {
                     LinearGradient(
                         stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55), .init(color: .clear, location: 1)],

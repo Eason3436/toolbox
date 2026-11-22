@@ -3,30 +3,33 @@ import XCTest
 @testable import Core
 
 /// truehd-av.mp4：ffmpeg 做的 0.5 秒 H.264＋TrueHD 5.1（faststart）。
-/// PCM 預期值是 `ffmpeg -i truehd-av.mp4 -map 0:a -f s24le` 的 FNV-1a 64
+/// truehd-multi.mp4：同一段影片＋AAC＋上面那條 TrueHD 5.1＋ffmpeg 編的 TrueHD 立體聲。
+/// PCM 預期值是 `ffmpeg -i X.mp4 -map 0:N -f s24le` 的 FNV-1a 64
 final class TrueHDRemuxTests: XCTestCase {
     private struct Setup {
         let file: [UInt8]
         let plan: TrueHDRemuxPlan
+        var track: TrueHDTrackPlan { plan.tracks[0] }
     }
 
-    private func setup() throws -> Setup {
-        let url = try XCTUnwrap(Bundle.module.url(forResource: "truehd-av", withExtension: "mp4", subdirectory: "Fixtures"))
+    private func setup(_ name: String = "truehd-av") throws -> Setup {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "mp4", subdirectory: "Fixtures"))
         let file = [UInt8](try Data(contentsOf: url))
         let top = Self.topLevel(file)
         let moovBox = try XCTUnwrap(top.first { $0.type == "moov" })
         let moov = Array(file[Int(moovBox.offset)..<Int(moovBox.offset + moovBox.size)])
-        let track = try XCTUnwrap(TrueHDRemux.findTrack(moov: moov))
-        XCTAssertEqual(track.table.sampleCount, 600)
+        let tracks = try XCTUnwrap(TrueHDRemux.findTracks(moov: moov))
 
         // 解第一個 sample 拿格式
-        let decoder = TrueHDDecoder()
-        let first = try XCTUnwrap(track.table.locations(0..<1).first)
-        let bytes = Array(file[Int(first.offset)..<(Int(first.offset) + first.size)])
-        for range in TrueHDDecoder.accessUnits(in: bytes) { _ = decoder.decode(bytes[range]) }
-        let format = try XCTUnwrap(decoder.format)
+        let formats = tracks.tracks.map { track -> TrueHDFormat? in
+            let decoder = TrueHDDecoder()
+            guard let first = track.table.locations(0..<1).first else { return nil }
+            let bytes = Array(file[Int(first.offset)..<(Int(first.offset) + first.size)])
+            for range in TrueHDDecoder.accessUnits(in: bytes) { _ = decoder.decode(bytes[range]) }
+            return decoder.format
+        }
 
-        let plan = try XCTUnwrap(TrueHDRemux.plan(track: track, topLevel: top, fileSize: Int64(file.count), format: format))
+        let plan = try XCTUnwrap(TrueHDRemux.plan(tracks: tracks, formats: formats, topLevel: top, fileSize: Int64(file.count)))
         return Setup(file: file, plan: plan)
     }
 
@@ -41,13 +44,13 @@ final class TrueHDRemuxTests: XCTestCase {
         return out
     }
 
-    private func samples(_ setup: Setup, _ range: Range<Int>) -> [[UInt8]] {
-        setup.plan.table.locations(range).map { Array(setup.file[Int($0.offset)..<(Int($0.offset) + $0.size)]) }
+    private func samples(_ setup: Setup, _ track: TrueHDTrackPlan, _ range: Range<Int>) -> [[UInt8]] {
+        track.table.locations(range).map { Array(setup.file[Int($0.offset)..<(Int($0.offset) + $0.size)]) }
     }
 
     private func render(_ renderer: TrueHDPCMRenderer, _ setup: Setup, _ range: Range<Int64>) -> [UInt8] {
         let needed = renderer.samplesNeeded(for: range)
-        return renderer.render(range, samples: samples(setup, needed), startingAt: needed.lowerBound)
+        return renderer.render(range, samples: samples(setup, renderer.plan, needed), startingAt: needed.lowerBound)
     }
 
     private func fnv(_ bytes: [UInt8]) -> UInt64 {
@@ -59,9 +62,11 @@ final class TrueHDRemuxTests: XCTestCase {
     func testPlanLayout() throws {
         let s = try setup()
         let plan = s.plan
-        XCTAssertEqual(plan.format.channels, 6)
-        XCTAssertEqual(plan.totalFrames, 24000)
-        XCTAssertEqual(plan.bytesPerFrame, 18)
+        XCTAssertEqual(plan.tracks.count, 1)
+        XCTAssertEqual(s.track.table.sampleCount, 600)
+        XCTAssertEqual(s.track.format.channels, 6)
+        XCTAssertEqual(s.track.totalFrames, 24000)
+        XCTAssertEqual(s.track.bytesPerFrame, 18)
         XCTAssertEqual(plan.totalSize, plan.pcmStart + 24000 * 18)
         XCTAssertEqual(plan.originalSize + Int64(plan.header.count), plan.pcmStart)
 
@@ -89,7 +94,7 @@ final class TrueHDRemuxTests: XCTestCase {
 
     func testFullRenderMatchesFFmpeg() throws {
         let s = try setup()
-        let renderer = TrueHDPCMRenderer(plan: s.plan)
+        let renderer = TrueHDPCMRenderer(plan: s.track)
         let total = s.plan.totalSize - s.plan.pcmStart
         var pcm: [UInt8] = []
         // 照播放器那樣一段一段讀，邊界故意不對齊 sample
@@ -106,9 +111,9 @@ final class TrueHDRemuxTests: XCTestCase {
     func testRandomAccessMatchesSequential() throws {
         let s = try setup()
         let total = s.plan.totalSize - s.plan.pcmStart
-        let full = render(TrueHDPCMRenderer(plan: s.plan), s, 0..<total)
+        let full = render(TrueHDPCMRenderer(plan: s.track), s, 0..<total)
 
-        let renderer = TrueHDPCMRenderer(plan: s.plan)
+        let renderer = TrueHDPCMRenderer(plan: s.track)
         var generator = SystemRandomNumberGenerator()
         for _ in 0..<40 {
             let start = Int64.random(in: 0..<(total - 1), using: &generator)
@@ -120,12 +125,10 @@ final class TrueHDRemuxTests: XCTestCase {
     /// 設了 TRUEHD_DUMP 就把整個虛擬檔案寫出來（給 ffprobe／QuickTime 檢查）
     func testDumpVirtualFile() throws {
         guard let path = ProcessInfo.processInfo.environment["TRUEHD_DUMP"] else { return }
-        let s = try setup()
-        var virtual = s.file
-        for (offset, byte) in s.plan.patches { virtual[Int(offset)] = byte }
-        virtual.append(contentsOf: s.plan.header)
-        virtual.append(contentsOf: render(TrueHDPCMRenderer(plan: s.plan), s, 0..<(s.plan.totalSize - s.plan.pcmStart)))
-        try Data(virtual).write(to: URL(fileURLWithPath: path))
+        for name in ["truehd-av", "truehd-multi"] {
+            let s = try setup(name)
+            try Data(virtualFile(s)).write(to: URL(fileURLWithPath: path).appendingPathComponent(name + ".mov"))
+        }
     }
 
     func testChannelLabels() {
@@ -136,15 +139,49 @@ final class TrueHDRemuxTests: XCTestCase {
         XCTAssertEqual(TrueHDRemux.channelLabels(mask: side51 | AVCh.bl | AVCh.br), [1, 2, 3, 4, 33, 34, 5, 6])
     }
 
-    func testPlayableAudioTrackSkipsRemux() throws {
+    private func virtualFile(_ s: Setup) -> [UInt8] {
+        var virtual = s.file
+        for (offset, byte) in s.plan.patches { virtual[Int(offset)] = byte }
+        virtual.append(contentsOf: s.plan.header)
+        for track in s.plan.tracks {
+            virtual.append(contentsOf: render(TrueHDPCMRenderer(plan: track), s, 0..<(track.pcmEnd - track.pcmStart)))
+        }
+        return virtual
+    }
+
+    /// 好幾條 TrueHD 都轉，旁邊能播的 AAC 照舊
+    func testMultipleTracks() throws {
+        let s = try setup("truehd-multi")
+        XCTAssertEqual(s.plan.tracks.map(\.format.channels), [6, 2])
+        XCTAssertEqual(s.plan.tracks.map(\.trackID), [3, 4])
+        XCTAssertEqual(s.plan.tracks[0].pcmEnd, s.plan.tracks[1].pcmStart)
+        XCTAssertEqual(s.plan.tracks[1].pcmEnd, s.plan.totalSize)
+        XCTAssertEqual(s.plan.track(containing: s.plan.tracks[1].pcmStart)?.trackID, 4)
+
+        let virtual = virtualFile(s)
+        XCTAssertEqual(Int64(virtual.count), s.plan.totalSize)
+        let top = Self.topLevel(virtual)
+        let moov = try XCTUnwrap(top.first { $0.type == "moov" })
+        let tree = try XCTUnwrap(MP4Box.parse(virtual[Int(moov.offset)..<Int(moov.offset + moov.size)])?.first)
+        XCTAssertEqual(tree.children.filter { $0.type == "trak" }.compactMap(TrueHDRemux.sampleEntryType),
+                       ["avc1", "mp4a", "lpcm", "lpcm"])
+
+        let expected: [(Int, UInt64)] = [(432_000, 0xa94c_2f65_7de9_4ccb), (144_000, 0x7167_c3fd_419c_2d7b)]
+        for (track, (count, hash)) in zip(s.plan.tracks, expected) {
+            let pcm = Array(virtual[Int(track.pcmStart)..<Int(track.pcmEnd)])
+            XCTAssertEqual(pcm.count, count)
+            XCTAssertEqual(fnv(pcm), hash)
+        }
+    }
+
+    func testNoTrueHDTrack() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "truehd-av", withExtension: "mp4", subdirectory: "Fixtures"))
         let file = [UInt8](try Data(contentsOf: url))
         let moovBox = try XCTUnwrap(Self.topLevel(file).first { $0.type == "moov" })
         var moov = Array(file[Int(moovBox.offset)..<Int(moovBox.offset + moovBox.size)])
-        // 把 mlpa 改成 ac-3：有能播的音軌就不轉
         let needle = Array("mlpa".utf8)
         let index = try XCTUnwrap((0...(moov.count - 4)).first { Array(moov[$0..<($0 + 4)]) == needle })
         moov.replaceSubrange(index..<(index + 4), with: Array("ac-3".utf8))
-        XCTAssertNil(TrueHDRemux.findTrack(moov: moov))
+        XCTAssertNil(TrueHDRemux.findTracks(moov: moov))
     }
 }

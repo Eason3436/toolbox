@@ -24,6 +24,10 @@ protocol PlaybackEngine: AnyObject {
     var onFailed: ((String) -> Void)? { get set }
     /// 播放速度改變（使用者在播放器選單換速度）
     var onRateChanged: ((Float) -> Void)? { get set }
+    /// 載入好、可以播了
+    var onReady: (() -> Void)? { get set }
+    /// 真的開始播（畫面在動）
+    var onStartedPlaying: (() -> Void)? { get set }
 
     func load(url: URL, title: String, subtitle: String?, startAt: Double?, options: PlaybackOptions)
     func play()
@@ -48,6 +52,12 @@ struct PlaybackOptions: Sendable {
     var audioLanguage: MediaLanguage?
     var subtitleStyle: SubtitleStyle
     var autoPiP: Bool
+    /// 電影：使用者選的音軌（第幾條）
+    var audioChoice: Int?
+    /// 劇集：記住的音軌
+    var audioKey: AudioTrackKey?
+    /// 代理轉成 PCM 的 TrueHD 音軌（track ID → 原本的格式）：對音軌清單用
+    var truehd: [Int: TrueHDFormat] = [:]
 
     static func current() -> PlaybackOptions {
         PlaybackOptions(
@@ -108,6 +118,8 @@ final class AVPlayerEngine: PlaybackEngine {
     var onFinished: (() -> Void)?
     var onFailed: ((String) -> Void)?
     var onRateChanged: ((Float) -> Void)?
+    var onReady: (() -> Void)?
+    var onStartedPlaying: (() -> Void)?
 
     private var timeObserver: Any?
     private var statusObservation: NSKeyValueObservation?
@@ -117,6 +129,7 @@ final class AVPlayerEngine: PlaybackEngine {
     private var lastPlaying = false
     private var options: PlaybackOptions?
     private var selectionApplied = false
+    private var url: URL?
 
     init() {
         player.allowsExternalPlayback = true
@@ -152,6 +165,7 @@ final class AVPlayerEngine: PlaybackEngine {
 
     func load(url: URL, title: String, subtitle: String?, startAt: Double?, options: PlaybackOptions) {
         self.options = options
+        self.url = url
         selectionApplied = false
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
@@ -222,6 +236,7 @@ final class AVPlayerEngine: PlaybackEngine {
     }
 
     private func timeControlChanged() {
+        if player.timeControlStatus == .playing { onStartedPlaying?() }
         let playing = isPlaying
         guard playing != lastPlaying else { return }
         lastPlaying = playing
@@ -234,6 +249,7 @@ final class AVPlayerEngine: PlaybackEngine {
         case .failed:
             onFailed?(Self.describe(item.error))
         case .readyToPlay:
+            onReady?()
             if !selectionApplied {
                 selectionApplied = true
                 applyMediaSelection(item)
@@ -257,7 +273,7 @@ final class AVPlayerEngine: PlaybackEngine {
             }
         }
         if let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
-            // 只挑能播的音軌（DTS、TrueHD 系統解不了，選到就沒有聲音）
+            // 先照語言挑能播的（DTS 系統解不了，選到就沒有聲音）
             let choices = group.options.filter(\.isPlayable)
             let current = item.currentMediaSelection.selectedMediaOption(in: group)
             if let language = options.audioLanguage,
@@ -265,6 +281,21 @@ final class AVPlayerEngine: PlaybackEngine {
                 item.select(choices[index], in: group)
             } else if let current, !current.isPlayable, let first = choices.first {
                 item.select(first, in: group)
+            }
+            // 再照詳細頁選的音軌（要讀音軌清單：轉過的 TrueHD、語言、聲道）
+            guard let url = self.url, options.audioChoice != nil || options.audioKey != nil else { return }
+            let optionSubtypes = group.options.map { $0.mediaSubTypes.map { SpecProbe.fourCC($0.uint32Value) } }
+            Task { [weak self] in
+                guard let tracks = try? await SpecProbe.audioTracks(url: url, truehd: options.truehd),
+                      let index = AudioTrackSelection.resolve(tracks, choice: options.audioChoice, key: options.audioKey,
+                                                              language: options.audioLanguage),
+                      let optionIndex = AudioTrackSelection.optionIndex(track: index, trackSubtypes: tracks.map(\.subtype),
+                                                                        optionSubtypes: optionSubtypes),
+                      let self, self.player.currentItem === item else { return }
+                let option = group.options[optionIndex]
+                if item.currentMediaSelection.selectedMediaOption(in: group) != option {
+                    item.select(option, in: group)
+                }
             }
         }
     }

@@ -3,7 +3,7 @@ import Foundation
 
 /// 播放器讀 PCM 區時，找出對應的 TrueHD sample、從 `ChunkCache` 拿資料、解成 PCM。
 ///
-/// 一個檔案一個。解碼器有狀態（接著上次解或往前退一段重新開始），所以同一時間只處理一個請求：
+/// 一條音軌一個。解碼器有狀態（接著上次解或往前退一段重新開始），所以同一時間只處理一個請求：
 /// actor 在等下載時會讓別的請求進來，這裡另外排隊。
 actor TrueHDTranscoder {
     private let fileId: String
@@ -12,13 +12,13 @@ actor TrueHDTranscoder {
     private var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    init(fileId: String, plan: TrueHDRemuxPlan, cache: ChunkCache) {
+    init(fileId: String, plan: TrueHDTrackPlan, cache: ChunkCache) {
         self.fileId = fileId
         self.cache = cache
         renderer = TrueHDPCMRenderer(plan: plan)
     }
 
-    /// PCM 區裡的一段（相對 PCM 區開頭）
+    /// 這條音軌 PCM 裡的一段（相對它的開頭）
     func pcm(_ range: Range<Int64>) async throws -> Data {
         await lock()
         defer { unlock() }
@@ -70,21 +70,22 @@ actor TrueHDTranscoder {
     }
 }
 
-/// 每個檔案一個轉換器；只留最近用的幾個（每個記著最近解好的幾秒 PCM）
+/// 每條音軌一個轉換器；只留最近用的幾個（每個記著最近解好的幾秒 PCM）
 actor TranscoderRegistry {
     private var transcoders: [String: TrueHDTranscoder] = [:]
     private var order: [String] = []
 
-    func transcoder(fileId: String, plan: TrueHDRemuxPlan, cache: ChunkCache) -> TrueHDTranscoder {
-        if let existing = transcoders[fileId] {
-            order.removeAll { $0 == fileId }
-            order.append(fileId)
+    func transcoder(fileId: String, track: TrueHDTrackPlan, cache: ChunkCache) -> TrueHDTranscoder {
+        let key = "\(fileId)#\(track.trackID)"
+        if let existing = transcoders[key] {
+            order.removeAll { $0 == key }
+            order.append(key)
             return existing
         }
-        let made = TrueHDTranscoder(fileId: fileId, plan: plan, cache: cache)
-        transcoders[fileId] = made
-        order.append(fileId)
-        while order.count > 2 {
+        let made = TrueHDTranscoder(fileId: fileId, plan: track, cache: cache)
+        transcoders[key] = made
+        order.append(key)
+        while order.count > 3 {
             transcoders[order.removeFirst()] = nil
         }
         return made

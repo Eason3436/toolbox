@@ -302,10 +302,85 @@ struct MediaSpec: Equatable {
         isAtmos = item.isAtmos || tags.contains(QualityTag.atmos.rawValue)
         audioCodec = item.audioFormat
         channels = item.audioChannels
+        // 好幾條音軌：標示跟著會播的那條
+        let tracks = item.audioTracks
+        if tracks.count > 1, let i = item.resolvedAudioTrack {
+            audioCodec = tracks[i].format
+            channels = tracks[i].channels
+            isAtmos = tracks[i].isAtmos
+        }
     }
 
     var isEmpty: Bool {
         resolution == nil && dynamicRange == nil && !isDolbyVision && !isAtmos && audioCodec == nil && channels == nil
+    }
+}
+
+/// 好幾條音軌時，選要播哪一條（「自動」照設定的語言、檔案的預設）
+struct AudioTrackMenu: View {
+    let tracks: [AudioTrackInfo]
+    /// 會播的那條
+    let selected: Int?
+    let isAutomatic: Bool
+    let onSelect: (Int?) -> Void
+
+    var body: some View {
+        if tracks.count > 1 {
+            Menu {
+                Picker("音軌", selection: Binding(
+                    get: { isAutomatic ? -1 : (selected ?? -1) },
+                    set: { onSelect($0 < 0 ? nil : $0) }
+                )) {
+                    Text("自動").tag(-1)
+                    ForEach(tracks.indices, id: \.self) { i in
+                        Text(AudioTrackLabel.full(tracks[i])).tag(i)
+                            .selectionDisabled(!tracks[i].playable)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "speaker.wave.2.fill")
+                    Text(selected.map { AudioTrackLabel.full(tracks[$0]) } ?? "選擇音軌")
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.bold))
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(.white.opacity(0.14), in: Capsule())
+                .contentShape(Capsule())
+            }
+            .accessibilityLabel("音軌")
+            .appFeedback(.selection, trigger: selected)
+        }
+    }
+}
+
+/// 「日文 · TrueHD 5.1」「英文（導演講評）· AAC 立體聲」
+enum AudioTrackLabel {
+    static func full(_ track: AudioTrackInfo) -> String {
+        var language = track.languageTag.flatMap { Locale.current.localizedString(forIdentifier: $0) } ?? "未標語言"
+        if let title = track.title, !title.isEmpty, title.lowercased() != language.lowercased() {
+            language += "（\(title)）"
+        }
+        var format = track.format
+        if let channels = track.channels { format += " " + channelText(channels) }
+        if track.isAtmos { format += " 全景聲" }
+        if !track.playable { format += "（不支援）" }
+        return language + " · " + format
+    }
+
+    static func channelText(_ channels: Int) -> String {
+        switch channels {
+        case 1: "單聲道"
+        case 2: "立體聲"
+        case 6: "5.1"
+        case 8: "7.1"
+        default: "\(channels) 聲道"
+        }
     }
 }
 

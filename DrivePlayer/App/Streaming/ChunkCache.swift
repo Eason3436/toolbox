@@ -14,7 +14,7 @@ enum ProxyError: Error {
 ///
 /// 另外會在讀到 moov 時記下要改名的 sample entry（hev1 → hvc1），送出資料時改掉，
 /// iPhone 才會解 ffmpeg 預設標成 hev1 的 HEVC（不然只有聲音、畫面一個 Q）。
-/// 只有 TrueHD 音軌時做好轉換計畫（`TrueHDRemuxPlan`），代理把音軌換成邊播邊解的 PCM。
+/// 有 TrueHD 音軌時做好轉換計畫（`TrueHDRemuxPlan`），代理把音軌換成邊播邊解的 PCM。
 actor ChunkCache {
     static let chunkSize: Int64 = 4 * 1024 * 1024
     /// 記憶體裡最多放多少
@@ -34,7 +34,7 @@ actor ChunkCache {
         var contentType: String?
         /// 絕對位置 → 要換成的位元組（hev1 → hvc1；TrueHD 轉換時的 ftyp／moov）
         var patches: [Int64: UInt8] = [:]
-        /// 只有 TrueHD 音軌：播放器看到的是轉換後的虛擬檔案
+        /// 有 TrueHD 音軌：播放器看到的是轉換後的虛擬檔案
         var remux: TrueHDRemuxPlan?
 
         /// 播放器看到的檔案大小
@@ -247,28 +247,31 @@ actor ChunkCache {
                 }
                 offset += size
             }
-            if let moov, let track = TrueHDRemux.findTrack(moov: moov) {
-                await planTrueHD(fileId, track: track, top: top, total: total)
+            if let moov, let tracks = TrueHDRemux.findTracks(moov: moov) {
+                await planTrueHD(fileId, tracks: tracks, top: top, total: total)
             }
         } catch {
             // 讀不到就不改，照原樣播
         }
     }
 
-    /// 解開頭幾個 TrueHD sample 拿到格式，做轉換計畫
-    private func planTrueHD(_ fileId: String, track: TrueHDRemux.Track, top: [TrueHDRemux.TopLevelBox], total: Int64) async {
-        let decoder = TrueHDDecoder()
-        var format: TrueHDFormat?
-        let count = min(track.table.sampleCount, 400)
-        for location in track.table.locations(0..<count) where format == nil {
-            guard let bytes = try? await read(fileId, offset: location.offset, length: Int64(location.size)) else { return }
-            for range in TrueHDDecoder.accessUnits(in: bytes) where decoder.decode(bytes[range]) != nil {
-                format = decoder.format
-                break
+    /// 每條 TrueHD 音軌解開頭幾個 sample 拿到格式，做轉換計畫
+    private func planTrueHD(_ fileId: String, tracks: TrueHDRemux.Tracks, top: [TrueHDRemux.TopLevelBox], total: Int64) async {
+        var formats: [TrueHDFormat?] = []
+        for track in tracks.tracks {
+            let decoder = TrueHDDecoder()
+            var format: TrueHDFormat?
+            let count = min(track.table.sampleCount, 400)
+            for location in track.table.locations(0..<count) where format == nil {
+                guard let bytes = try? await read(fileId, offset: location.offset, length: Int64(location.size)) else { break }
+                for range in TrueHDDecoder.accessUnits(in: bytes) where decoder.decode(bytes[range]) != nil {
+                    format = decoder.format
+                    break
+                }
             }
+            formats.append(format)
         }
-        guard let format,
-              let plan = TrueHDRemux.plan(track: track, topLevel: top, fileSize: total, format: format) else { return }
+        guard let plan = TrueHDRemux.plan(tracks: tracks, formats: formats, topLevel: top, fileSize: total) else { return }
         var info = files[fileId] ?? FileInfo()
         info.patches.merge(plan.patches) { _, new in new }
         info.remux = plan

@@ -1,5 +1,6 @@
 import AVKit
 import Core
+import SwiftUI
 import UIKit
 
 /// 播放畫面要提供的功能（AVPlayer 與之後的 mpv 各自實作）
@@ -19,6 +20,10 @@ protocol PlayerScreen: UIViewController {
     /// 長按加速的提示（nil 是收起來）
     func showSpeedIndicator(_ rate: Float?)
     func showSkipIndicator(forward: Bool, seconds: Int)
+    /// 載入畫面（nil 是馬上收起來）
+    func showLoading(_ loading: PlayerLoading?)
+    /// 載入進度；`.playing` 會填滿後淡出
+    func setLoadingStage(_ stage: LoadingStage)
 }
 
 /// 全螢幕呈現的 AVPlayerViewController：原生關閉鍵、子母畫面、AirPlay、字幕與音軌選單、HDR／杜比視界輸出。
@@ -32,6 +37,8 @@ final class DrivePlayerViewController: AVPlayerViewController, PlayerScreen, UIG
     private let skipPill = PillLabel()
     private var subtitleObserver: Any?
     private var hidePillTask: Task<Void, Never>?
+    private let loadingModel = PlayerLoadingModel()
+    private var loadingHost: UIHostingController<PlayerLoadingView>?
     private lazy var doubleTap: UITapGestureRecognizer = {
         let g = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         g.numberOfTapsRequired = 2
@@ -175,6 +182,68 @@ final class DrivePlayerViewController: AVPlayerViewController, PlayerScreen, UIG
             self?.dismiss(animated: true)
         })
         present(alert, animated: true)
+    }
+
+    // MARK: - 載入畫面
+
+    func showLoading(_ loading: PlayerLoading?) {
+        guard let loading else {
+            hideLoading(animated: false)
+            return
+        }
+        installLoadingIfNeeded()
+        loadingModel.info = loading
+        loadingModel.reset()
+        loadingModel.visible = true
+        loadingHost?.view.isHidden = false
+        // 載入時藏起系統的控制列（它的轉圈會疊在 logo 上），載入畫面自己有關閉鍵
+        showsPlaybackControls = false
+    }
+
+    func setLoadingStage(_ stage: LoadingStage) {
+        guard loadingModel.visible else { return }
+        loadingModel.set(stage)
+        if stage == .playing { hideLoading(animated: true) }
+    }
+
+    private func hideLoading(animated: Bool) {
+        guard loadingModel.visible else { return }
+        let finish = { [weak self] in
+            guard let self, !self.loadingModel.visible else { return }
+            self.loadingHost?.view.isHidden = true
+            self.showsPlaybackControls = true
+        }
+        if animated {
+            // logo 先填滿，接著淡出
+            withAnimation(.easeOut(duration: 0.35).delay(0.25)) {
+                loadingModel.visible = false
+            } completion: {
+                finish()
+            }
+        } else {
+            loadingModel.visible = false
+            finish()
+        }
+    }
+
+    private func installLoadingIfNeeded() {
+        guard loadingHost == nil else { return }
+        loadViewIfNeeded()
+        let host = UIHostingController(rootView: PlayerLoadingView(model: loadingModel) { [weak self] in
+            self?.dismiss(animated: true)
+        })
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
+        loadingHost = host
     }
 
     func showNextUp(title: String, seconds: Int, completion: @escaping (Bool) -> Void) {

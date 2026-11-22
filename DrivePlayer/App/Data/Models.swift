@@ -109,6 +109,10 @@ final class MediaItem {
     var unsupportedVideo: String?
     /// iPhone 內建播放器解不了的音訊編碼（播放時沒有聲音）
     var unsupportedAudio: String?
+    /// 所有音軌（JSON 編碼的 [AudioTrackInfo]）
+    var audioTracksData: Data?
+    /// 電影：使用者選的音軌（audioTracks 的位置）；nil 是自動
+    var audioTrackChoice: Int?
 
     // 使用者
     var isFavorite: Bool
@@ -162,6 +166,17 @@ final class MediaItem {
         set { castData = try? JSONEncoder().encode(newValue) }
     }
 
+    var audioTracks: [AudioTrackInfo] {
+        get { audioTracksData.flatMap { try? JSONDecoder().decode([AudioTrackInfo].self, from: $0) } ?? [] }
+        set { audioTracksData = try? JSONEncoder().encode(newValue) }
+    }
+
+    /// 播放時會用的音軌（自己選的、劇集記住的、設定的語言…）
+    var resolvedAudioTrack: Int? {
+        AudioTrackSelection.resolve(audioTracks, choice: audioTrackChoice, key: show?.audioKey,
+                                    language: Prefs.audioLanguagePreference)
+    }
+
     /// 「S1E05」「S1E01–E02」
     var episodeLabel: String? {
         guard kind == .episode, let episode else { return nil }
@@ -200,6 +215,8 @@ final class Show {
     var introSeconds: Double = 0
     /// 片尾長度（秒）：剩下這麼多時就當成播完
     var outroSeconds: Double = 0
+    /// 使用者選的音軌（JSON 編碼的 AudioTrackKey）：每一集找語言、格式最像的
+    var audioKeyData: Data?
     var addedAt: Date
     var isFavorite: Bool
     var isWatchlisted: Bool
@@ -228,6 +245,11 @@ final class Show {
     var cast: [TMDBCastMember] {
         get { castData.flatMap { try? JSONDecoder().decode([TMDBCastMember].self, from: $0) } ?? [] }
         set { castData = try? JSONEncoder().encode(newValue) }
+    }
+
+    var audioKey: AudioTrackKey? {
+        get { audioKeyData.flatMap { try? JSONDecoder().decode(AudioTrackKey.self, from: $0) } }
+        set { audioKeyData = newValue.flatMap { try? JSONEncoder().encode($0) } }
     }
 
     /// 有哪些季（特別篇第 0 季排最後）

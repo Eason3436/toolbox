@@ -17,6 +17,13 @@ struct PlaybackRequest: Sendable {
     var introEnd: Double = 0
     /// 片尾長度（秒），0 是不跳
     var outroLength: Double = 0
+    /// 載入畫面：片名 logo、背景
+    var logoURL: URL?
+    var backdropURL: URL?
+    /// 電影：選的音軌（第幾條）
+    var audioChoice: Int?
+    /// 劇集：記住的音軌
+    var audioKey: AudioTrackKey?
 }
 
 /// 播放器：用 UIKit 全螢幕呈現 AVPlayerViewController（原生的關閉鍵、子母畫面、AirPlay、字幕與音軌選單）。
@@ -37,6 +44,8 @@ final class PlayerController: NSObject {
     /// 長按加速前的速度
     @ObservationIgnored private var rateBeforeLongPress: Float?
     @ObservationIgnored private var subtitleTask: Task<Void, Never>?
+    /// 這次載入已經開始播（載入畫面收起來了）
+    @ObservationIgnored private var loadingStarted = false
 
     /// 播放中、暫停、離開時呼叫（M5 的進度記錄掛在這裡）
     @ObservationIgnored var onProgress: ((PlaybackRequest, _ position: Double, _ duration: Double, _ reason: ProgressReason) -> Void)?
@@ -58,21 +67,37 @@ final class PlayerController: NSObject {
 
     func play(_ request: PlaybackRequest) async {
         errorMessage = nil
+        if let current, current.fileId != request.fileId { report(.closed) }
+        // 先開播放畫面顯示載入中（片名 logo 裡跑進度），代理讀檔頭、TrueHD 準備好再載入
+        let wasPresented = viewController?.presentingViewController != nil
+        if wasPresented { engine.stop() }
+        current = request
+        outroHandled = false
+        loadingStarted = false
+        presentIfNeeded()
+        viewController?.showSubtitles(nil, style: .current())
+        viewController?.showLoading(PlayerLoading(title: request.title, subtitle: request.subtitle,
+                                                  logoURL: request.logoURL, backdropURL: request.backdropURL))
+        viewController?.setLoadingStage(.connecting)
         do {
             let url = try await proxy.streamURL(fileId: request.fileId, filename: request.fileName)
-            if let current, current.fileId != request.fileId { report(.closed) }
-            current = request
-            outroHandled = false
+            guard current?.fileId == request.fileId, viewController != nil else { return }
+            viewController?.setLoadingStage(.buffering)
             var start = request.startAt
             // 自動跳過片頭：從頭播（或續播點還在片頭裡）就從片頭結束的地方開始
             if request.introEnd > 0, (start ?? 0) < request.introEnd { start = request.introEnd }
-            engine.load(url: url, title: request.title, subtitle: request.subtitle, startAt: start, options: .current())
-            presentIfNeeded()
-            viewController?.showSubtitles(nil, style: .current())
+            var options = PlaybackOptions.current()
+            options.audioChoice = request.audioChoice
+            options.audioKey = request.audioKey
+            options.truehd = await proxy.remuxedAudio(fileId: request.fileId)
+            engine.load(url: url, title: request.title, subtitle: request.subtitle, startAt: start, options: options)
             engine.play()
             loadExternalSubtitles(for: request)
         } catch {
-            errorMessage = "無法啟動串流：\(error.localizedDescription)"
+            let message = "無法啟動串流：\(error.localizedDescription)"
+            errorMessage = message
+            viewController?.showLoading(nil)
+            viewController?.showError(message)
         }
     }
 
@@ -120,7 +145,17 @@ final class PlayerController: NSObject {
         engine.onFinished = { [weak self] in self?.finished() }
         engine.onFailed = { [weak self] message in
             self?.errorMessage = message
+            self?.viewController?.showLoading(nil)
             self?.viewController?.showError(message)
+        }
+        engine.onReady = { [weak self] in
+            guard let self, !self.loadingStarted else { return }
+            self.viewController?.setLoadingStage(.ready)
+        }
+        engine.onStartedPlaying = { [weak self] in
+            guard let self, !self.loadingStarted else { return }
+            self.loadingStarted = true
+            self.viewController?.setLoadingStage(.playing)
         }
     }
 
