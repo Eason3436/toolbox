@@ -28,7 +28,7 @@ extension MediaItem {
         }
         if tags.contains(QualityTag.atmos.rawValue) {
             out.append("Atmos")
-        } else if let audio = audioFormat, audio == "E-AC3" || audio == "AC3" {
+        } else if let audio = audioFormat, audio == "E-AC3" || audio == "AC3" || audio == "TrueHD" {
             out.append(audio)
         }
         return out

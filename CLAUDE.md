@@ -113,6 +113,7 @@ AI 截圖管理（對標 Pixel Screenshots），完全離線：PhotoKit 同步�
 - **Bundle ID 是 `com.yueze.driveplayer`**（規劃書指定，Google OAuth iOS 用戶端綁這個），不是 `com.eason3436.` 前綴；使用者照規劃書用 Sideloadly（不改 Bundle ID）安裝
 - iOS 18 起、**Swift 6 語言模式**（strict concurrency complete）；SwiftData 存在 `Application Support/DrivePlayer.store`
 - 0.3.0（使用者給了參考 App 的截圖）：詳細頁整張海報＋片名 logo＋海報主色底（`UI/Detail/DetailComponents.swift`）、規格 logo、播放／字幕設定（`Util/Prefs.swift`、`UI/Settings/PlaybackSettingsView.swift`、`SubtitleSettingsView.swift`）、外掛字幕自己畫（`Core/Subtitles.swift`、`Player/PlayerView.swift`）、全 App `softScrollEdges()`。TMDB 資料加欄位時把 `MetadataMatcher.metadataVersion` 加 1，讀規格加欄位時把 `SpecProbe.version` 加 1，舊資料會自己補
+- 0.4.2：MP4 裡只有杜比 TrueHD 音軌時，代理把它換成邊播邊解的 PCM（`Packages/Core/Sources/Core/TrueHD/`，解碼器照 FFmpeg mlpdec 移植、LGPL；`App/Streaming/TrueHDTranscoder.swift`），播放器還是 AVPlayer。DTS 還是不行
 - 0.4.0：首頁推薦輪播＋分類（類型／評分／年代／分級）、詳細頁用 TMDB 無字海報疊 logo、集數橫排、「不需要配對」（`MatchState.ignored`，放首頁「其他影片」）。更新日誌：`DrivePlayer/App/UI/Settings/ChangelogView.swift`（設定 → 關於 → 更新日誌），每次更新加一筆並同步改 `DrivePlayer/project.yml` 的 `MARKETING_VERSION`
 - 細節、跟規劃書不同的地方、驗收步驟見 `DrivePlayer/README.md`
 

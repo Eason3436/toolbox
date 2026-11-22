@@ -60,7 +60,17 @@ iOS 用戶端沒有 client secret，Client ID 本來就會放在 App 裡（Googl
 - `Streaming/ChunkCache.swift`：Drive 檔案切成 4 MB 一段，最多同時下載 6 段、往前多讀 6 段，記憶體最多放 192 MB（收到記憶體警告就清掉）。Drive 單一連線常常只有每秒幾 MB，藍光等級的位元率會追不上
 - 代理照播放器要的 Range 從分段組出回應，等 socket 收下才送下一段（播放器不讀就不會一直下載）
 - 第一次讀一個檔案時找 moov，把 `hev1`／`dvhe` sample entry 改名成 `hvc1`／`dvh1`（`Core/MP4Boxes.swift`），iPhone 才會解 ffmpeg 預設標記的 HEVC
-- 播放器只選能播的音軌；`SpecProbe` 記下系統解不了的編碼（DTS、TrueHD、H.264 10-bit），詳細頁顯示提醒。這些要等第二階段 MPVKit
+- 播放器只選能播的音軌；`SpecProbe` 記下系統解不了的編碼（DTS、H.264 10-bit），詳細頁顯示提醒。這些要等第二階段 MPVKit
+
+## TrueHD（0.4.2）
+
+iPhone 的播放器不能解杜比 TrueHD（藍光的「杜比無損音訊」），MP4 裡只有 TrueHD 音軌時會完全沒聲音。代理把它換成邊播邊解的 PCM，播放器還是 AVPlayer（子母畫面、AirPlay、杜比視界照常）：
+
+- `Core/TrueHD/TrueHDDecoder.swift`：照 FFmpeg 的 `mlpdec.c` 移植的 TrueHD 解碼器（**LGPL-2.1+**，檔頭有寫）。最多解 3 個子串流，全景聲的片子輸出 7.1 底層。單元測試用 FFmpeg FATE 的杜比 5.1、全景聲樣本，結果跟 ffmpeg 逐位元相同；Linux 上大約 35 倍速
+- `Core/TrueHD/TrueHDRemux.swift`：播放器看到的是「虛擬檔案」＝原檔（ftyp 改成 `qt  `、原本的 moov 改名 `free`）＋新的 moov（TrueHD 那條軌換成 QuickTime `lpcm` 24-bit、`chan` 聲道配置）＋一個 mdat 放 PCM。影片 sample 的位置沒動，照原檔讀；網址副檔名換成 `.mov`、Content-Type `video/quicktime`
+- `Streaming/TrueHDTranscoder.swift`：播放器讀 PCM 區時，找出對應的 TrueHD sample、從分段快取拿資料、解碼。照順序讀就接著解；跳位置時往前退 256 個 AU 重新開始（要碰到 major sync 才解得出來）
+- 只在「沒有其他能播的音軌」時轉換（有 AC3／AAC 就用那條）；fragmented MP4、最後一個盒子大小寫 0 的檔案不轉
+- MKV 裡的 TrueHD 要等第二階段
 
 ## 驗收步驟（實機）
 

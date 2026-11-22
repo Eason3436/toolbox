@@ -143,6 +143,13 @@ final class AppServices {
             item.isAtmos = info.isAtmos
             item.unsupportedVideo = info.unsupportedVideo
             item.unsupportedAudio = info.unsupportedAudio
+            // TrueHD 在代理裡轉成 PCM 了：系統看到的是 PCM，標示照原本的格式
+            if let truehd = await proxy.remuxedAudio(fileId: item.fileId) {
+                item.audioFormat = "TrueHD"
+                item.audioChannels = truehd.channels
+                item.isAtmos = truehd.isAtmos
+                item.unsupportedAudio = nil
+            }
             item.specProbed = true
             item.specVersion = SpecProbe.version
             try? library.context.save()

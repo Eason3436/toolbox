@@ -6,7 +6,8 @@ import Network
 /// 這裡用當下有效的 token 向 Drive 分段下載（`ChunkCache`），再照播放器要的 Range 回給它。
 ///
 /// 為什麼要代理：Google 的 access token 一小時就過期，直接把 Authorization 塞進 AVURLAsset，
-/// 長片播到後半段會收到 401 而中斷。順便：平行分段下載（比單一連線快很多）、修正 hev1 標記。
+/// 長片播到後半段會收到 401 而中斷。順便：平行分段下載（比單一連線快很多）、修正 hev1 標記、
+/// 把 iPhone 解不了的 TrueHD 音軌換成邊播邊解的 PCM（`TrueHDRemux`）。
 ///
 /// - 只聽 loopback，外部連不進來
 /// - 送給播放器時等 socket 吃掉才送下一段；往前最多多下載 `ChunkCache.readAhead` 段（不會整部讀進記憶體）
@@ -16,6 +17,7 @@ final class LocalStreamProxy: @unchecked Sendable {
     typealias TokenProvider = @Sendable (_ forceRefresh: Bool) async throws -> String
 
     let cache: ChunkCache
+    let transcoders = TranscoderRegistry()
 
     /// 所有狀態都只在這個 queue 上讀寫
     let queue = DispatchQueue(label: "DrivePlayer.LocalStreamProxy", qos: .userInitiated)
@@ -37,10 +39,20 @@ final class LocalStreamProxy: @unchecked Sendable {
 
     // MARK: - 對外
 
-    /// 播放用的網址（代理沒在跑會先啟動）
+    /// 播放用的網址（代理沒在跑會先啟動）。TrueHD 轉換過的檔案是 QuickTime 格式，副檔名換成 .mov
     func streamURL(fileId: String, filename: String? = nil) async throws -> URL {
         let port = try await ensureRunning()
-        return URL(string: "http://127.0.0.1:\(port)" + StreamRoute.path(fileId: fileId, filename: filename))!
+        var name = filename
+        await cache.prepare(fileId)
+        if let filename, await cache.info(fileId)?.remux != nil {
+            name = (filename as NSString).deletingPathExtension + ".mov"
+        }
+        return URL(string: "http://127.0.0.1:\(port)" + StreamRoute.path(fileId: fileId, filename: name))!
+    }
+
+    /// 轉換後的 TrueHD 格式（沒轉換是 nil）
+    func remuxedAudio(fileId: String) async -> TrueHDFormat? {
+        await cache.info(fileId)?.remux?.format
     }
 
     /// 確保 listener 在跑，回傳 port
@@ -185,22 +197,23 @@ private final class ProxyConnection: @unchecked Sendable {
             return
         }
         let cache = proxy.cache
+        let transcoders = proxy.transcoders
         serving = Task { [self] in
-            await serve(head, fileId: fileId, cache: cache)
+            await serve(head, fileId: fileId, cache: cache, transcoders: transcoders)
             proxy.queue.async { self.close() }
         }
     }
 
     // MARK: 回應
 
-    private func serve(_ head: HTTPRequestHead, fileId: String, cache: ChunkCache) async {
+    private func serve(_ head: HTTPRequestHead, fileId: String, cache: ChunkCache, transcoders: TranscoderRegistry) async {
         var headSent = false
         do {
             await cache.prepare(fileId)
-            guard let info = await cache.info(fileId), let total = info.total, total > 0 else {
+            guard let info = await cache.info(fileId), let original = info.total, let total = info.servedSize, total > 0 else {
                 throw ProxyError.badResponse
             }
-            let contentType = info.contentType ?? "video/mp4"
+            let contentType = info.remux != nil ? "video/quicktime" : (info.contentType ?? "video/mp4")
 
             if head.method == "HEAD" {
                 let response = HTTPResponseHead(status: 200, headers: [
@@ -233,27 +246,52 @@ private final class ProxyConnection: @unchecked Sendable {
             guard await write(HTTPResponseHead(status: status, headers: headers).serialized()) else { return }
             headSent = true
 
-            let size = ChunkCache.chunkSize
-            let lastIndex = end / size
+            // 原檔的部分照分段快取送；TrueHD 轉換時，後面接新的 moov 和解出來的 PCM
+            let originalEnd = min(end, original - 1)
             var pos = start
-            while pos <= end {
-                try Task.checkCancellation()
-                let index = pos / size
-                await cache.prefetch(fileId, after: index, last: lastIndex)
-                let data = try await cache.chunk(fileId, index)
-                let chunkStart = index * size
-                let lo = Int(pos - chunkStart)
-                let hi = Int(min(end + 1, chunkStart + Int64(data.count)) - chunkStart)
-                guard lo < hi else { throw ProxyError.badResponse }
-                var slice = Data(data[(data.startIndex + lo)..<(data.startIndex + hi)])
-                if !info.patches.isEmpty {
-                    let sliceEnd = pos + Int64(slice.count)
-                    for (offset, byte) in info.patches where offset >= pos && offset < sliceEnd {
-                        slice[Int(offset - pos)] = byte
+            if pos <= originalEnd {
+                let size = ChunkCache.chunkSize
+                let lastIndex = originalEnd / size
+                while pos <= originalEnd {
+                    try Task.checkCancellation()
+                    let index = pos / size
+                    await cache.prefetch(fileId, after: index, last: lastIndex)
+                    let data = try await cache.chunk(fileId, index)
+                    let chunkStart = index * size
+                    let lo = Int(pos - chunkStart)
+                    let hi = Int(min(originalEnd + 1, chunkStart + Int64(data.count)) - chunkStart)
+                    guard lo < hi else { throw ProxyError.badResponse }
+                    var slice = Data(data[(data.startIndex + lo)..<(data.startIndex + hi)])
+                    if !info.patches.isEmpty {
+                        let sliceEnd = pos + Int64(slice.count)
+                        for (offset, byte) in info.patches where offset >= pos && offset < sliceEnd {
+                            slice[Int(offset - pos)] = byte
+                        }
+                    }
+                    guard await write(slice) else { return }
+                    pos += Int64(hi - lo)
+                }
+            }
+            if let plan = info.remux, pos <= end {
+                if pos < plan.pcmStart {
+                    let lo = Int(pos - plan.originalSize)
+                    let hi = Int(min(end + 1, plan.pcmStart) - plan.originalSize)
+                    guard await write(Data(plan.header[lo..<hi])) else { return }
+                    pos += Int64(hi - lo)
+                }
+                if pos <= end {
+                    let transcoder = await transcoders.transcoder(fileId: fileId, plan: plan, cache: cache)
+                    // 一次送一個 PCM chunk（約 0.5 秒）
+                    let piece = Int64(TrueHDRemux.framesPerChunk * plan.bytesPerFrame)
+                    while pos <= end {
+                        try Task.checkCancellation()
+                        let relative = pos - plan.pcmStart
+                        let pieceEnd = min(end + 1 - plan.pcmStart, (relative / piece + 1) * piece)
+                        let data = try await transcoder.pcm(relative..<pieceEnd)
+                        guard await write(data) else { return }
+                        pos = plan.pcmStart + pieceEnd
                     }
                 }
-                guard await write(slice) else { return }
-                pos += Int64(hi - lo)
             }
             _ = await write(nil, final: true)
         } catch ProxyError.unsatisfiable(let total) {

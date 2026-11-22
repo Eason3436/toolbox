@@ -14,6 +14,7 @@ enum ProxyError: Error {
 ///
 /// 另外會在讀到 moov 時記下要改名的 sample entry（hev1 → hvc1），送出資料時改掉，
 /// iPhone 才會解 ffmpeg 預設標成 hev1 的 HEVC（不然只有聲音、畫面一個 Q）。
+/// 只有 TrueHD 音軌時做好轉換計畫（`TrueHDRemuxPlan`），代理把音軌換成邊播邊解的 PCM。
 actor ChunkCache {
     static let chunkSize: Int64 = 4 * 1024 * 1024
     /// 記憶體裡最多放多少
@@ -31,8 +32,13 @@ actor ChunkCache {
     struct FileInfo: Sendable {
         var total: Int64?
         var contentType: String?
-        /// 絕對位置 → 要換成的位元組（hev1 → hvc1）
+        /// 絕對位置 → 要換成的位元組（hev1 → hvc1；TrueHD 轉換時的 ftyp／moov）
         var patches: [Int64: UInt8] = [:]
+        /// 只有 TrueHD 音軌：播放器看到的是轉換後的虛擬檔案
+        var remux: TrueHDRemuxPlan?
+
+        /// 播放器看到的檔案大小
+        var servedSize: Int64? { remux?.totalSize ?? total }
     }
 
     private struct Downloaded: Sendable {
@@ -219,32 +225,58 @@ actor ChunkCache {
             _ = try await chunk(fileId, 0)
             guard let total = files[fileId]?.total else { return }
             var offset: Int64 = 0
+            var top: [TrueHDRemux.TopLevelBox] = []
+            var moov: [UInt8]?
             for _ in 0..<64 {
-                guard offset + 8 <= total else { return }
+                guard offset + 8 <= total else { break }
                 let head = try await read(fileId, offset: offset, length: min(16, total - offset))
-                guard let box = MP4Boxes.header(head) else { return }
+                guard let box = MP4Boxes.header(head) else { break }
                 let size = box.size == 0 ? total - offset : box.size
-                if box.type == "moov" {
+                top.append(.init(type: box.type, offset: offset, size: box.size))
+                if box.type == "moov", moov == nil {
                     guard size <= 96 * 1024 * 1024 else { return }
-                    let moov = try await read(fileId, offset: offset, length: size)
+                    let bytes = try await read(fileId, offset: offset, length: size)
                     var map: [Int64: UInt8] = [:]
-                    for patch in MP4Boxes.sampleEntryPatches(inMoov: moov) {
+                    for patch in MP4Boxes.sampleEntryPatches(inMoov: bytes) {
                         for (j, byte) in patch.replacement.enumerated() {
                             map[offset + Int64(patch.offset + j)] = byte
                         }
                     }
                     files[fileId, default: FileInfo()].patches = map
-                    return
+                    moov = bytes
                 }
                 offset += size
+            }
+            if let moov, let track = TrueHDRemux.findTrack(moov: moov) {
+                await planTrueHD(fileId, track: track, top: top, total: total)
             }
         } catch {
             // 讀不到就不改，照原樣播
         }
     }
 
+    /// 解開頭幾個 TrueHD sample 拿到格式，做轉換計畫
+    private func planTrueHD(_ fileId: String, track: TrueHDRemux.Track, top: [TrueHDRemux.TopLevelBox], total: Int64) async {
+        let decoder = TrueHDDecoder()
+        var format: TrueHDFormat?
+        let count = min(track.table.sampleCount, 400)
+        for location in track.table.locations(0..<count) where format == nil {
+            guard let bytes = try? await read(fileId, offset: location.offset, length: Int64(location.size)) else { return }
+            for range in TrueHDDecoder.accessUnits(in: bytes) where decoder.decode(bytes[range]) != nil {
+                format = decoder.format
+                break
+            }
+        }
+        guard let format,
+              let plan = TrueHDRemux.plan(track: track, topLevel: top, fileSize: total, format: format) else { return }
+        var info = files[fileId] ?? FileInfo()
+        info.patches.merge(plan.patches) { _, new in new }
+        info.remux = plan
+        files[fileId] = info
+    }
+
     /// 讀一段位元組（可能跨好幾段；先全部開始下載再依序拿）
-    private func read(_ fileId: String, offset: Int64, length: Int64) async throws -> [UInt8] {
+    func read(_ fileId: String, offset: Int64, length: Int64) async throws -> [UInt8] {
         guard length > 0 else { return [] }
         let first = offset / Self.chunkSize
         let last = (offset + length - 1) / Self.chunkSize

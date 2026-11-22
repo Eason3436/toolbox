@@ -21,8 +21,8 @@ struct SpecInfo: Sendable {
 }
 
 enum SpecProbe {
-    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類；3：不支援的編碼）
-    static let version = 3
+    /// 讀到的欄位變多就加 1，舊的會在開詳細頁時重讀（2：聲道、全景聲、HDR 種類；3：不支援的編碼；4：TrueHD 轉成 PCM）
+    static let version = 4
 
     static func probe(url: URL) async throws -> SpecInfo {
         let asset = AVURLAsset(url: url)

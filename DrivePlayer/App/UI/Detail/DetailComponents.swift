@@ -324,6 +324,8 @@ struct FormatBadges: View {
             }
             if spec.isAtmos {
                 DolbyBadge(word: "ATMOS")
+            } else if spec.audioCodec == "TrueHD" {
+                DolbyBadge(word: "TrueHD")
             } else if let codec = spec.audioCodec, codec == "E-AC3" || codec == "AC3" {
                 DolbyBadge(word: "AUDIO")
             }

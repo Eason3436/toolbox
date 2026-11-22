@@ -10,6 +10,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.4.2", date: "2026-11-22", changes: [
+            "杜比 TrueHD（杜比無損音訊）的 MP4 有聲音了：App 自己把 TrueHD 解成無損 PCM 給播放器，5.1／7.1 都保留，全景聲的片子播 7.1 底層",
+            "詳細頁標出「杜比 TrueHD」，不再顯示不支援的提醒",
+        ]),
         Entry(version: "0.4.1", date: "2026-11-21", changes: [
             "播放更順：改成同時下載好幾段、先讀到前面，不再播十幾秒就停下來載入",
             "修正有些 HEVC 影片只有聲音、畫面一個 Q（檔案標成 hev1，播放時自動改成 iPhone 認得的 hvc1）",
