@@ -88,6 +88,10 @@ if LCLiveActivityAttributes.isInsideLiveContainer {
 
 裝在裡面的 App 自己排的本地通知（`UNUserNotificationCenter`），要在 LiveContainer 的 App 設定打開「修復本地通知」才會出現，顯示成 LiveContainer 的通知。
 
+## 補翻譯
+
+上游有些畫面沒有繁中（例如設定 → 儲存空間管理）。翻譯放在 `strings/<語言>.json`（`{"key": "翻譯"}`，key 從上游 `Resources/Localizable.xcstrings` 找），CI 用 `scripts/merge_strings.py` 合併進去：上游已經有的翻譯不蓋掉，上游沒有的 key 會讓建置失敗（換上游版本時才會發現改名）。
+
 ## 安裝注意
 
 - 用 SideStore 安裝時要保留 App 延伸功能（Keep App Extensions），捷徑動作和即時動態都在延伸功能裡。即時動態的 widget 是多一個延伸功能，免費帳號會多用一個 App ID。

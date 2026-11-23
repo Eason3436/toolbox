@@ -53,6 +53,9 @@ jobs:
             echo "apply $p"
             git -C src apply "$GITHUB_WORKSPACE/$p"
           done
+          # 上游缺的翻譯（例如儲存空間管理的繁中）合併進 Localizable.xcstrings
+          python3 toolbox/LiveContainer/scripts/merge_strings.py \
+            toolbox/LiveContainer/strings src/Resources/Localizable.xcstrings
           git -C src status --short
 
       - name: Show Xcode

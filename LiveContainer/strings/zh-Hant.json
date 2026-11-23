@@ -1,0 +1,13 @@
+{
+  "lc.settings.storageManagement": "儲存空間管理",
+  "lc.storage.totalStorage": "總儲存空間",
+  "lc.storage.calculating": "計算中…",
+  "lc.storage.appBundle": "應用程式本體",
+  "lc.storage.containers": "容器",
+  "lc.storage.appGroupData": "App Group 資料",
+  "lc.storage.tweaks": "補丁",
+  "lc.storage.temporaryFiles": "暫存檔案",
+  "lc.storage.other": "其他",
+  "lc.storage.installedApps": "已安裝的應用程式",
+  "lc.storage.noAppStorageData": "沒有應用程式的儲存空間資料"
+}
