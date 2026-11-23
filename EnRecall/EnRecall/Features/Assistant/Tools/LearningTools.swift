@@ -54,7 +54,7 @@ enum LearningTools {
     // MARK: overview
 
     static func overview(_ args: ToolArgs, _ ctx: ToolContext) -> JSONValue {
-        guard let data = try? data(ctx) else { return .error("讀不到學習紀錄") }
+        guard let data = try? Self.data(ctx) else { return .error("讀不到學習紀錄") }
         let s = data.snapshot
         let todayStart = data.startOfDay()
         let today = s.logs.filter { $0.t >= todayStart }
@@ -137,7 +137,7 @@ enum LearningTools {
     // MARK: analyze_learning
 
     static func analyze(_ args: ToolArgs, _ ctx: ToolContext) -> JSONValue {
-        guard let data = try? data(ctx) else { return .error("讀不到學習紀錄") }
+        guard let data = try? Self.data(ctx) else { return .error("讀不到學習紀錄") }
         let days = args.int("days", default: 14, range: 1...90)
         let top = args.int("top", default: 15, range: 1...50)
         guard let deckFilter = data.deckID(args.string("deck")) else {
@@ -241,7 +241,7 @@ enum LearningTools {
     // MARK: list_words
 
     static func listWords(_ args: ToolArgs, _ ctx: ToolContext) -> JSONValue {
-        guard let data = try? data(ctx) else { return .error("讀不到學習紀錄") }
+        guard let data = try? Self.data(ctx) else { return .error("讀不到學習紀錄") }
         guard let deckFilter = data.deckID(args.string("deck")) else {
             return .error("找不到牌組「\(args.string("deck") ?? "")」。現有牌組：\(data.snapshot.decks.map(\.name).joined(separator: "、"))")
         }

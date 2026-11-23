@@ -101,7 +101,7 @@ enum PatternTools {
     static func lookup(_ args: ToolArgs, _ ctx: ToolContext) -> JSONValue {
         let queries = args.array("patterns")
         guard (1...50).contains(queries.count) else { return .error("patterns 要 1–50 個") }
-        let library = library(ctx.modelContext)
+        let library = Self.library(ctx.modelContext)
         let byID = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var found: [JSONValue] = []
@@ -110,7 +110,7 @@ enum PatternTools {
         for query in queries {
             let anchors = query["anchors"]?.strings ?? []
             guard !anchors.isEmpty else { return .error("每個句型都要有 anchors") }
-            let id = id(anchors)
+            let id = Self.id(anchors)
             let queryJSON = JSONValue.array(anchors.map(JSONValue.string))
             if let hit = byID[id] {
                 found.append(["query": queryJSON, "id": .string(id), "pattern": .string(hit.detail.pattern),
@@ -141,7 +141,7 @@ enum PatternTools {
         let inputs = args.array("patterns")
         guard (1...50).contains(inputs.count) else { return .error("patterns 要 1–50 個") }
         let updateLibrary = args.bool("update_library")
-        let library = library(ctx.modelContext)
+        let library = Self.library(ctx.modelContext)
         let byID = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var items: [PatternProposal.Item] = []
@@ -159,7 +159,7 @@ enum PatternTools {
                 let name = input["detail"]?["pattern"]?.string ?? input["id"]?.string ?? "（沒有 pattern）"
                 rejected.append((name, failure.message))
             case .success(let detail):
-                let id = id(detail.anchors)
+                let id = Self.id(detail.anchors)
                 guard seen.insert(id).inserted else { continue }
                 if let hit = byID[id] {
                     items.append(.init(id: id, detail: updateLibrary ? detail : hit.detail, fromLibrary: true, replacesLibrary: updateLibrary))
@@ -216,7 +216,7 @@ enum PatternTools {
 
     static func list(_ args: ToolArgs, _ ctx: ToolContext) -> JSONValue {
         let limit = args.int("limit", default: 30, range: 1...100)
-        var items = library(ctx.modelContext)
+        var items = Self.library(ctx.modelContext)
         if let query = args.string("query")?.lowercased() {
             items = items.filter {
                 $0.detail.pattern.lowercased().contains(query) || ($0.detail.zh ?? "").contains(query) || $0.id.contains(query)

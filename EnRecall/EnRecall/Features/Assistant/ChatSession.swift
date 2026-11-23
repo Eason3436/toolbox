@@ -197,7 +197,8 @@ final class ChatSession: ToolHost {
         let decision = await withCheckedContinuation { continuation in
             pending[card.id] = continuation
         }
-        progress = "加入牌組中…"
+        // 重置（新對話）時也會走到這裡：那時候不要再顯示進度
+        if !Task.isCancelled { progress = decision == .confirm ? "加入牌組中…" : "思考中…" }
         let edited = self.card(card.id) ?? card
         if decision == .cancel { updateCard(Self.cancelled(edited)) }
         return (decision, edited)
@@ -224,7 +225,7 @@ final class ChatSession: ToolHost {
 
     /// 確認卡上勾選、刪除、編輯
     func editCard(_ cardID: UUID, _ change: (inout ToolCard.Kind) -> Void) {
-        guard var card = card(cardID) else { return }
+        guard var card = self.card(cardID) else { return }
         change(&card.kind)
         updateCard(card)
     }
