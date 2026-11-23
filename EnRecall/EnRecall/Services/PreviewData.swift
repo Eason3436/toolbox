@@ -153,6 +153,7 @@ extension View {
             .environment(PreviewData.store)
             .environment(ToastCenter())
             .environment(PreviewData.inbox)
+            .environment(ChatSession())
             .tint(Color.er.primary)
     }
 }

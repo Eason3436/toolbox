@@ -6,6 +6,7 @@ struct EnRecallApp: App {
     @State private var store = StoreModel()
     @State private var toasts = ToastCenter()
     @State private var inbox = InboxService()
+    @State private var assistant = ChatSession()
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceMode.system
 
     var body: some Scene {
@@ -14,6 +15,7 @@ struct EnRecallApp: App {
                 .environment(store)
                 .environment(toasts)
                 .environment(inbox)
+                .environment(assistant)
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Color.er.primary)
         }

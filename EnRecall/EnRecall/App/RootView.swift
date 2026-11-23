@@ -14,6 +14,7 @@ struct RootView: View {
     @Environment(StoreModel.self) private var store
     @Environment(InboxService.self) private var inbox
     @Environment(ToastCenter.self) private var toasts
+    @Environment(ChatSession.self) private var assistant
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
 
@@ -74,6 +75,8 @@ struct RootView: View {
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                // 離開超過 30 分鐘：助理換成新的對話
+                assistant.willEnterForeground()
                 // 每次回到前景都領一次 Claude 送來的字，順便更新學習紀錄
                 Task {
                     await importFromClaude()
@@ -81,6 +84,7 @@ struct RootView: View {
                     await refreshReminders()
                 }
             case .background:
+                assistant.didEnterBackground()
                 Task {
                     await refreshReminders()
                     await inbox.uploadSnapshot(context: context, force: true)

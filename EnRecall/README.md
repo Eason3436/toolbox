@@ -19,4 +19,5 @@ Siri 的聲音 Apple 不開放給第三方 App。App 會自動挑手機上品質
 
 - 專案檔用 XcodeGen（`project.yml`），CI（`.github/workflows/enrecall.yml`）編譯並發佈到 `enrecall-latest`
 - 後端設定在 `EnRecall/Config/App.xcconfig`；iOS 後端的部署規劃在 `supabase/DEPLOY.md`
+- 助理（`EnRecall/Features/Assistant/`）：Gemini 經過 iOS 後端的 `gemini-proxy` 呼叫（`supabase/DEPLOY-8.md`），工具在 App 裡執行
 - 結構：`App/`（進入點、分頁、路由）、`Models/`（SwiftData）、`Services/`（商店、出卡規則、統計、發音）、`DesignSystem/`（色票、元件）、`Features/`（各畫面）

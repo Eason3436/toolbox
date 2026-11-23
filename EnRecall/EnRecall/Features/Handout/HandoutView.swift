@@ -53,11 +53,7 @@ enum HandoutMaker {
         let entries = try HandoutBuilder.entries(options, context: context, now: now)
         guard !entries.isEmpty else { throw Failure.empty(options.range) }
         let range = HandoutBuilder.rangeTitle(options, context: context)
-        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: range, date: now, style: .current)
-        var footer = range
-        if options.kind == .notes { footer += " · \(options.amount.title)份量" }
-        if options.kind == .test { footer += " · \(options.direction.title)" }
-        let data = try await PDFRenderer.render(html: html, footer: footer)
+        let data = try await render(entries: entries, options: options, rangeTitle: range, now: now)
 
         let day = now.formatted(.iso8601.year().month().day())
         let name = "單字\(options.kind.title)-\(range)-\(day).pdf"
@@ -65,6 +61,16 @@ enum HandoutMaker {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
         try data.write(to: url, options: .atomic)
         return url
+    }
+
+    /// 排版 → PDF（助理的 make_pdf 也用這個，字是模型挑的）
+    @MainActor
+    static func render(entries: [HandoutEntry], options: HandoutOptions, rangeTitle: String, now: Date = Date()) async throws -> Data {
+        let html = HandoutHTML.document(entries: entries, options: options, rangeTitle: rangeTitle, date: now, style: .current)
+        var footer = rangeTitle
+        if options.kind == .notes { footer += " · \(options.amount.title)份量" }
+        if options.kind == .test { footer += " · \(options.direction.title)" }
+        return try await PDFRenderer.render(html: html, footer: footer)
     }
 }
 
