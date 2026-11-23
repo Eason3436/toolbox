@@ -1,18 +1,14 @@
 import Foundation
 
-/// 助理的模型與限制。要換模型改這裡就好（gemini-proxy 的白名單也要一起改，DEPLOY-8.md）
+/// 助理的模型與限制。要換模型改這裡（claude-proxy 的白名單也要一起改，supabase/DEPLOY-9.md）
 enum AssistantConfig {
-    /// 一般模式
-    static let defaultModel = "gemini-4-hydrogen"
-    /// 精準模式：使用者按「精準重新辨識」或右上角切換時才用
-    static let preciseModel = "gemini-4-neon"
+    static let model = "claude-opus-5-5"
 
-    /// 思考程度（generationConfig.thinkingConfig.thinkingLevel）
-    static let thinkingLevel = "LOW"
-    /// 有新圖片的那一輪
-    static let thinkingLevelWithImage = "MEDIUM"
-    /// 有圖片時的解析度（generationConfig.mediaResolution）
-    static let imageResolution = "MEDIA_RESOLUTION_HIGH"
+    /// 思考深度（output_config.effort）。一般用 medium，精準模式（含「精準重新辨識」）用 high
+    static let normalEffort = "medium"
+    static let preciseEffort = "high"
+
+    static let maxTokens = 16_000
 
     /// 一次請求最多幾輪工具呼叫
     static let maxToolRounds = 8
@@ -27,7 +23,8 @@ enum AssistantConfig {
     /// 一則訊息最多幾張圖
     static let maxImages = 4
 
-    static let requestTimeout: TimeInterval = 120
+    /// 代理那邊用串流等完整回覆，這裡要等久一點
+    static let requestTimeout: TimeInterval = 180
 }
 
 enum AssistantMode: String, CaseIterable, Identifiable {
@@ -43,10 +40,10 @@ enum AssistantMode: String, CaseIterable, Identifiable {
         }
     }
 
-    var model: String {
+    var effort: String {
         switch self {
-        case .normal: AssistantConfig.defaultModel
-        case .precise: AssistantConfig.preciseModel
+        case .normal: AssistantConfig.normalEffort
+        case .precise: AssistantConfig.preciseEffort
         }
     }
 }

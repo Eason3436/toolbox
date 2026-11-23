@@ -11,7 +11,7 @@ final class ChatSession: ToolHost {
     /// 執行中：顯示目前的步驟（「查詢單字庫…」）；nil 是閒著
     private(set) var progress: String?
     /// 這次對話累計的用量
-    private(set) var usage = GeminiUsage()
+    private(set) var usage = AssistantUsage()
     var mode: AssistantMode = .normal
 
     var isBusy: Bool { progress != nil }
@@ -67,10 +67,11 @@ final class ChatSession: ToolHost {
         send(text: "請用精準模式重新辨識這張圖片，再照我剛剛的需求繼續。", images: images, precise: true)
     }
 
-    /// 辨識結果卡的「修改」：之後送出的就是改過的文字
+    /// 辨識結果卡的「修改」：之後送出的就是改過的文字。
+    /// 改的是前面的對話，之前的思考區塊會對不上，所以一起拿掉
     func editRecognition(cardID: UUID, transcript: String) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !isBusy, !text.isEmpty else { return }
         for m in messages.indices {
             guard let c = messages[m].cards.firstIndex(where: { $0.id == cardID }),
                   case .recognition(var card) = messages[m].cards[c].kind else { continue }
@@ -79,7 +80,10 @@ final class ChatSession: ToolHost {
             messages[m].cards[c].kind = .recognition(card)
             if let u = messages.firstIndex(where: { $0.id == card.messageID }) {
                 messages[u].recognizedText = text
+                // 迴圈中途失敗、圖片還沒換掉的話，現在換
+                messages[u].imageData = []
             }
+            stripThinking()
         }
     }
 
@@ -92,51 +96,52 @@ final class ChatSession: ToolHost {
         let run = UUID()
         runID = run
         task = Task { [weak self] in
-            await self?.runLoop(model: precise ? AssistantConfig.preciseModel : AssistantConfig.defaultModel, run: run)
+            await self?.runLoop(effort: precise ? AssistantConfig.preciseEffort : AssistantConfig.normalEffort, run: run)
         }
     }
 
     // MARK: 工具呼叫迴圈
 
-    private func runLoop(model: String, run: UUID) async {
-        let client = GeminiClient(model: model)
+    private func runLoop(effort: String, run: UUID) async {
+        let client = ClaudeClient()
         var rounds = 0
         var errorCounts: [String: Int] = [:]
         defer { finish(run) }
 
         while !Task.isCancelled {
-            let contents = RequestBuilder.contents(history: history, messages: messages)
-            progress = RequestBuilder.hasImages(contents) ? "辨識圖片中…" : "思考中…"
-            let response: GeminiResponse
+            let payload = RequestBuilder.messages(history: history, messages: messages)
+            progress = RequestBuilder.imageCount(payload) > 0 && rounds == 0 ? "看圖片中…" : "思考中…"
+            let response: ClaudeResponse
             do {
-                response = try await client.generate(RequestBuilder.request(contents: contents))
+                response = try await client.send(RequestBuilder.request(messages: payload, effort: effort))
             } catch {
                 guard !Task.isCancelled else { return }
-                let failure = error as? GeminiError ?? .network
+                let failure = error as? AssistantError ?? .network
                 updateReply { $0.error = failure.errorDescription; $0.canRetry = failure.isRetryable }
                 return
             }
             guard !Task.isCancelled else { return }
             if let used = response.usage { usage = usage + used }
-            history.append(.model(response.parts))
+            history.append(.model(response.content))
             appendReplyText(response.text)
 
-            let calls = response.functionCalls
+            let calls = response.toolUses
             guard !calls.isEmpty else { return }
             rounds += 1
 
+            // 同一輪的工具結果全部放在同一則 user 訊息
             var results: [JSONValue] = []
             var tooManyErrors = false
             for call in calls {
                 progress = ToolRegistry.progressTitle(call.name)
                 let context = ToolContext(modelContext: modelContext ?? AppDatabase.container.mainContext, host: self)
-                let result = await ToolExecutor.run(name: call.name, args: call.args, context: context)
+                let result = await ToolExecutor.run(name: call.name, args: call.input, context: context)
                 if let message = result["error"]?.string {
                     let key = call.name + "|" + message
                     errorCounts[key, default: 0] += 1
                     if errorCounts[key, default: 0] > AssistantConfig.maxSameErrorRetries { tooManyErrors = true }
                 }
-                results.append(RequestBuilder.functionResponse(name: call.name, id: call.id, result: result))
+                results.append(RequestBuilder.toolResult(id: call.id, result: result))
                 guard !Task.isCancelled else { return }
             }
             history.append(.toolResults(results))
@@ -145,7 +150,7 @@ final class ChatSession: ToolHost {
                 let notice = tooManyErrors ? "同一個步驟一直出錯，先停下來。可以換個說法，或把需求拆小再試一次。"
                     : "步驟太多，請把需求拆小"
                 // 補一則模型回覆，下一句才不會接在工具結果後面
-                history.append(.model([["text": .string(notice)]]))
+                history.append(.model([["type": "text", "text": .string(notice)]]))
                 appendReplyText(notice)
                 return
             }
@@ -158,6 +163,7 @@ final class ChatSession: ToolHost {
         runID = nil
         progress = nil
         task = nil
+        retireRecognizedImages()
         if let replyID, let index = messages.firstIndex(where: { $0.id == replyID }),
            messages[index].text == nil, messages[index].cards.isEmpty, messages[index].error == nil {
             messages.remove(at: index)
@@ -205,11 +211,31 @@ final class ChatSession: ToolHost {
     }
 
     func recordRecognition(transcript: String, imageType: String?, uncertain: [String]) -> UUID? {
-        guard let index = messages.lastIndex(where: { $0.role == .user && !$0.imageData.isEmpty }) else { return nil }
+        guard let index = messages.lastIndex(where: { $0.role == .user && !$0.imageData.isEmpty && $0.recognizedText == nil }) else {
+            return nil
+        }
+        // 這次的工具迴圈裡圖片照送（前面的對話不能改）；迴圈結束才換成文字（retireRecognizedImages）
         messages[index].recognizedText = transcript
-        // 之後每一輪（包含這次後面的工具呼叫）都只送文字
-        messages[index].imageData = []
         return messages[index].id
+    }
+
+    /// 一次請求結束：辨識過的圖片換成文字，下一句起不再送圖片。
+    /// 這改到了前面的對話，所以之前所有的思考區塊一起拿掉（全部拿掉是 API 允許的，留著會對不上）
+    func retireRecognizedImages() {
+        var changed = false
+        for index in messages.indices where messages[index].recognizedText != nil && !messages[index].imageData.isEmpty {
+            messages[index].imageData = []
+            changed = true
+        }
+        if changed { stripThinking() }
+    }
+
+    private func stripThinking() {
+        history = history.compactMap { item in
+            guard case .model(let content) = item else { return item }
+            let kept = RequestBuilder.strippingThinking(content)
+            return kept.isEmpty ? nil : .model(kept)
+        }
     }
 
     // MARK: 確認卡
@@ -260,7 +286,7 @@ final class ChatSession: ToolHost {
         messages = []
         history = []
         originalImages = [:]
-        usage = GeminiUsage()
+        usage = AssistantUsage()
         progress = nil
         replyID = nil
         runID = nil
@@ -278,6 +304,11 @@ final class ChatSession: ToolHost {
 
     var isEmpty: Bool { messages.isEmpty }
 
-    /// 測試用：目前會送出的 contents
-    var currentContents: [JSONValue] { RequestBuilder.contents(history: history, messages: messages) }
+    /// 測試用：目前會送出的 messages
+    var currentMessages: [JSONValue] { RequestBuilder.messages(history: history, messages: messages) }
+
+    /// 測試用：直接放對話紀錄
+    func loadHistory(_ items: [HistoryItem]) {
+        history = items
+    }
 }

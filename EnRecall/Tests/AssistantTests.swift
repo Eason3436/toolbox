@@ -10,47 +10,40 @@ struct AssistantRequestTests {
         #expect(ToolRegistry.names.contains("make_pdf"))
         #expect(!ToolRegistry.names.contains("check_inbox"))
         let addWords = ToolRegistry.declarations.first { $0["name"]?.string == "add_words" }
-        #expect(addWords?["parametersJsonSchema"]?["required"]?.strings == ["deck", "words"])
+        #expect(addWords?["input_schema"]?["required"]?.strings == ["deck", "words"])
     }
 
-    @Test func imageIsSentOnlyUntilRecognized() {
-        var message = ChatMessage(role: .user, text: "加單字", imageData: [Data([1, 2, 3])], thumbnails: [Data([1])])
-        var contents = RequestBuilder.contents(history: [.user(message.id)], messages: [message])
-        #expect(RequestBuilder.hasImages(contents))
-        #expect(RequestBuilder.request(contents: contents)["generationConfig"]?["mediaResolution"]?.string == "MEDIA_RESOLUTION_HIGH")
-
-        // report_image_content 之後：圖片換成文字
-        message.imageData = []
-        message.recognizedText = "absolute\nrecord"
-        contents = RequestBuilder.contents(history: [.user(message.id)], messages: [message])
-        #expect(!RequestBuilder.hasImages(contents))
-        let texts = contents.first?["parts"]?.array?.compactMap { $0["text"]?.string } ?? []
-        #expect(texts.first?.hasPrefix("[先前圖片內容：") == true)
-        #expect(texts.last == "加單字")
-        #expect(RequestBuilder.request(contents: contents)["generationConfig"]?["mediaResolution"] == nil)
+    @Test func requestShape() {
+        let request = RequestBuilder.request(messages: [["role": "user", "content": [["type": "text", "text": "嗨"]]]], effort: "medium")
+        #expect(request["model"]?.string == "claude-opus-5-5")
+        #expect(request["output_config"]?["effort"]?.string == "medium")
+        #expect(request["thinking"]?["type"]?.string == "adaptive")
+        #expect(request["cache_control"]?["type"]?.string == "ephemeral")
+        #expect(request["tools"]?.array?.count == 12)
     }
 
-    @Test func modelPartsAreSentBackUnchanged() throws {
-        let raw = #"[{"functionCall":{"name":"lookup_words","args":{"words":["run"]}},"thoughtSignature":"abc=="},{"text":"好"}]"#
-        let parts = try JSONDecoder().decode([JSONValue].self, from: Data(raw.utf8))
-        let contents = RequestBuilder.contents(history: [.model(parts)], messages: [])
-        #expect(contents.first?["role"]?.string == "model")
-        #expect(contents.first?["parts"]?.array == parts)
-        #expect(contents.first?["parts"]?.array?.first?["thoughtSignature"]?.string == "abc==")
-    }
-
-    @Test func systemPromptAndToolsComeFirstAndStayFixed() {
-        let a = RequestBuilder.request(contents: [["role": "user", "parts": [["text": "嗨"]]]])
-        let b = RequestBuilder.request(contents: [["role": "user", "parts": [["text": "再見"]]]])
-        #expect(a["systemInstruction"] == b["systemInstruction"])
+    @Test func systemPromptAndToolsStayFixed() {
+        let a = RequestBuilder.request(messages: [["role": "user", "content": "嗨"]], effort: "medium")
+        let b = RequestBuilder.request(messages: [["role": "user", "content": "再見"]], effort: "high")
+        #expect(a["system"] == b["system"])
         #expect(a["tools"] == b["tools"])
     }
 
-    @Test func functionResponseShape() {
-        let part = RequestBuilder.functionResponse(name: "overview", id: "call-1", result: ["ok": true])
-        #expect(part["functionResponse"]?["name"]?.string == "overview")
-        #expect(part["functionResponse"]?["id"]?.string == "call-1")
-        #expect(part["functionResponse"]?["response"]?["ok"]?.bool == true)
+    @Test func modelContentIsSentBackUnchanged() throws {
+        let raw = #"[{"type":"thinking","thinking":"","signature":"abc=="},{"type":"tool_use","id":"toolu_1","name":"lookup_words","input":{"words":["run"]}}]"#
+        let content = try JSONDecoder().decode([JSONValue].self, from: Data(raw.utf8))
+        let messages = RequestBuilder.messages(history: [.model(content)], messages: [])
+        #expect(messages.first?["role"]?.string == "assistant")
+        #expect(messages.first?["content"]?.array == content)
+    }
+
+    @Test func toolResultShape() {
+        let ok = RequestBuilder.toolResult(id: "toolu_1", result: ["ok": true])
+        #expect(ok["type"]?.string == "tool_result")
+        #expect(ok["tool_use_id"]?.string == "toolu_1")
+        #expect(ok["is_error"] == nil)
+        let failed = RequestBuilder.toolResult(id: "toolu_2", result: .error("找不到"))
+        #expect(failed["is_error"]?.bool == true)
     }
 }
 
@@ -67,15 +60,38 @@ struct AssistantSessionTests {
         #expect(session.isEmpty)
     }
 
-    @Test func recognitionReplacesImage() {
+    /// 圖片在同一個請求裡照送（前面的對話不能改）；請求結束才換成文字，之前的思考區塊一起拿掉
+    @Test func imageIsRetiredAfterTheRequest() throws {
         let message = ChatMessage(role: .user, text: "加單字", imageData: [Data([9])], thumbnails: [Data([9])])
         let session = ChatSession(previewMessages: [message])
+        let modelTurn = try JSONDecoder().decode([JSONValue].self, from: Data(
+            #"[{"type":"thinking","thinking":"","signature":"s"},{"type":"tool_use","id":"t1","name":"report_image_content","input":{"transcript":"absolute"}}]"#.utf8))
+        session.loadHistory([.user(message.id), .model(modelTurn)])
+
         let id = session.recordRecognition(transcript: "absolute", imageType: "handwritten", uncertain: [])
         #expect(id == message.id)
-        #expect(session.messages.first?.imageData.isEmpty == true)
-        #expect(session.messages.first?.recognizedText == "absolute")
-        // 沒有新圖片時不能再記
+        #expect(RequestBuilder.imageCount(session.currentMessages) == 1)
+        // 同一張圖不能再記一次
         #expect(session.recordRecognition(transcript: "x", imageType: nil, uncertain: []) == nil)
+
+        session.retireRecognizedImages()
+        let sent = session.currentMessages
+        #expect(RequestBuilder.imageCount(sent) == 0)
+        let firstText = sent.first?["content"]?.array?.first?["text"]?.string
+        #expect(firstText?.hasPrefix("[先前圖片內容：") == true)
+        let assistant = sent.last?["content"]?.array ?? []
+        #expect(!assistant.contains { $0["type"]?.string == "thinking" })
+        #expect(assistant.contains { $0["type"]?.string == "tool_use" })
+    }
+
+    @Test func historyWithoutImagesKeepsThinking() throws {
+        let message = ChatMessage(role: .user, text: "我最近背得怎樣？")
+        let session = ChatSession(previewMessages: [message])
+        let modelTurn = try JSONDecoder().decode([JSONValue].self, from: Data(
+            #"[{"type":"thinking","thinking":"","signature":"s"},{"type":"text","text":"好"}]"#.utf8))
+        session.loadHistory([.user(message.id), .model(modelTurn)])
+        session.retireRecognizedImages()
+        #expect(session.currentMessages.last?["content"]?.array == modelTurn)
     }
 }
 

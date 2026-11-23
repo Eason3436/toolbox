@@ -80,12 +80,10 @@ struct ChatView: View {
                         }
                     }
                     Section("這次對話用量") {
-                        Text("輸入 \(session.usage.prompt.formatted()) tokens")
-                        Text("輸出 \(session.usage.output.formatted()) tokens")
-                        Text("思考 \(session.usage.thoughts.formatted()) tokens")
-                        if session.usage.cached > 0 {
-                            Text("快取 \(session.usage.cached.formatted()) tokens")
-                        }
+                        Text("輸入 \(session.usage.input.formatted()) tokens")
+                        Text("快取讀取 \(session.usage.cacheRead.formatted()) tokens")
+                        Text("快取寫入 \(session.usage.cacheWrite.formatted()) tokens")
+                        Text("輸出（含思考） \(session.usage.output.formatted()) tokens")
                     }
                 } label: {
                     Image(systemName: session.mode == .precise ? "scope" : "slider.horizontal.3")

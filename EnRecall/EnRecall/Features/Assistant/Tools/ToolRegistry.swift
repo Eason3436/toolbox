@@ -1,6 +1,6 @@
 import Foundation
 
-/// 工具清單（Gemini functionDeclarations，用 parametersJsonSchema）。
+/// 工具清單（Messages API 的 tools：name、description、input_schema）。
 /// 參數照 MCP 的同名工具（supabase/DEPLOY.md、DEPLOY-3/4/5.md）；內容固定不變，放在請求最前面讓隱式快取命中
 enum ToolRegistry {
     static let declarations: [JSONValue] = {
@@ -17,7 +17,7 @@ enum ToolRegistry {
   {
     "name": "report_image_content",
     "description": "使用者上傳圖片時必須最先呼叫。完整轉錄圖片中的英文內容（含手寫），供後續步驟使用。好幾張圖就合在一起轉錄，用空行分開。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "transcript": {
@@ -49,7 +49,7 @@ enum ToolRegistry {
   {
     "name": "lookup_words",
     "description": "查單字庫（學測 Level 1–6、學測片語總表）裡有沒有這些字。found 的字直接用回傳的資料。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "words": {
@@ -70,7 +70,7 @@ enum ToolRegistry {
   {
     "name": "add_words",
     "description": "把單字加進 App 的牌組（牌組不存在會自動建立）。會先給使用者看確認卡，使用者按加入才寫入；取消會回 cancelled。單字庫有的字一律用單字庫的內容。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "deck": {
@@ -119,7 +119,7 @@ enum ToolRegistry {
   {
     "name": "get_words",
     "description": "取單字庫的完整條目（音標、字義、例句、搭配、近義・反義、易混淆、常見錯誤、字源）和學習狀態。ids 和 words 至少給一個。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "ids": {
@@ -143,7 +143,7 @@ enum ToolRegistry {
   {
     "name": "list_words",
     "description": "列出 App 裡學過的字（和自訂牌組的字），挑要印、要複習的字。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "deck": {
@@ -192,7 +192,7 @@ enum ToolRegistry {
   {
     "name": "lookup_patterns",
     "description": "整理句型前先查 App 的句型庫。found：完全一樣；similar：可能是同一個句型，自己判斷；not_found 才要完整整理。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "patterns": {
@@ -228,7 +228,7 @@ enum ToolRegistry {
   {
     "name": "add_patterns",
     "description": "把句型卡加進 App 的牌組。會先給使用者看確認卡。lookup 找到的只填 id；新的要給完整 detail（格式見 read_docs(\"pattern-guide\")）。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "deck": {
@@ -267,7 +267,7 @@ enum ToolRegistry {
   {
     "name": "list_patterns",
     "description": "看 App 的句型庫存了哪些句型，最近加的在前。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "query": {
@@ -286,7 +286,7 @@ enum ToolRegistry {
   {
     "name": "overview",
     "description": "學習總覽：今天複習幾張、答對率、到期數、連續天數、各牌組進度。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {}
     }
@@ -294,7 +294,7 @@ enum ToolRegistry {
   {
     "name": "analyze_learning",
     "description": "學習細節：每天的量、評分分布、最常忘的字（most_forgotten）、快忘掉的字（fading）、各牌組答對率。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "days": {
@@ -319,7 +319,7 @@ enum ToolRegistry {
   {
     "name": "read_docs",
     "description": "讀格式文件：pattern-guide（句型卡格式與整理規則）、pdf-handout（怎麼挑字做 PDF）。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "name": {
@@ -338,7 +338,7 @@ enum ToolRegistry {
   {
     "name": "make_pdf",
     "description": "產生單字 PDF。你只決定要印哪些字和格式，排版由 App 完成。",
-    "parametersJsonSchema": {
+    "input_schema": {
       "type": "object",
       "properties": {
         "kind": {

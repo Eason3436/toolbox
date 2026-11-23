@@ -38,10 +38,10 @@ struct ChatMessage: Identifiable, Equatable {
     var hasImages: Bool { !thumbnails.isEmpty }
 }
 
-/// 送給 Gemini 的對話紀錄（跟畫面上的訊息分開）：
+/// 送給 Claude 的對話紀錄（跟畫面上的訊息分開）：
 /// - 使用者那一則只記訊息 id，送出時再看要放圖片還是辨識後的文字
-/// - 模型回傳的 parts 原樣保存（含 thoughtSignature）
-/// - 工具結果是 functionResponse parts
+/// - 模型回傳的 content 原樣保存（含 thinking 區塊和 signature）
+/// - 工具結果是 tool_result 區塊
 enum HistoryItem: Equatable {
     case user(UUID)
     case model([JSONValue])

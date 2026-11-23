@@ -1,6 +1,6 @@
 import Foundation
 
-/// 任意 JSON。模型回傳的 parts（含 thoughtSignature）原封不動存下來、下一輪原樣送回，所以不能解成固定的 struct
+/// 任意 JSON。模型回傳的 content（含 thinking 區塊）原封不動存下來、下一輪原樣送回，所以不能解成固定的 struct
 enum JSONValue: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
@@ -102,7 +102,7 @@ enum JSONValue: Codable, Equatable, Sendable {
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    /// 鍵排序固定：每次送出的系統提示、工具清單一字不差，Gemini 的隱式快取才會命中
+    /// 鍵排序固定：每次送出的系統提示、工具清單一字不差，提示快取才會命中
     var jsonData: Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

@@ -84,6 +84,7 @@ struct RecognitionCardView: View {
                     isEditing = true
                 }
                 .buttonStyle(.bordered)
+                .disabled(session.isBusy)
                 Button("精準重新辨識", systemImage: "scope") {
                     session.rerecognize(card.messageID)
                 }
