@@ -154,6 +154,7 @@ extension View {
             .environment(ToastCenter())
             .environment(PreviewData.inbox)
             .environment(ChatSession())
+            .environment(StudySummaryCache())
             .tint(Color.er.primary)
     }
 }

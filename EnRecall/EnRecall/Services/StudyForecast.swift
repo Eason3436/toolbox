@@ -11,6 +11,8 @@ struct StudyForecast {
         let due: Date
         /// 卡片原本牌組的類型（首頁、牌組頁分記憶卡／片語卡／句型卡）
         var category: DeckCategory = .word
+        /// 已熟悉（紀錄頁的熟練度用）
+        var isMastered: Bool = false
     }
 
     struct DeckItems {
@@ -32,7 +34,8 @@ struct StudyForecast {
     @MainActor
     static func items(of deck: Deck) -> [Item] {
         deck.orderedActiveCards.map {
-            Item(id: $0.id, isNew: $0.isNew, due: $0.due, category: $0.deck?.category ?? deck.category)
+            Item(id: $0.id, isNew: $0.isNew, due: $0.due, category: $0.deck?.category ?? deck.category,
+                 isMastered: $0.isMastered)
         }
     }
 

@@ -11,27 +11,29 @@ struct ChatView: View {
     @FocusState private var isFocused: Bool
 
     private struct Suggestion: Identifiable {
+        /// 粗體那行（動作）
         let title: String
-        let systemImage: String
-        /// nil：打開掃描
-        let prompt: String?
-        var id: String { title }
+        /// 下面那行
+        let detail: String
+        let prompt: String
+        /// false：先放進輸入框讓人接著貼文章，不直接送出
+        var sendsNow = true
+        var id: String { title + detail }
     }
 
     private static let suggestions: [Suggestion] = [
-        Suggestion(title: "拍照加單字", systemImage: "camera", prompt: nil),
-        Suggestion(title: "把這篇文章的句型整理成卡片", systemImage: "text.quote", prompt: "把這篇文章的句型整理成卡片"),
-        Suggestion(title: "我最近背得怎樣？", systemImage: "chart.bar", prompt: "我最近背得怎樣？"),
-        Suggestion(title: "印出最常忘的 30 個字", systemImage: "printer", prompt: "印出最常忘的 30 個字"),
+        Suggestion(title: "看看", detail: "最近背得怎樣", prompt: "我最近背得怎樣？"),
+        Suggestion(title: "印出", detail: "最常忘的 30 個字", prompt: "印出最常忘的 30 個字"),
+        Suggestion(title: "整理", detail: "文章裡的句型", prompt: "把這篇文章的句型整理成卡片：\n", sendsNow: false),
+        Suggestion(title: "找出", detail: "我常搞混的字", prompt: "我最常答錯、容易搞混的是哪些字？"),
     ]
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    if session.isEmpty {
-                        emptyState
-                    }
                     ForEach(session.messages) { message in
                         Group {
                             switch message.role {
@@ -61,33 +63,33 @@ struct ChatView: View {
                 withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
-        .erPageBackground()
+        .overlay {
+            if session.isEmpty {
+                emptyState
+                    .transition(.opacity)
+            }
+        }
+        .background {
+            AssistantBackground(isEmpty: session.isEmpty)
+        }
         .safeAreaInset(edge: .bottom) {
-            InputBar(text: $draft, images: $images, isBusy: session.isBusy, focus: $isFocused,
-                     isScanning: $isScanning, send: send)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 6)
+            VStack(spacing: 12) {
+                if session.isEmpty && images.isEmpty {
+                    suggestionStrip
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                InputBar(text: $draft, images: $images, isBusy: session.isBusy, focus: $isFocused,
+                         isScanning: $isScanning, send: send)
+                    .padding(.horizontal, Theme.Spacing.page)
+            }
+            .padding(.bottom, 8)
+            .animation(.snappy(duration: 0.25), value: session.isEmpty)
         }
         .navigationTitle("助理")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("模式", selection: Bindable(session).mode) {
-                        ForEach(AssistantMode.allCases) { mode in
-                            Text(mode == .precise ? "精準（比較慢）" : "一般").tag(mode)
-                        }
-                    }
-                    Section("這次對話用量") {
-                        Text("輸入 \(session.usage.input.formatted()) tokens")
-                        Text("快取讀取 \(session.usage.cacheRead.formatted()) tokens")
-                        Text("快取寫入 \(session.usage.cacheWrite.formatted()) tokens")
-                        Text("輸出（含思考） \(session.usage.output.formatted()) tokens")
-                    }
-                } label: {
-                    Image(systemName: session.mode == .precise ? "scope" : "slider.horizontal.3")
-                }
-                .accessibilityLabel("模式與用量")
+            ToolbarItem(placement: .principal) {
+                modeMenu
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("新對話", systemImage: "square.and.pencil") {
@@ -102,47 +104,103 @@ struct ChatView: View {
         .onAppear { session.modelContext = context }
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
-            Text("想做什麼？")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.er.text)
-                .padding(.top, 24)
-                .padding(.horizontal, 2)
-            VStack(spacing: 0) {
-                ForEach(Self.suggestions) { suggestion in
-                    Button {
-                        if let prompt = suggestion.prompt {
-                            session.send(text: prompt)
-                        } else {
-                            isScanning = true
-                        }
-                    } label: {
-                        HStack(spacing: Theme.Spacing.row) {
-                            Image(systemName: suggestion.systemImage)
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(Color.er.textSecondary)
-                                .frame(width: 28)
-                            Text(suggestion.title)
-                                .font(.body)
-                                .foregroundStyle(Color.er.text)
-                            Spacer(minLength: 8)
-                            Image(systemName: suggestion.prompt == nil ? "chevron.forward" : "arrow.up.circle")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.er.textTertiary)
-                        }
-                        .padding(Theme.Spacing.card)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if suggestion.id != Self.suggestions.last?.id {
-                        Divider().overlay(Color.er.outline).padding(.leading, 54)
-                    }
+    /// 標題：目前的模式，點開切換、看這次用量
+    private var modeMenu: some View {
+        Menu {
+            Picker("模式", selection: Bindable(session).mode) {
+                ForEach(AssistantMode.allCases) { mode in
+                    Text(mode == .precise ? "精準（比較慢）" : "一般").tag(mode)
                 }
             }
-            .erCard(padding: 0, elevated: true)
+            Section("這次對話用量") {
+                Text("輸入 \(session.usage.input.formatted()) tokens")
+                Text("快取讀取 \(session.usage.cacheRead.formatted()) tokens")
+                Text("快取寫入 \(session.usage.cacheWrite.formatted()) tokens")
+                Text("輸出（含思考） \(session.usage.output.formatted()) tokens")
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(session.mode == .precise ? "精準模式" : "助理")
+                    .font(.headline)
+                    .foregroundStyle(Color.er.text)
+                Image(systemName: "chevron.forward")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.er.textSecondary)
+            }
+            .contentShape(Rectangle())
         }
-        .transition(.opacity)
+        .accessibilityLabel("模式與用量")
+    }
+
+    /// 空白時畫面中間：一句話＋拍照鍵
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Text("想做什麼？")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.er.text)
+            Text("拍課本或單字表加進牌組、貼一段文章整理句型，\n或問問最近背得怎樣")
+                .font(.subheadline)
+                .foregroundStyle(Color.er.textSecondary)
+                .multilineTextAlignment(.center)
+            Button {
+                isScanning = true
+            } label: {
+                Label("拍照加單字", systemImage: "camera")
+                    .font(.headline)
+                    .foregroundStyle(Color.er.text)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .modifier(AssistantGlass(shape: Capsule(), solid: reduceTransparency))
+            .padding(.top, 10)
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 往上一點，避開下面的建議和輸入框
+        .padding(.bottom, 60)
+    }
+
+    /// 輸入框上面一排可以橫滑的建議
+    private var suggestionStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 10) {
+                ForEach(Self.suggestions) { suggestion in
+                    Button {
+                        use(suggestion)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(suggestion.title)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Color.er.text)
+                            Text(suggestion.detail)
+                                .font(.subheadline)
+                                .foregroundStyle(Color.er.textSecondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(minWidth: 112, alignment: .leading)
+                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .modifier(AssistantGlass(shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                                             solid: reduceTransparency))
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.page)
+        }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
+    }
+
+    private func use(_ suggestion: Suggestion) {
+        if suggestion.sendsNow {
+            session.send(text: suggestion.prompt)
+        } else {
+            draft = suggestion.prompt
+            isFocused = true
+        }
     }
 
     private func send() {
@@ -151,6 +209,26 @@ struct ChatView: View {
         draft = ""
         images = []
         session.send(text: text.isEmpty && !attached.isEmpty ? "把圖片裡的單字加進牌組" : text, images: attached)
+    }
+}
+
+/// 助理頁背景：上面一層主色漸層，往下淡到頁面底色；開始對話後變淡，訊息才好讀
+private struct AssistantBackground: View {
+    let isEmpty: Bool
+
+    var body: some View {
+        ZStack {
+            Color.er.background
+            LinearGradient(stops: [
+                .init(color: Color.er.primary.opacity(isEmpty ? 0.45 : 0.16), location: 0),
+                .init(color: Color.er.primary.opacity(isEmpty ? 0.16 : 0.05), location: 0.4),
+                .init(color: Color.er.primary.opacity(0), location: 0.7),
+            ], startPoint: .top, endPoint: .bottom)
+            RadialGradient(colors: [Color.er.info.opacity(isEmpty ? 0.22 : 0.06), Color.er.info.opacity(0)],
+                           center: .topTrailing, startRadius: 0, endRadius: 420)
+        }
+        .ignoresSafeArea()
+        .animation(.easeOut(duration: 0.35), value: isEmpty)
     }
 }
 

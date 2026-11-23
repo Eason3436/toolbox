@@ -33,7 +33,8 @@ struct InputBar: View {
                 .scrollIndicators(.hidden)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
+                // ＋ 自己一顆圓形玻璃鍵，跟輸入框分開
                 Menu {
                     if DocumentScanner.isAvailable {
                         Button("掃描文件", systemImage: "doc.viewfinder") { isScanning = true }
@@ -47,34 +48,37 @@ struct InputBar: View {
                     Image(systemName: "plus")
                         .font(.title3.weight(.medium))
                         .foregroundStyle(Color.er.text)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 50, height: 50)
                         .contentShape(Circle())
                 }
+                .modifier(AssistantGlass(shape: Circle(), solid: reduceTransparency))
                 .disabled(images.count >= AssistantConfig.maxImages)
                 .accessibilityLabel("加入圖片")
 
-                TextField("問問題、貼文章，或拍單字表", text: $text, axis: .vertical)
-                    .lineLimit(1...5)
-                    .font(.body)
-                    .foregroundStyle(Color.er.text)
-                    .focused(focus)
-                    .padding(.vertical, 11)
+                HStack(alignment: .bottom, spacing: 6) {
+                    TextField("問問題、貼文章，或拍單字表", text: $text, axis: .vertical)
+                        .lineLimit(1...5)
+                        .font(.body)
+                        .foregroundStyle(Color.er.text)
+                        .focused(focus)
+                        .padding(.vertical, 14)
+                        .padding(.leading, 18)
 
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(canSend ? Color.er.onPrimary : Color.er.textTertiary)
-                        .frame(width: 36, height: 36)
-                        .background(canSend ? Color.er.primary : Color.er.fill, in: Circle())
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(canSend ? Color.er.onPrimary : Color.er.textTertiary)
+                            .frame(width: 38, height: 38)
+                            .background(canSend ? Color.er.primary : Color.er.fill, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(6)
+                    .disabled(!canSend)
+                    .animation(.snappy(duration: 0.2), value: canSend)
+                    .accessibilityLabel("送出")
                 }
-                .buttonStyle(.plain)
-                .padding(4)
-                .disabled(!canSend)
-                .accessibilityLabel("送出")
+                .modifier(AssistantGlass(shape: RoundedRectangle(cornerRadius: 25, style: .continuous), solid: reduceTransparency))
             }
-            .padding(.leading, 2)
-            .padding(.trailing, 2)
-            .modifier(InputBackground(solid: reduceTransparency))
         }
         .animation(.snappy(duration: 0.25), value: images.count)
         .fullScreenCover(isPresented: $isScanning) {
@@ -128,11 +132,12 @@ struct InputBar: View {
     }
 }
 
-private struct InputBackground: ViewModifier {
+/// 助理頁的控制層：Liquid Glass；「降低透明度」打開時改成實心底
+struct AssistantGlass<S: InsettableShape>: ViewModifier {
+    let shape: S
     let solid: Bool
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
         if solid {
             content
                 .background(Color.er.surfaceHigh, in: shape)

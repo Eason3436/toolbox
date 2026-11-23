@@ -9,9 +9,11 @@ struct DeckDetailView: View {
     @State private var session: ReviewSession?
     @State private var selected: Card?
     @State private var isMakingPDF = false
+    /// 排好順序的卡：進來時讀一次，換順序、移出、看完單字才重讀（點一下單字不用把上千張卡重排一遍）
+    @State private var loaded: [Card]?
 
     private var cards: [Card] {
-        let all = deck.orderedActiveCards
+        let all = loaded ?? []
         let q = Normalizer.normalize(query)
         guard !q.isEmpty else { return all }
         return all.filter { $0.wordNorm.contains(q) || $0.zh.contains(query) }
@@ -20,7 +22,9 @@ struct DeckDetailView: View {
     var body: some View {
         let cards = cards
         List {
-            if cards.isEmpty {
+            if loaded == nil {
+                EmptyView()
+            } else if cards.isEmpty {
                 EmptyLine(query.isEmpty ? "還沒有單字" : "沒有符合的單字")
                     .listRowBackground(Color.clear)
             } else {
@@ -80,7 +84,8 @@ struct DeckDetailView: View {
         .sheet(isPresented: $isMakingPDF) {
             HandoutView(presetDeckID: deck.id)
         }
-        .sheet(item: $selected) { card in
+        .task(id: deck.order) { reload() }
+        .sheet(item: $selected, onDismiss: reload) { card in
             WordDetailSheet(card: card)
         }
         .fullScreenCover(item: $session) { session in
@@ -88,11 +93,16 @@ struct DeckDetailView: View {
         }
     }
 
+    private func reload() {
+        loaded = deck.orderedActiveCards
+    }
+
     private func remove(_ card: Card) {
         withAnimation(.spring(duration: 0.3)) {
             if DeckMembership.remove(card, from: deck, in: context) {
                 try? context.save()
             }
+            reload()
         }
     }
 }

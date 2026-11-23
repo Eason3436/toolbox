@@ -4,16 +4,22 @@ import SwiftData
 struct DecksView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
+    /// 只讀今天的複習紀錄
     @Query private var logs: [ReviewLog]
+    @Environment(StudySummaryCache.self) private var studyCache
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
 
     @State private var category: DeckCategory = .word
     @State private var session: ReviewSession?
     @State private var showLimitSheet = false
     @State private var pendingDelete: Deck?
-    @State private var studyCache = StudySummaryCache()
 
     private var filtered: [Deck] { decks.filter { $0.category == category } }
+
+    init() {
+        let start = Calendar.current.startOfDay(for: Date())
+        _logs = Query(filter: #Predicate<ReviewLog> { $0.reviewedAt >= start })
+    }
 
     var body: some View {
         let summary = studyCache.summary(decks: decks, logs: logs, globalNewLimit: dailyNewLimit)

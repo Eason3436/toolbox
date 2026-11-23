@@ -13,18 +13,22 @@ struct StatsView: View {
     }
 
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
-    @Query(sort: \ReviewLog.reviewedAt) private var logs: [ReviewLog]
+    @Environment(StudySummaryCache.self) private var cache
+    @Environment(\.modelContext) private var context
     @State private var range: ChartRange = .week
 
     var body: some View {
-        let today = StudyPlanner.todaysLogs(logs, now: Date())
-        let streak = StatsCalculator.streak(logs)
-        let heat = StatsCalculator.dailyCounts(logs, days: 91)
+        // 每日張數只在複習存檔後重算；切到這頁、換週／月都不用再讀全部紀錄
+        let digest = cache.logDigest(context: context)
+        let now = Date()
+        let reviewedToday = digest.reviewCount(on: now)
+        let streak = digest.streak(now: now)
+        let heat = digest.dailyCounts(days: 91, now: now)
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
                 HStack(spacing: Theme.Spacing.stack) {
-                    StatCard(title: "今日複習", value: today.count)
-                    StatCard(title: "今日新學", value: today.filter(\.wasNew).count)
+                    StatCard(title: "今日複習", value: reviewedToday)
+                    StatCard(title: "今日新學", value: digest.learnedCount(on: now))
                     StatCard(title: "連續", value: streak, unit: "天")
                 }
 
@@ -41,14 +45,14 @@ struct StatsView: View {
                     .labelsHidden()
                     .frame(width: 120)
                 }
-                DailyBarChart(days: StatsCalculator.dailyCounts(logs, days: range.days), annotate: range == .week)
+                DailyBarChart(days: digest.dailyCounts(days: range.days, now: now), annotate: range == .week)
                     .erCard(elevated: true)
 
                 SectionHeader(title: "各牌組熟練度")
                 if decks.isEmpty {
                     EmptyLine("還沒有牌組")
                 } else {
-                    MasteryChart(decks: decks)
+                    MasteryChart(rows: masteryRows())
                         .erCard(elevated: true)
                 }
             }
@@ -59,11 +63,21 @@ struct StatsView: View {
         .navigationTitle("紀錄")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: "我今天在 EnRecall 複習了 \(today.count) 張單字，已經連續 \(streak) 天") {
+                ShareLink(item: "我今天在 EnRecall 複習了 \(reviewedToday) 張單字，已經連續 \(streak) 天") {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("分享")
             }
+        }
+    }
+}
+
+extension StatsView {
+    private func masteryRows() -> [MasteryRow] {
+        decks.map { (deck: Deck) -> MasteryRow in
+            let counts: DeckCounts = cache.counts(of: deck)
+            return MasteryRow(id: deck.id, name: deck.name, mastered: counts.mastered,
+                              learning: counts.learning, fresh: counts.fresh)
         }
     }
 }
@@ -162,25 +176,7 @@ private struct MasteryRow: Identifiable {
 
 /// 每個牌組一列：名稱、已熟悉／總數，下面一條依比例分段的長條（每列各自滿版，看的是比例）
 private struct MasteryChart: View {
-    let decks: [Deck]
-
-    private var rows: [MasteryRow] {
-        decks.map { deck in
-            var mastered = 0
-            var fresh = 0
-            var learning = 0
-            for card in deck.activeCards {
-                if card.isMastered {
-                    mastered += 1
-                } else if card.isNew {
-                    fresh += 1
-                } else {
-                    learning += 1
-                }
-            }
-            return MasteryRow(id: deck.id, name: deck.name, mastered: mastered, learning: learning, fresh: fresh)
-        }
-    }
+    let rows: [MasteryRow]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

@@ -72,29 +72,31 @@ struct DeckCardView: View {
 
 private struct DeckSubtitle: View {
     let deck: Deck
+    @Environment(StudySummaryCache.self) private var cache
 
     var body: some View {
-        Text("\(deck.category.countText(deck.activeCards.count)) · \(deck.order.title)")
+        Text("\(deck.category.countText(cache.counts(of: deck).total)) · \(deck.order.title)")
     }
 }
 
 private struct DeckProgress: View {
     let deck: Deck
+    @Environment(StudySummaryCache.self) private var cache
 
     var body: some View {
-        let cards = deck.activeCards
-        let learned = cards.filter { !$0.isNew }.count
+        let counts = cache.counts(of: deck)
+        let learned = counts.learned
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("已背")
                     .foregroundStyle(Color.er.textSecondary)
                 Spacer()
-                Text("\(learned.formatted()) / \(cards.count.formatted())")
+                Text("\(learned.formatted()) / \(counts.total.formatted())")
                     .monospacedDigit()
                     .foregroundStyle(Color.er.text)
             }
             .font(.caption)
-            LinearMeter(value: cards.isEmpty ? 0 : Double(learned) / Double(cards.count))
+            LinearMeter(value: counts.total == 0 ? 0 : Double(learned) / Double(counts.total))
         }
     }
 }

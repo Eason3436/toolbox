@@ -3,11 +3,12 @@ import SwiftData
 
 struct HomeView: View {
     @Query(sort: \Deck.sortIndex) private var decks: [Deck]
-    @Query(sort: \ReviewLog.reviewedAt, order: .reverse) private var logs: [ReviewLog]
+    /// 只讀今天的複習紀錄（今天的數字用）；連續天數用共用的每日張數
+    @Query private var logs: [ReviewLog]
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
     @Environment(StoreModel.self) private var store
     @State private var session: ReviewSession?
-    @State private var studyCache = StudySummaryCache()
+    @Environment(StudySummaryCache.self) private var studyCache
     @State private var isQuizzing = false
     @State private var isPickingHandout = false
     @State private var isMakingHandout = false
@@ -29,9 +30,14 @@ struct HomeView: View {
         decks.filter { $0.kind == .custom }.max { ($0.lastImportedAt ?? $0.createdAt) < ($1.lastImportedAt ?? $1.createdAt) }
     }
 
+    init() {
+        let start = Calendar.current.startOfDay(for: Date())
+        _logs = Query(filter: #Predicate<ReviewLog> { $0.reviewedAt >= start })
+    }
+
     var body: some View {
         let summary = summary
-        let streak = StatsCalculator.streak(logs)
+        let streak = studyCache.logDigest(context: context).streak()
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.stack) {
                 HStack {
