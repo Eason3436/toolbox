@@ -80,6 +80,8 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.er.surface)
 
+            StorageSection()
+
             Section("關於") {
                 NavigationLink {
                     ChangelogView()

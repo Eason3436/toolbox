@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.25.0", date: day(23), notes: [
+            "設定新增「儲存空間」：一條長條看 App 本體、單字與進度、PDF 講義、快取各佔多少",
+            "快取可以一鍵清除，單字和進度不受影響",
+        ]),
         Entry(version: "0.24.0", date: day(23), notes: [
             "助理頁換新樣子：上面一層淡淡的主題色漸層，中間一句話和「拍照加單字」，輸入框上面一排可以橫滑的建議",
             "標題點一下可以切換精準模式、看這次用量",
