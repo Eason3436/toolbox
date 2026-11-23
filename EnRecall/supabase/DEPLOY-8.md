@@ -20,7 +20,7 @@
 
 ## 2. 部署 `gemini-proxy`
 
-- 原始碼：`EnRecall/supabase/functions/gemini-proxy/index.ts`（照原樣部署，不用改）
+- 原始碼：`EnRecall/supabase/functions/gemini-proxy/index.ts`、`deno.json`（照原樣部署，不用改）
 - `verify_jwt` 設 `false`（App 帶的是 publishable／anon key，不靠它驗證；跟 `enrecall-packs` 一樣）
 - 網址：`https://<iOS 後端>.supabase.co/functions/v1/gemini-proxy`
 
