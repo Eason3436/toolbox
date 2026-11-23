@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(ToastCenter.self) private var toasts
     @Environment(StoreModel.self) private var store
+    @Query private var decks: [Deck]
 
     @AppStorage(SettingsKey.appearance) private var appearance = AppearanceMode.system
     @AppStorage(SettingsKey.dailyNewLimit) private var dailyNewLimit = AppDefaults.dailyNewLimit
@@ -26,6 +27,17 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink(value: Route.decks) {
+                    LabeledContent {
+                        Text(decks.count, format: .number).monospacedDigit()
+                    } label: {
+                        Label("牌組", systemImage: "rectangle.stack")
+                    }
+                }
+            }
+            .listRowBackground(Color.er.surface)
+
             ConnectorSection()
                 .listRowBackground(Color.er.surface)
 
@@ -328,14 +340,14 @@ private struct ConnectorSection: View {
 
 #Preview("淺色") {
     NavigationStack {
-        SettingsView()
+        SettingsView().appDestinations()
     }
     .previewEnvironment()
 }
 
 #Preview("深色") {
     NavigationStack {
-        SettingsView()
+        SettingsView().appDestinations()
     }
     .previewEnvironment()
     .preferredColorScheme(.dark)

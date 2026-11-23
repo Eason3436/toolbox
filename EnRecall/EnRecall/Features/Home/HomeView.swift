@@ -85,12 +85,6 @@ struct HomeView: View {
         .navigationTitle("今天")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: Route.assistant) {
-                    Image(systemName: "bubble.left.and.text.bubble.right")
-                }
-                .accessibilityLabel("助理")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: Route.store) {
                     Image(systemName: "bag")
                 }

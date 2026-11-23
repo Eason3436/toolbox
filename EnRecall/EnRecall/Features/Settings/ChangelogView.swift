@@ -11,6 +11,10 @@ struct ChangelogView: View {
     }
 
     static let entries: [Entry] = [
+        Entry(version: "0.23.0", date: day(23), notes: [
+            "助理移到下面分頁列的正中間，點一下就能開始",
+            "牌組改到設定裡：設定最上面的「牌組」，排順序、暫停、開始複習都跟以前一樣",
+        ]),
         Entry(version: "0.22.1", date: day(23), notes: [
             "助理改用 Claude：一般模式回答比較快，右上角切到精準模式會想得更仔細",
             "拍的照片在同一次請求裡照常參考，回答完才換成辨識出來的文字，之後不再重送圖片",

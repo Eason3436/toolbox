@@ -70,7 +70,6 @@ struct ChatView: View {
         }
         .navigationTitle("助理")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarVisibility(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

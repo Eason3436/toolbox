@@ -5,8 +5,8 @@ enum Route: Hashable {
     case store
     case pack(StorePack)
     case deck(Deck)
-    /// 助理（聊天）
-    case assistant
+    /// 牌組（設定 → 牌組）
+    case decks
 }
 
 /// 開始一輪複習（fullScreenCover 用）
@@ -28,8 +28,8 @@ extension View {
                 PackDetailView(pack: pack)
             case .deck(let deck):
                 DeckDetailView(deck: deck)
-            case .assistant:
-                ChatView()
+            case .decks:
+                DecksView()
             }
         }
     }

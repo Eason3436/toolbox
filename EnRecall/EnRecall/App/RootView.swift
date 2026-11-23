@@ -3,8 +3,8 @@ import SwiftData
 
 enum AppTab: Hashable {
     case home
-    case decks
     case stats
+    case assistant
     case dictionary
     case settings
 }
@@ -27,19 +27,20 @@ struct RootView: View {
             } label: {
                 TabIcon(title: "首頁", systemImage: "house")
             }
-            Tab(value: AppTab.decks) {
-                NavigationStack {
-                    DecksView().appDestinations()
-                }
-            } label: {
-                TabIcon(title: "牌組", systemImage: "rectangle.stack")
-            }
             Tab(value: AppTab.stats) {
                 NavigationStack {
                     StatsView()
                 }
             } label: {
                 TabIcon(title: "紀錄", systemImage: "chart.bar")
+            }
+            // 助理放在分頁列正中間
+            Tab(value: AppTab.assistant) {
+                NavigationStack {
+                    ChatView()
+                }
+            } label: {
+                TabIcon(title: "助理", systemImage: "bubble.left.and.text.bubble.right")
             }
             Tab(value: AppTab.dictionary) {
                 NavigationStack {
@@ -50,7 +51,7 @@ struct RootView: View {
             }
             Tab(value: AppTab.settings) {
                 NavigationStack {
-                    SettingsView()
+                    SettingsView().appDestinations()
                 }
             } label: {
                 TabIcon(title: "設定", systemImage: "gearshape")
